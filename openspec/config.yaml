@@ -28,12 +28,15 @@ rules:
     - Use unchecked numbered tasks grouped into observable vertical slices.
     - Include acceptance evidence and relevant decision-resolution work before dependent implementation.
     - Keep later milestones separate and mark unfinished behavior explicitly.
+    - Include final PR specification reconciliation and verification evidence; archive only delivered scope.
 
 operations:
   apply:
     guidance:
       - Resolve relevant open decisions before implementing their dependent behavior.
       - Verify observable behavior with synthetic data and report checks actually run.
+      - After final edits and before PR merge, reconcile affected specs and acceptance coverage with delivered behavior using docs/specification-workflow.md.
   archive:
     guidance:
       - Confirm that delivered behavior and completed tasks match the change before merging main specs.
+      - Keep incomplete or merely planned requirements outside delivered main specs and document PR sync/archive status.

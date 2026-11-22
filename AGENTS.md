@@ -23,3 +23,5 @@ For interviews, use Matt Pocock's grill-me/grilling or grill-with-docs: inspect 
 Run npm ci after checkout and npm run spec:validate after changing specifications. Use npm run openspec -- <arguments> for the project's pinned CLI; this disables its telemetry. Follow [acceptance coverage](docs/acceptance-coverage.md) when selecting implementation tests.
 
 Keep unfinished tasks unchecked. Archive changes only after their behavior and tests are delivered. During a specification task, capture requirements and planning artifacts; begin application implementation when the user requests it.
+
+Before finalizing every pull request, complete the [PR specification reconciliation checklist](docs/specification-workflow.md#pull-request-completion). Update affected specs in the same PR before merge, reflecting the final diff and verification evidence. Planning-only PRs update proposals without claiming delivered product behavior.

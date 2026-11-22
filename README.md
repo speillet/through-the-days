@@ -1149,6 +1149,7 @@ You are implementing **Through the Days** using this specification. Deliver a wo
 5. Write tests with fictional data, document every command and mark incomplete features clearly.
 6. At each iteration, report changed files, tests actually run, observed results, limitations and next steps.
 7. **English is a hard requirement:** all product UX copy, editor prompts, seed data, app notifications, AI system prompts, CBT templates, release notes and tests are written in English. Do not reuse French strings from old specifications. Do not alter the language of user-written content.
+8. **Close every PR with current specs:** after final edits, reconcile affected requirements/scenarios, tasks, decisions and acceptance coverage in the same PR before merge. Delivered features update main specs; planning-only PRs remain proposals. Follow the [PR completion checklist](docs/specification-workflow.md#pull-request-completion) and report sync/archive status or an explicit no-behavior-impact reason.
 
 ### First task to execute now
 
