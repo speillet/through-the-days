@@ -44,4 +44,3 @@ Section 20 belongs to the [detailed product reference](../README_THROUGH_THE_DAY
 36. **Compassionate challenge:** local/remote assistants, including CBT and Ask My Journal, challenge evidenced errors and unsupported conclusions respectfully, distinguish empathy from agreement, accept justified views, acknowledge uncertainty and their own mistakes, and preserve consent, stopping, and acute-distress safeguards.
 
 ---
-

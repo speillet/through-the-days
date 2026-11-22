@@ -383,4 +383,3 @@ interface CbtSession {
 Do not define success solely by fewer negative words or longer unbroken streaks. Also measure **ease of entry**, explicitly recorded helpful actions, voluntarily completed exercises, subjective satisfaction and perceived usefulness. Obtain user feedback without claiming clinical causality.
 
 ---
-
