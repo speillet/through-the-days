@@ -1,7 +1,7 @@
 //! Versioned journal schema: read-only detection, creation and the shared upgrade steps.
 
-use crate::Error;
-use rusqlite::{Connection, ErrorCode, OpenFlags, Transaction, TransactionBehavior};
+use crate::{Error, error::is_damage};
+use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
 use std::{fs, io, path::Path};
 
 /// Version this build writes to `PRAGMA user_version`.
@@ -66,8 +66,8 @@ pub(crate) fn is_upgradable(version: u32) -> bool {
 ///
 /// Returns `None` when there is nothing to migrate: the file does not exist, is empty, or is an
 /// SQLite database without any schema. Any other database reports its `user_version`, including
-/// `Some(0)` for a database that is not a journal. A file that is not an SQLite database, or has a
-/// negative version, is [`Error::Unsupported`].
+/// `Some(0)` for a database that is not a journal. A file whose header or schema SQLite cannot
+/// read is [`Error::Damaged`]; a negative version is [`Error::Unsupported`].
 pub fn schema_version(path: &Path) -> Result<Option<u32>, Error> {
     Ok(match inspect(path)? {
         Stored::Nothing => None,
@@ -75,7 +75,8 @@ pub fn schema_version(path: &Path) -> Result<Option<u32>, Error> {
     })
 }
 
-/// Classifies `path` through a read-only connection, so unsupported files are never changed.
+/// Classifies `path` through a read-only connection, so damaged or unsupported files are never
+/// changed.
 pub(crate) fn inspect(path: &Path) -> Result<Stored, Error> {
     match fs::metadata(path) {
         Ok(metadata) if metadata.is_dir() => return Err(Error::Unsupported),
@@ -95,7 +96,7 @@ pub(crate) fn inspect(path: &Path) -> Result<Stored, Error> {
 pub(crate) fn initialise(connection: &Connection) -> Result<(), Error> {
     let transaction = Transaction::new_unchecked(connection, TransactionBehavior::Immediate)?;
     match classify(&transaction)? {
-        Stored::Nothing => transaction.execute_batch(CREATE_CURRENT_SCHEMA)?,
+        Stored::Nothing => create_current(&transaction)?,
         stored => {
             if let Some(error) = stored.refusal() {
                 return Err(error);
@@ -103,6 +104,15 @@ pub(crate) fn initialise(connection: &Connection) -> Result<(), Error> {
         }
     }
     transaction.commit()?;
+    Ok(())
+}
+
+/// Creates the current schema, with every constraint, in an empty database.
+///
+/// The caller owns the transaction. A restore also uses it, so the restored journal always has
+/// this build's definitions rather than the ones stored in the backup.
+pub(crate) fn create_current(connection: &Connection) -> Result<(), Error> {
+    connection.execute_batch(CREATE_CURRENT_SCHEMA)?;
     Ok(())
 }
 
@@ -152,10 +162,14 @@ fn classify(connection: &Connection) -> Result<Stored, Error> {
     })
 }
 
-/// A file that SQLite cannot read as a database is not a journal; other failures are storage.
+/// A header or schema that SQLite cannot read is a damaged journal; other failures are storage.
+///
+/// A readable database that is newer or not a journal is classified by [`Stored::refusal`]
+/// instead, as [`Error::Unsupported`].
 fn open_error(error: rusqlite::Error) -> Error {
-    match error.sqlite_error_code() {
-        Some(ErrorCode::NotADatabase | ErrorCode::DatabaseCorrupt) => Error::Unsupported,
-        _ => Error::Storage,
+    if is_damage(&error) {
+        Error::Damaged
+    } else {
+        Error::Storage
     }
 }

@@ -7,15 +7,18 @@ import type { Entry } from '../../api/types';
 import { formatLongDate } from '../../domain/dates';
 import { newDraft } from '../../domain/entry';
 import { discardAllSavers } from '../../state/autosave';
+import { PROTECTED_DOCUMENT_MESSAGE } from '../editor/JournalEditor';
 import {
   checkedScore,
   chooseScore,
   createJournal,
   DATE,
+  goToStage,
   journalEditor,
   onlyEntry,
   renderToday,
   SAVE_TIMEOUT_MS,
+  scale,
   setPreferences,
   textOf,
   typeInEditor,
@@ -128,6 +131,93 @@ describe('Today: dates and slots', () => {
     expect(await api.entriesOn('2026-11-23')).toEqual([]);
   });
 
+  it('moves on to the new date after midnight when nothing is open', async () => {
+    const user = userEvent.setup();
+    // 23:50 in Paris on Sunday 22 November.
+    const { api, clock } = createJournal(new Date('2026-11-22T22:50:00Z'));
+    await renderToday(api);
+    expect(heading()).toHaveAccessibleName('Sunday 22 November 2026 Today');
+    await user.click(screen.getByRole('button', { name: 'Write directly' }));
+    expect(journalEditor()).toHaveFocus();
+
+    clock.set(new Date('2026-11-22T23:10:00Z')); // 00:10 on Monday 23 November.
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Monday 23 November 2026 Today' })).toBeInTheDocument();
+    const monday = await screen.findByRole('textbox', { name: 'Morning journal, Monday 23 November 2026' });
+    // The writing keeps the focus it had.
+    await waitFor(() => expect(monday).toHaveFocus());
+    await typeInEditor(user, 'Synthetic: the first words of Monday.');
+    await waitForSaved();
+    expect(await onlyEntry(api, '2026-11-23')).toMatchObject({ slot: 'morning', date: '2026-11-23' });
+    expect(await api.entriesOn(DATE)).toEqual([]);
+  });
+
+  it('opens an empty slot on the new date after midnight, while the entry left open keeps its date', async () => {
+    const user = userEvent.setup();
+    // 22:00 in Paris on Sunday 22 November.
+    const { api, clock } = createJournal(new Date('2026-11-22T21:00:00Z'));
+    await renderToday(api);
+    await openSlot(user, 'Evening');
+    await typeInEditor(user, 'Synthetic: the evening before.', 'Evening');
+    await waitForSaved();
+
+    clock.set(new Date('2026-11-23T07:00:00Z')); // 08:00 on Monday 23 November.
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(await screen.findByRole('button', { name: 'Go to today' })).toBeInTheDocument();
+    expect(heading()).toHaveAccessibleName('Sunday 22 November 2026');
+
+    await user.click(slotTab('Morning'));
+    expect(await screen.findByRole('textbox', { name: 'Morning journal, Monday 23 November 2026' })).toBeInTheDocument();
+    expect(heading()).toHaveAccessibleName('Monday 23 November 2026 Today');
+    await typeInEditor(user, 'Synthetic: Monday morning.');
+    await waitForSaved();
+    expect(await onlyEntry(api, '2026-11-23')).toMatchObject({ slot: 'morning' });
+    expect(await onlyEntry(api, DATE)).toMatchObject({ slot: 'evening' });
+  });
+
+  it("opens the earlier day's own entry after midnight when that slot already has one", async () => {
+    const user = userEvent.setup();
+    const { api, clock } = createJournal(new Date('2026-11-22T21:00:00Z'));
+    await api.saveEntry(draft('morning', DATE, 'Synthetic: Sunday morning.'));
+    await renderToday(api);
+    await openSlot(user, 'Evening');
+    await typeInEditor(user, 'Synthetic: Sunday evening.', 'Evening');
+    await waitForSaved();
+
+    clock.set(new Date('2026-11-23T07:00:00Z'));
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await screen.findByRole('button', { name: 'Go to today' });
+    await user.click(slotTab('Morning'));
+    expect(await screen.findByRole('textbox', { name: 'Morning journal, Sunday 22 November 2026' })).toHaveTextContent(
+      'Synthetic: Sunday morning.',
+    );
+    expect(heading()).toHaveAccessibleName('Sunday 22 November 2026');
+  });
+
+  it('keeps a date the person chose when the clock passes midnight', async () => {
+    const user = userEvent.setup();
+    const { api, clock } = createJournal(new Date('2026-11-22T22:50:00Z'));
+    await renderToday(api);
+    await user.click(screen.getByRole('button', { name: 'Previous day' }));
+    await screen.findByRole('heading', { level: 1, name: 'Saturday 21 November 2026' });
+
+    clock.set(new Date('2026-11-22T23:10:00Z'));
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await screen.findByRole('textbox', { name: 'Morning journal, Saturday 21 November 2026' });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(heading()).toHaveAccessibleName('Saturday 21 November 2026');
+    await openSlot(user, 'Evening');
+    expect(journalEditor('Evening')).toHaveAccessibleName('Evening journal, Saturday 21 November 2026');
+  });
+
   it('writes into the previous date when the person chooses it after midnight', async () => {
     const user = userEvent.setup();
     // 00:30 in Paris on Monday 23 November.
@@ -203,6 +293,45 @@ describe('Today: dates and slots', () => {
     expect(slotTab('Evening')).toHaveFocus();
     expect(slotTab('Evening')).toHaveAttribute('aria-selected', 'true');
   });
+
+  it('reopens a slot on its saved version after switching away, and saves the next edit on top of it', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api);
+    await typeInEditor(user, 'Synthetic morning words.');
+    await waitForSaved();
+    await openSlot(user, 'Evening');
+    await openSlot(user, 'Morning');
+    expect(journalEditor()).toHaveTextContent('Synthetic morning words.');
+    expect(slotTab('Morning')).toHaveTextContent('Draft');
+
+    await typeInEditor(user, ' More.');
+    await waitFor(async () => expect((await onlyEntry(api)).revision).toBe(2), { timeout: SAVE_TIMEOUT_MS });
+    await waitForSaved();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(textOf(await onlyEntry(api))).toBe('Synthetic morning words. More.');
+  });
+
+  it('keeps a score changed before switching slots and saves later answers with it', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await api.saveEntry({ ...draft('morning'), mood: 2 });
+    await renderToday(api);
+    await chooseScore(user, 'Mood', 8);
+    await waitFor(async () => expect(await onlyEntry(api)).toMatchObject({ mood: 8, revision: 2 }), {
+      timeout: SAVE_TIMEOUT_MS,
+    });
+    await openSlot(user, 'Evening');
+    await openSlot(user, 'Morning');
+    expect(checkedScore('Mood')).toBe(8);
+
+    await chooseScore(user, 'How is my energy?', 4);
+    await waitFor(async () => expect(await onlyEntry(api)).toMatchObject({ mood: 8, energy: 4, revision: 3 }), {
+      timeout: SAVE_TIMEOUT_MS,
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(/stays open/)).not.toBeInTheDocument();
+  });
 });
 
 describe('Today: completion', () => {
@@ -266,6 +395,22 @@ describe('Today: completion', () => {
     expect(entry).toMatchObject({ complete: false, mood: 5, energy: 6 });
     expect(entry.reflection.difficulty).toBe('Synthetic: a missed fictional train.');
     expect(textOf(entry).trim()).toBe('');
+  });
+
+  it('offers to reload the saved version when completion is refused because the entry changed elsewhere', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    const saved = await api.saveEntry({ ...draft('morning', DATE, 'Synthetic: ready to finish.'), mood: 5, energy: 5 });
+    await renderToday(api);
+    await api.saveEntry({ ...saved, mood: 6 });
+    await user.click(screen.getByRole('button', { name: 'Mark complete' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(ERROR_MESSAGES.conflict);
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument();
+    await user.click(within(alert).getByRole('button', { name: 'Reload saved version' }));
+    await waitFor(() => expect(checkedScore('Mood')).toBe(6));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(await onlyEntry(api)).toMatchObject({ mood: 6, complete: false, revision: 2 });
   });
 });
 
@@ -408,6 +553,25 @@ describe('Today: saving', () => {
     await waitFor(() => expect(journalEditor()).toHaveTextContent('Synthetic: changed elsewhere.'));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  it('keeps an entry that can no longer be saved open so its writing can be copied, without promising a save', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    const saved = await api.saveEntry(draft('morning', DATE, 'Synthetic: original.'));
+    await renderToday(api);
+    await api.saveEntry({ ...saved, document: { type: 'doc', content: [paragraph('Synthetic: changed elsewhere.')] } });
+    await typeInEditor(user, ' More words.');
+    await screen.findByRole('alert');
+    await user.click(slotTab('Evening'));
+    expect(
+      await screen.findByText(
+        "These changes can't be saved, so this entry stays open. Copy any writing you want to keep before you reload: reloading shows the saved version without your recent changes.",
+      ),
+    ).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/nothing is lost|Once it is saved/);
+    expect(slotTab('Morning')).toHaveAttribute('aria-selected', 'true');
+    expect(journalEditor()).toHaveTextContent('Synthetic: original. More words.');
+  });
 });
 
 describe('Today: editor', () => {
@@ -469,10 +633,29 @@ describe('Today: editor', () => {
     await user.keyboard('Synthetic: focused writing.');
     await waitForSaved();
 
-    await user.keyboard('{Escape}');
+    // A real Escape carries keyCode 27, which the editor marks as handled (user-event's has none).
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true });
+    act(() => {
+      journalEditor().dispatchEvent(escape);
+    });
+    expect(escape.defaultPrevented).toBe(true);
     expect(screen.getByRole('button', { name: 'Focus mode' })).toHaveAttribute('aria-pressed', 'false');
+    expect(journalEditor()).toHaveFocus();
     expect(screen.getByRole('tablist')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Check-in' })).toBeInTheDocument();
+  });
+
+  it('closes a dialog with Escape before leaving focus mode', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api);
+    await user.click(screen.getByRole('button', { name: 'Focus mode' }));
+    await user.keyboard('Synthetic: words to review.');
+    await user.click(screen.getByRole('button', { name: 'View Markdown' }));
+    expect(screen.getByRole('dialog', { name: 'Markdown' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Markdown' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Focus mode' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('reaches the editor from the keyboard and with Write directly', async () => {
@@ -548,6 +731,51 @@ describe('Today: moving and trashing entries', () => {
     expect(textOf(trash[0].entry)).toContain('Synthetic: a draft to put away.');
     await waitFor(() => expect(slotTab('Morning')).toHaveTextContent('Not started'));
     expect(journalEditor()).toHaveTextContent('');
+  });
+});
+
+describe('Today: writing this version cannot edit exactly', () => {
+  it('keeps the whole entry read-only, explains why, and never saves over it', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    const saved = await api.saveEntry({ ...draft('morning', DATE, 'Synthetic linked words.'), mood: 4 });
+    const linked: Entry = {
+      ...saved,
+      document: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'Synthetic linked words.', marks: [{ type: 'link', attrs: { href: 'https://example.invalid' } }] },
+            ],
+          },
+        ],
+      },
+    };
+    const saveEntry = vi.fn((entry: Entry) => api.saveEntry(entry));
+    const restored: JournalApi = {
+      ...api,
+      saveEntry,
+      entriesOn: async (date) => (await api.entriesOn(date)).map((entry) => (entry.id === saved.id ? linked : entry)),
+    };
+    await renderToday(restored);
+    expect(screen.getByText(PROTECTED_DOCUMENT_MESSAGE)).toBeInTheDocument();
+    expect(journalEditor()).toHaveAttribute('aria-readonly', 'true');
+    expect(journalEditor()).toHaveTextContent('Synthetic linked words.');
+    expect(within(scale('Mood')).getByRole('radio', { name: /^6,/ })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /^Quick Check-in/ })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Mark complete' })).not.toBeInTheDocument();
+    await goToStage(user, 'Small wins and pride');
+    expect(screen.getByRole('textbox', { name: 'Add a small win' })).toBeDisabled();
+
+    await typeInEditor(user, ' more');
+    await user.keyboard('{Meta>}s{/Meta}');
+    await act(() => new Promise((resolve) => setTimeout(resolve, 60)));
+    expect(saveEntry).not.toHaveBeenCalled();
+    expect(journalEditor()).toHaveTextContent('Synthetic linked words.');
+    expect(journalEditor()).not.toHaveTextContent('more');
+    expect(screen.getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument();
   });
 });
 

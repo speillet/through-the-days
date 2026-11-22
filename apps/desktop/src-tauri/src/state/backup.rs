@@ -15,6 +15,7 @@ use zeroize::Zeroizing;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BackupState {
+    SettingsUnreadable,
     NeedsFolder,
     NeedsPassphrase,
     Due,
@@ -66,13 +67,17 @@ impl Core {
         let folder = self.plan.folder.as_deref();
         let today = self.journal_today(now);
         BackupStatus {
-            state: backup_state(
-                folder.is_some(),
-                self.plan.last_success_date.as_deref(),
-                today.as_deref(),
-                self.passphrase.is_some(),
-                self.last_error.is_some(),
-            ),
+            state: if self.plan_unreadable {
+                BackupState::SettingsUnreadable
+            } else {
+                backup_state(
+                    folder.is_some(),
+                    self.plan.last_success_date.as_deref(),
+                    today.as_deref(),
+                    self.passphrase.is_some(),
+                    self.last_error.is_some(),
+                )
+            },
             folder_name: folder.map(display_name),
             folder_path: folder.map(|folder| folder.display().to_string()),
             passphrase_available: self.passphrase.is_some(),
@@ -98,6 +103,7 @@ impl Core {
         folder: PathBuf,
         now: DateTime<Utc>,
     ) -> Result<BackupStatus, CommandError> {
+        journal_core::probe_backup_folder(&folder)?;
         if self.plan.folder.as_ref() != Some(&folder) {
             self.plan.folder = Some(folder);
             self.plan.last_success_date = None;
@@ -105,6 +111,8 @@ impl Core {
             self.plan.retention_warning = false;
             self.last_error = None;
             self.persist_plan()?;
+            self.plan_unreadable = false;
+            self.automatic_failure_at = None;
         }
         Ok(self.backup_status(now))
     }
@@ -167,6 +175,13 @@ impl Core {
     /// Runs the daily backup when none succeeded today (D-007). A missing folder or passphrase
     /// and a failed attempt are reported in the status, not as errors.
     pub fn run_daily_backup(&mut self, now: DateTime<Utc>) -> Result<BackupStatus, CommandError> {
+        if self.plan_unreadable
+            || self
+                .automatic_failure_at
+                .is_some_and(|last| now.signed_duration_since(last).num_seconds() < 3600)
+        {
+            return Ok(self.backup_status(now));
+        }
         let journal = self.journal()?;
         let preferences = journal.preferences()?;
         let mut plan = self.plan.clone();
@@ -175,6 +190,7 @@ impl Core {
             Ok(DailyBackup::Saved) => {
                 self.plan = plan;
                 self.last_error = None;
+                self.automatic_failure_at = None;
                 // The backup is complete; if the plan cannot be stored, the next launch backs up again.
                 let _ = self.persist_plan();
             }
@@ -182,6 +198,7 @@ impl Core {
             Err(error) => {
                 diagnostics::record("daily backup", error.code());
                 self.last_error = Some(error.into());
+                self.automatic_failure_at = Some(now);
             }
         }
         Ok(self.backup_status(now))
@@ -222,6 +239,7 @@ impl Core {
         }
         self.passphrase = Some(passphrase);
         self.last_error = None;
+        self.automatic_failure_at = None;
         self.plan.remember = remember && keychain.is_ok();
         self.persist_plan()?;
         Ok(keychain)

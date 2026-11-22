@@ -48,6 +48,13 @@ impl CommandError {
         Self::shell("confirmation", "Type ERASE in capital letters to confirm.")
     }
 
+    pub fn safety_backup_failed() -> Self {
+        Self::shell(
+            "safetyBackupFailed",
+            "A safety backup of your current journal could not be made, so nothing was restored. If your current journal is damaged, you can restore without a safety backup.",
+        )
+    }
+
     /// An unexpected internal failure, such as a background task that could not finish.
     pub fn unknown() -> Self {
         Self::shell("unknown", "Something went wrong. Please try again.")

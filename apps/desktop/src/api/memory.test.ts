@@ -1,8 +1,19 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { newDraft } from '../domain/entry';
 import { DEFAULT_PREFERENCES } from '../domain/preferences';
+import { APP_ROOT } from '../guards/sources';
 import type { MemoryApiOptions } from './memory';
-import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES, MEMORY_STORAGE_KEY } from './memory';
+import {
+  createMemoryApi,
+  createMemoryStorage,
+  DOCUMENT_MARK_TYPES,
+  DOCUMENT_NODE_TYPES,
+  ERROR_MESSAGES,
+  MEMORY_STORAGE_KEY,
+  OPEN_FAILED_MESSAGE,
+} from './memory';
 import type { CommandError, Entry, ErrorCode } from './types';
 
 const DAY_MS = 86_400_000;
@@ -241,7 +252,7 @@ describe('memory journal: entries', () => {
     await expect(api.saveEntry({ ...draft(), ...change })).rejects.toEqual(commandError('document'));
   });
 
-  it('accepts the rich-text structure the editor produces, links included', async () => {
+  it('accepts the rich-text structure the editor produces', async () => {
     const { api } = setup();
     const document = {
       type: 'doc',
@@ -256,12 +267,59 @@ describe('memory journal: entries', () => {
           type: 'paragraph',
           content: [
             { type: 'text', text: 'Bold', marks: [{ type: 'bold' }, { type: 'italic' }] },
-            { type: 'text', text: ' example', marks: [{ type: 'link', attrs: { href: 'https://example.org' } }] },
+            { type: 'text', text: ' and underlined', marks: [{ type: 'underline' }, { type: 'strike' }, { type: 'code' }] },
           ],
         },
       ],
     };
     await expect(api.saveEntry({ ...draft(), document })).resolves.toMatchObject({ document, revision: 1 });
+  });
+
+  it.each([
+    [
+      'a link mark, which the editor cannot display',
+      [{ type: 'paragraph', content: [{ type: 'text', text: 'x', marks: [{ type: 'link', attrs: { href: '#' } }] }] }],
+    ],
+    ['an empty text node, which the editor cannot load', [{ type: 'paragraph', content: [{ type: 'text', text: '' }] }]],
+    ['a text node without text', [{ type: 'paragraph', content: [{ type: 'text' }] }]],
+  ])('refuses %s and keeps the stored writing', async (_label, content) => {
+    const { api } = setup();
+    const saved = await api.saveEntry(withText(draft(), 'Synthetic stored words.'));
+    await expect(api.saveEntry({ ...saved, document: { type: 'doc', content } })).rejects.toEqual(
+      commandError('document'),
+    );
+    await expect(api.getEntry(saved.id)).resolves.toEqual(saved);
+  });
+
+  it('accepts exactly the node and mark types journal-core accepts', () => {
+    const model = readFileSync(join(APP_ROOT, '../../crates/journal-core/src/model.rs'), 'utf8');
+    /** The string literals of a Rust constant such as `const NODE_TYPES: [&str; 11] = [...]`. */
+    const constant = (name: string) =>
+      Array.from(
+        model.match(new RegExp(`const ${name}[^=]*=\\s*\\[([^\\]]*)\\]`))?.[1].matchAll(/"(\w+)"/g) ?? [],
+        (match) => match[1],
+      );
+    const nodes = constant('NODE_TYPES');
+    const marks = constant('MARK_TYPES');
+    expect(nodes.length).toBeGreaterThan(5);
+    expect(marks.length).toBeGreaterThan(3);
+    expect(new Set(nodes)).toEqual(DOCUMENT_NODE_TYPES);
+    expect(new Set(marks)).toEqual(DOCUMENT_MARK_TYPES);
+  });
+
+  it('accepts nesting up to 32 levels and refuses anything deeper', async () => {
+    const { api } = setup();
+    /** A document of exactly `levels` nested nodes: doc > blockquote… > paragraph > text. */
+    const nested = (levels: number) => {
+      let node: Entry['document'] = { type: 'text', text: 'Synthetic deep words.' };
+      node = { type: 'paragraph', content: [node] };
+      for (let level = 3; level < levels; level += 1) node = { type: 'blockquote', content: [node] };
+      return { type: 'doc', content: [node] };
+    };
+    const saved = await api.saveEntry({ ...draft(), document: nested(32) });
+    expect(saved.revision).toBe(1);
+    await expect(api.saveEntry({ ...saved, document: nested(33) })).rejects.toEqual(commandError('document'));
+    await expect(api.getEntry(saved.id)).resolves.toEqual(saved);
   });
 
   it('checks the emotion before the creation time zone, as journal-core does', async () => {
@@ -556,7 +614,7 @@ describe('memory journal: backups', () => {
     const [backup] = await api.listBackups();
     await api.saveEntry(draft('2026-11-22'));
     const outcome = await api.restoreBackup({ kind: 'registered', name: backup.name }, PASSPHRASE);
-    expect(outcome).toEqual({ entries: 1, safetyBackup: true });
+    expect(outcome).toEqual({ entries: 1, safetyBackup: true, setAside: null });
     await expect(api.listEntries()).resolves.toEqual([kept]);
     expect(await api.listBackups()).toHaveLength(2);
   });
@@ -596,6 +654,7 @@ describe('memory journal: backups', () => {
     await expect(api.restoreBackup({ kind: 'picked' }, PASSPHRASE)).resolves.toEqual({
       entries: 1,
       safetyBackup: false,
+      setAside: null,
     });
     await expect(api.listEntries()).resolves.toEqual([saved]);
   });
@@ -604,5 +663,329 @@ describe('memory journal: backups', () => {
     const { api } = setup();
     await expect(api.chooseRestoreFile()).resolves.toBeNull();
     await expect(api.restoreBackup({ kind: 'picked' }, PASSPHRASE)).rejects.toEqual(commandError('restore'));
+  });
+});
+
+/** Rewrites part of the stored preview journal, as a damaged file on disk would be. */
+function damageStore(storage: Storage, change: (stored: Record<string, unknown>) => void) {
+  const stored = JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? 'null') as Record<string, unknown>;
+  change(stored);
+  storage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(stored));
+}
+
+const SAFE_PASSPHRASE = 'synthetic passphrase two';
+
+/** A journal with one entry, a chosen folder, a session passphrase and one backup of it. */
+async function backedUpJournal(options: MemoryApiOptions = {}) {
+  const journal = setup(options);
+  const kept = await journal.api.saveEntry({ ...withText(draft('2026-11-20', 'evening'), 'Synthetic backed up.'), mood: 3 });
+  await journal.api.chooseBackupFolder();
+  await journal.api.setBackupPassphrase(SAFE_PASSPHRASE, false);
+  await journal.api.backupNow();
+  const [backup] = await journal.api.listBackups();
+  return { ...journal, kept, backup };
+}
+
+describe('memory journal: messages', () => {
+  /** (code, message) pairs written as literals in a Rust source file. */
+  function rustMessages(relativePath: string): Array<[string, string]> {
+    const path = join(APP_ROOT, relativePath);
+    if (!existsSync(path)) return [];
+    const source = readFileSync(path, 'utf8');
+    const literal = (text: string) => text.replace(/\\\n\s*/g, '').replace(/\\(["'\\])/g, '$1');
+    const pairs: Array<[string, string]> = [];
+    const codes = new Map(Array.from(source.matchAll(/Self::(\w+)\s*=>\s*"(\w+)"/g), (match) => [match[1], match[2]]));
+    for (const match of source.matchAll(/#\[error\(\s*"((?:[^"\\]|\\.)*)"\s*\)\]\s*(\w+)/g)) {
+      const code = codes.get(match[2]);
+      if (code) pairs.push([code, literal(match[1])]);
+    }
+    for (const match of source.matchAll(/Self::shell\(\s*"(\w+)",\s*"((?:[^"\\]|\\.)*)",?\s*\)/g)) {
+      pairs.push([match[1], literal(match[2])]);
+    }
+    return pairs;
+  }
+
+  it('uses exactly the English messages of journal-core and the native shell', () => {
+    // The shell reuses backupFolder for a folder inside the app's own data folder.
+    const shellVariants = new Set([`backupFolder:Choose a folder outside the app's own data folder.`]);
+    const pairs = [
+      ...rustMessages('../../crates/journal-core/src/error.rs'),
+      ...rustMessages('src-tauri/src/error.rs'),
+    ];
+    expect(pairs.length).toBeGreaterThan(15);
+    const mismatches = pairs.filter(
+      ([code, message]) =>
+        !shellVariants.has(`${code}:${message}`) && ERROR_MESSAGES[code as ErrorCode] !== message,
+    );
+    expect(mismatches).toEqual([]);
+  });
+
+  it('defines the messages of the new failure codes', () => {
+    expect(ERROR_MESSAGES.damaged).toBe(
+      'Part of the journal file is damaged and could not be read. You can restore your journal from a backup.',
+    );
+    expect(ERROR_MESSAGES.backupRegistry).toBe(
+      "This folder's list of backups is damaged or was made by a newer version. Choose a different backup folder; the backups already in it can still be restored with Choose a backup file…",
+    );
+    expect(ERROR_MESSAGES.backupFolder).toBe(
+      "The backup folder is not available or can't be written to. Reconnect the drive or choose another folder.",
+    );
+    expect(ERROR_MESSAGES.safetyBackupFailed).toBe(
+      'A safety backup of your current journal could not be made, so nothing was restored. If your current journal is damaged, you can restore without a safety backup.',
+    );
+  });
+});
+
+describe('memory journal: text size', () => {
+  it('defaults to 100% and loads preferences stored before the setting existed as 100%', async () => {
+    const { api, storage, restart } = setup();
+    await expect(api.getPreferences()).resolves.toMatchObject({ textScale: 100 });
+    await api.setPreferences({ ...DEFAULT_PREFERENCES, theme: 'dark' });
+    damageStore(storage, (stored) => {
+      delete (stored.journal as { preferences: Record<string, unknown> }).preferences.textScale;
+    });
+    await expect(restart().getPreferences()).resolves.toMatchObject({ theme: 'dark', textScale: 100 });
+  });
+
+  it('accepts 100, 115, 130 and 150% and refuses any other size', async () => {
+    const { api } = setup();
+    for (const textScale of [115, 130, 150, 100] as const) {
+      await expect(api.setPreferences({ ...DEFAULT_PREFERENCES, textScale })).resolves.toMatchObject({ textScale });
+    }
+    for (const textScale of [0, 90, 120, 200, 115.5]) {
+      await expect(api.setPreferences({ ...DEFAULT_PREFERENCES, textScale } as never)).rejects.toEqual(
+        commandError('document'),
+      );
+    }
+    await expect(api.setPreferences({ ...DEFAULT_PREFERENCES, textScale: '130' } as never)).rejects.toEqual(
+      commandError('document'),
+    );
+    await expect(api.getPreferences()).resolves.toMatchObject({ textScale: 100 });
+  });
+});
+
+describe('memory journal: trash expiry', () => {
+  it('refuses to restore an entry whose 30 days have passed, even before the next purge', async () => {
+    const { api, clock } = setup();
+    const saved = await api.saveEntry(draft());
+    await api.trashEntry(saved.id, saved.revision);
+    clock.advanceDays(30);
+    await expect(api.restoreEntry(saved.id)).rejects.toEqual(commandError('notFound'));
+    expect(await api.listTrash()).toHaveLength(1);
+  });
+
+  it('still restores an entry on its last day in the trash', async () => {
+    const { api, clock } = setup();
+    const saved = await api.saveEntry(draft());
+    await api.trashEntry(saved.id, saved.revision);
+    clock.set(new Date(Date.parse('2026-11-22T09:00:00Z') + 30 * DAY_MS - 1000));
+    await expect(api.restoreEntry(saved.id)).resolves.toMatchObject({ id: saved.id, revision: 2 });
+  });
+});
+
+describe('memory journal: startup failures and recovery', () => {
+  it('retries a failed start and opens the journal once the cause has gone', async () => {
+    const { api } = setup({ startup: { state: 'failed' } });
+    await expect(api.startupStatus()).resolves.toMatchObject({ state: 'failed', message: OPEN_FAILED_MESSAGE });
+    await expect(api.listEntries()).rejects.toEqual(commandError('notReady'));
+    await expect(api.retryStartup()).resolves.toMatchObject({ state: 'ready', message: null });
+    await expect(api.listEntries()).resolves.toEqual([]);
+  });
+
+  it('returns the current status when there is nothing to retry', async () => {
+    const ready = setup();
+    await expect(ready.api.retryStartup()).resolves.toMatchObject({ state: 'ready' });
+    const migration = setup({ startup: { state: 'needsMigration' } });
+    await expect(migration.api.retryStartup()).resolves.toMatchObject({ state: 'needsMigration', fromVersion: 1 });
+  });
+
+  it('reports a damaged journal at launch and keeps reporting it when retried', async () => {
+    const { api, storage, restart } = setup();
+    await api.saveEntry(draft());
+    damageStore(storage, (stored) => {
+      stored.journal = 'Synthetic damaged journal header';
+    });
+    const relaunched = restart();
+    await expect(relaunched.startupStatus()).resolves.toMatchObject({
+      state: 'failed',
+      message: ERROR_MESSAGES.damaged,
+    });
+    await expect(relaunched.retryStartup()).resolves.toMatchObject({ state: 'failed', message: ERROR_MESSAGES.damaged });
+  });
+
+  it('restores a damaged journal from a backup file, keeping the unreadable journal aside', async () => {
+    const { storage, restart, clock, kept } = await backedUpJournal();
+    damageStore(storage, (stored) => {
+      stored.journal = 'Synthetic damaged journal header';
+    });
+    const relaunched = restart();
+    await expect(relaunched.startupStatus()).resolves.toMatchObject({ state: 'failed' });
+    const picked = await relaunched.chooseRestoreFile();
+    expect(picked).not.toBeNull();
+    await expect(relaunched.restoreBackup({ kind: 'picked' }, 'not the right passphrase')).rejects.toEqual(
+      commandError('restore'),
+    );
+    await expect(relaunched.startupStatus()).resolves.toMatchObject({ state: 'failed' });
+
+    const outcome = await relaunched.restoreBackup({ kind: 'picked' }, SAFE_PASSPHRASE);
+    expect(outcome).toEqual({ entries: 1, safetyBackup: false, setAside: `journal.unreadable-${clock.unix()}.sqlite` });
+    await expect(relaunched.startupStatus()).resolves.toMatchObject({ state: 'ready', message: null });
+    await expect(relaunched.listEntries()).resolves.toEqual([kept]);
+    const stored = JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? '{}') as { setAside: unknown[] };
+    expect(stored.setAside).toEqual([{ name: outcome.setAside, journal: 'Synthetic damaged journal header' }]);
+    await expect(restart().startupStatus()).resolves.toMatchObject({ state: 'ready' });
+  });
+
+  it('restores over a journal this version cannot open, which a retry never opens', async () => {
+    const { restart, kept } = await backedUpJournal();
+    const relaunched = restart({ startup: { state: 'unsupported' } });
+    await expect(relaunched.retryStartup()).resolves.toMatchObject({
+      state: 'unsupported',
+      message: ERROR_MESSAGES.unsupported,
+    });
+    await relaunched.chooseRestoreFile();
+    const outcome = await relaunched.restoreBackup({ kind: 'picked' }, SAFE_PASSPHRASE);
+    expect(outcome.setAside).toMatch(/^journal\.unreadable-\d+\.sqlite$/);
+    await expect(relaunched.listEntries()).resolves.toEqual([kept]);
+  });
+
+  it('erases app data from a failed start, keeping backup files', async () => {
+    const { storage, restart } = await backedUpJournal();
+    damageStore(storage, (stored) => {
+      stored.journal = 'Synthetic damaged journal header';
+    });
+    const relaunched = restart();
+    await expect(relaunched.eraseAppData('ERASE')).resolves.toMatchObject({ state: 'ready' });
+    await expect(relaunched.listEntries()).resolves.toEqual([]);
+    await expect(restart().startupStatus()).resolves.toMatchObject({ state: 'ready' });
+    expect(await relaunched.chooseRestoreFile()).not.toBeNull();
+  });
+
+  it('never restores while a protected upgrade is waiting', async () => {
+    const { restart, backup } = await backedUpJournal();
+    const relaunched = restart({ startup: { state: 'needsMigration' } });
+    await expect(relaunched.restoreBackup({ kind: 'registered', name: backup.name }, SAFE_PASSPHRASE)).rejects.toEqual(
+      commandError('notReady'),
+    );
+  });
+});
+
+describe('memory journal: a damaged page in an open journal', () => {
+  async function partlyDamaged() {
+    const journal = await backedUpJournal();
+    damageStore(journal.storage, (stored) => {
+      (stored.journal as { entries: unknown[] }).entries.push({ entry: 'Synthetic damaged page', trashedAt: null });
+    });
+    return journal;
+  }
+
+  it('reports reads of the damaged journal and refuses backups of it', async () => {
+    const { api } = await partlyDamaged();
+    await expect(api.listEntries()).rejects.toEqual(commandError('damaged'));
+    await expect(api.entriesOn('2026-11-20')).rejects.toEqual(commandError('damaged'));
+    await expect(api.backupNow()).rejects.toEqual(commandError('damaged'));
+    expect(await api.backupStatus()).toMatchObject({ state: 'upToDate', lastError: commandError('damaged') });
+  });
+
+  it('refuses to restore without a safety backup unless the person confirms it', async () => {
+    const { api, storage, backup, kept } = await partlyDamaged();
+    const before = storage.getItem(MEMORY_STORAGE_KEY);
+    await expect(api.restoreBackup({ kind: 'registered', name: backup.name }, SAFE_PASSPHRASE)).rejects.toEqual(
+      commandError('safetyBackupFailed'),
+    );
+    expect(storage.getItem(MEMORY_STORAGE_KEY)).toBe(before);
+    // A wrong passphrase is still refused first, even with the confirmation.
+    await expect(
+      api.restoreBackup({ kind: 'registered', name: backup.name }, 'not the right passphrase', true),
+    ).rejects.toEqual(commandError('restore'));
+
+    const outcome = await api.restoreBackup({ kind: 'registered', name: backup.name }, SAFE_PASSPHRASE, true);
+    expect(outcome).toEqual({ entries: 1, safetyBackup: false, setAside: null });
+    await expect(api.listEntries()).resolves.toEqual([kept]);
+    expect(await api.listBackups()).toHaveLength(1);
+  });
+});
+
+describe('memory journal: unreadable backup settings', () => {
+  async function unreadablePlan() {
+    const journal = await backedUpJournal();
+    damageStore(journal.storage, (stored) => {
+      stored.plan = { folderChosen: true, unknownField: 'written by a newer version' };
+    });
+    return { ...journal, api: journal.restart() };
+  }
+
+  it('says the backup settings could not be read instead of treating backups as never set up', async () => {
+    const { api, storage, restart } = await unreadablePlan();
+    expect(await api.backupStatus()).toMatchObject({
+      state: 'settingsUnreadable',
+      folderPath: null,
+      passphraseAvailable: false,
+      remembered: false,
+    });
+    await expect(api.runDailyBackup()).resolves.toMatchObject({ state: 'settingsUnreadable', backupCount: 0 });
+    await expect(api.backupNow()).rejects.toEqual(commandError('needsFolder'));
+    // Writing never rewrites the unreadable settings.
+    await api.saveEntry(draft('2026-11-22', 'morning'));
+    expect(JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? '{}').plan).toEqual({
+      folderChosen: true,
+      unknownField: 'written by a newer version',
+    });
+    expect((await restart().backupStatus()).state).toBe('settingsUnreadable');
+  });
+
+  it('clears once a backup folder is chosen again; earlier backups are still there', async () => {
+    const { api, restart } = await unreadablePlan();
+    expect((await api.chooseBackupFolder()).state).toBe('needsPassphrase');
+    expect(await api.listBackups()).toHaveLength(1);
+    expect((await restart().backupStatus()).state).toBe('needsPassphrase');
+  });
+});
+
+describe('memory journal: protected upgrade retry', () => {
+  it('retries the upgrade with the passphrase already in this session', async () => {
+    const { api } = setup({ startup: { state: 'needsMigration' } });
+    await api.chooseBackupFolder();
+    await expect(api.migrateJournal(null, false)).rejects.toEqual(commandError('needsPassphrase'));
+    await api.setBackupPassphrase(PASSPHRASE_FOR_RETRY, true);
+    await expect(api.migrateJournal(null, false)).resolves.toMatchObject({ state: 'ready' });
+    // A remembered passphrase is never forgotten by a retry.
+    expect(await api.backupStatus()).toMatchObject({ remembered: true, passphraseAvailable: true, backupCount: 1 });
+  });
+});
+
+const PASSPHRASE_FOR_RETRY = 'synthetic passphrase three';
+
+describe('memory journal: daily backup after a failure', () => {
+  it('waits an hour after a failed automatic backup, while Back up now still tries', async () => {
+    const { api, storage, clock } = setup();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE_FOR_RETRY, false);
+    const write = vi.spyOn(storage, 'setItem').mockImplementation(() => {
+      throw new Error('Synthetic full disk');
+    });
+    expect(await api.runDailyBackup()).toMatchObject({ state: 'failed', lastError: commandError('backup') });
+    const attempts = write.mock.calls.length;
+    clock.set(new Date(Date.parse('2026-11-22T09:59:00Z')));
+    expect(await api.runDailyBackup()).toMatchObject({ state: 'failed' });
+    expect(write.mock.calls.length).toBe(attempts);
+    await expect(api.backupNow()).rejects.toEqual(commandError('backup'));
+    expect(write.mock.calls.length).toBe(attempts + 1);
+    write.mockRestore();
+    clock.set(new Date(Date.parse('2026-11-22T10:00:00Z')));
+    expect(await api.runDailyBackup()).toMatchObject({ state: 'upToDate', backupCount: 1 });
+  });
+
+  it('tries again at once after a new passphrase or folder is chosen', async () => {
+    const { api, storage } = setup();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE_FOR_RETRY, false);
+    const write = vi.spyOn(storage, 'setItem').mockImplementationOnce(() => {
+      throw new Error('Synthetic full disk');
+    });
+    expect((await api.runDailyBackup()).state).toBe('failed');
+    write.mockRestore();
+    await api.chooseBackupFolder();
+    expect(await api.runDailyBackup()).toMatchObject({ state: 'upToDate', backupCount: 1 });
   });
 });

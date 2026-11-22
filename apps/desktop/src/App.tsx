@@ -21,6 +21,7 @@ import { FocusModeProvider, useFocusMode } from './state/focus';
 import { NavigationProvider, useNavigation, type View } from './state/navigation';
 import { PreferencesProvider } from './state/preferences';
 import { StartupProvider, useStartup } from './state/startup';
+import { useTextSizeShortcuts } from './state/textSize';
 
 export function App({ api, initialView }: { api: JournalApi; initialView?: View }) {
   return (
@@ -61,8 +62,9 @@ function Workspace() {
 function Shell() {
   const { view } = useNavigation();
   const { focusMode, setFocusMode } = useFocusMode();
-  const { notice, dismissNotice } = useStartup();
+  const { notice, noticeTone, dismissNotice } = useStartup();
   const mainRef = useRef<HTMLElement>(null);
+  useTextSizeShortcuts();
 
   // Focus mode belongs to writing; leaving Today brings the navigation back.
   useEffect(() => {
@@ -87,7 +89,7 @@ function Shell() {
         <div className="status-area">
           {notice ? (
             <Notice
-              tone="success"
+              tone={noticeTone}
               actions={
                 <Button variant="quiet" size="small" onClick={dismissNotice}>
                   Dismiss

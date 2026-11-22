@@ -19,6 +19,11 @@ import type {
 
 export interface JournalApi {
   startupStatus(): Promise<StartupStatus>;
+  /**
+   * Opens the journal again when the launch failed or found a journal this version cannot
+   * open; otherwise resolves with the current status unchanged.
+   */
+  retryStartup(): Promise<StartupStatus>;
   /** Current civil date (YYYY-MM-DD) in the configured journal time zone. */
   today(): Promise<string>;
   getPreferences(): Promise<Preferences>;
@@ -45,14 +50,23 @@ export interface JournalApi {
   listBackups(): Promise<BackupRecord[]>;
   /** Opens the native file picker; resolves null when cancelled. */
   chooseRestoreFile(): Promise<PickedBackup | null>;
-  restoreBackup(source: RestoreSource, passphrase: string): Promise<RestoreOutcome>;
-  migrateJournal(passphrase: string, remember: boolean): Promise<StartupStatus>;
+  /**
+   * Verifies the chosen backup, then replaces the journal with it. When a safety backup of
+   * the current journal is needed but cannot be made because that journal cannot be read,
+   * the restore is refused (safetyBackupFailed) unless withoutSafetyBackup is true. Without an
+   * open journal (a failed or unsupported start), the unreadable journal is kept aside.
+   */
+  restoreBackup(source: RestoreSource, passphrase: string, withoutSafetyBackup?: boolean): Promise<RestoreOutcome>;
+  /** A null passphrase uses the one already in this session (needsPassphrase when there is none). */
+  migrateJournal(passphrase: string | null, remember: boolean): Promise<StartupStatus>;
   /** Requires the exact confirmation text "ERASE". */
   eraseAppData(confirmation: string): Promise<StartupStatus>;
   /** Subscribes to native quit requests; returns a synchronous unsubscribe. */
   onFlushRequest(callback: () => void | Promise<void>): () => void;
   /** Tells native code that pending saves were flushed and the app may quit. */
   confirmExit(): Promise<void>;
+  /** Keeps the app open after a failed flush, allowing a later quit to retry. */
+  cancelExit(): Promise<void>;
 }
 
 /** True inside the Tauri webview, false in a plain browser or jsdom. */
@@ -77,6 +91,10 @@ const ERROR_CODES: ReadonlySet<string> = new Set<ErrorCode>([
   'backupValidation',
   'restore',
   'passphrase',
+  'damaged',
+  'backupRegistry',
+  'backupFolder',
+  'safetyBackupFailed',
   'notReady',
   'needsFolder',
   'needsPassphrase',

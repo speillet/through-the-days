@@ -59,6 +59,7 @@ vi.mock('./features/startup/StartupGate', async () => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  document.documentElement.style.fontSize = '';
 });
 
 function renderApp(options: MemoryApiOptions = {}) {
@@ -207,6 +208,27 @@ describe('application shell', () => {
 
     await openWorkspace({ storage });
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+  });
+
+  it('enlarges, reduces and resets the text size with Command-plus, Command-minus and Command-0', async () => {
+    const user = userEvent.setup();
+    const { api } = await openWorkspace();
+    const textScale = async () => (await api.getPreferences()).textScale;
+
+    await user.keyboard('{Meta>}={/Meta}');
+    await vi.waitFor(async () => expect(await textScale()).toBe(115));
+    expect(document.documentElement.style.fontSize).toBe('115%');
+    for (let press = 0; press < 3; press += 1) await user.keyboard('{Meta>}={/Meta}');
+    await vi.waitFor(async () => expect(await textScale()).toBe(150));
+    expect(document.documentElement.style.fontSize).toBe('150%');
+    await user.keyboard('{Meta>}-{/Meta}');
+    await vi.waitFor(async () => expect(await textScale()).toBe(130));
+    await user.keyboard('{Meta>}0{/Meta}');
+    await vi.waitFor(async () => expect(await textScale()).toBe(100));
+    expect(document.documentElement.style.fontSize).toBe('');
+    // Without Command the keys are ordinary typing.
+    await user.keyboard('=');
+    expect(await textScale()).toBe(100);
   });
 
   it('shows the backup banner above every view', async () => {

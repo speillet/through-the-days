@@ -14,6 +14,7 @@ import { RestoreDialog, restoredNotice, type RestoreTarget } from '../backup/Res
 import {
   BACKUPS_KEPT,
   RETENTION_WARNING,
+  SETTINGS_UNREADABLE_TEXT,
   backupStateText,
   formatSize,
   lastBackupText,
@@ -172,7 +173,13 @@ export function BackupSection() {
 
       <div className="backup-group">
         <h3 className="backup-group__title">Status</h3>
-        <p>{backupStateText(status)}</p>
+        {status.state === 'settingsUnreadable' ? (
+          <Notice tone="warning" title="Backup settings could not be read" politeness="off">
+            {SETTINGS_UNREADABLE_TEXT}
+          </Notice>
+        ) : (
+          <p>{backupStateText(status)}</p>
+        )}
         <dl className="backup-facts">
           <dt>Backup folder</dt>
           <dd>
@@ -302,6 +309,7 @@ export function BackupSection() {
       <PassphraseDialog
         open={passphrasePurpose !== null}
         purpose={passphrasePurpose ?? 'set'}
+        remembered={status.remembered}
         onClose={() => setPassphrasePurpose(null)}
         onSaved={(next) => {
           if (passphrasePurpose === 'due') {

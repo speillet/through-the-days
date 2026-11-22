@@ -102,6 +102,8 @@ pub struct Core {
     last_error: Option<CommandError>,
     /// The backup file chosen in the native open dialog. The renderer never sends paths.
     picked: Option<PathBuf>,
+    plan_unreadable: bool,
+    automatic_failure_at: Option<DateTime<Utc>>,
 }
 
 impl Core {
@@ -121,6 +123,8 @@ impl Core {
             passphrase: None,
             last_error: None,
             picked: None,
+            plan_unreadable: false,
+            automatic_failure_at: None,
         }
     }
 
@@ -131,6 +135,7 @@ impl Core {
         self.plan = BackupPlan::load(&self.paths.plan).unwrap_or_else(|error| {
             // Keep the damaged file until the person chooses backup settings again.
             diagnostics::record("load backup plan", error.code());
+            self.plan_unreadable = true;
             BackupPlan::default()
         });
         if self.plan.remember {
@@ -147,6 +152,20 @@ impl Core {
 
     pub fn startup_status(&self) -> StartupStatus {
         self.startup.clone()
+    }
+
+    pub fn session_passphrase(&self) -> Option<Zeroizing<String>> {
+        self.passphrase.clone()
+    }
+
+    pub fn retry_startup(&mut self, now: DateTime<Utc>) -> StartupStatus {
+        if matches!(
+            self.startup.state,
+            StartupState::Failed | StartupState::Unsupported
+        ) {
+            self.open_journal(now);
+        }
+        self.startup_status()
     }
 
     /// The current civil date in the journal's time zone.
@@ -198,8 +217,8 @@ impl Core {
         Ok(self.journal()?.trash_items()?)
     }
 
-    pub fn restore_entry(&self, id: &str) -> Result<Entry, CommandError> {
-        Ok(self.journal()?.restore(id)?)
+    pub fn restore_entry(&self, id: &str, now: DateTime<Utc>) -> Result<Entry, CommandError> {
+        Ok(self.journal()?.restore(id, now.timestamp())?)
     }
 
     pub fn delete_entry_permanently(&self, id: &str) -> Result<(), CommandError> {
@@ -264,6 +283,9 @@ impl Core {
         // The connection must be closed before its files are removed.
         self.journal = None;
         let mut failure = None;
+        if paths::erase_recovery_folders(&self.paths.data_dir).is_err() {
+            failure.get_or_insert(CommandError::from(Error::Storage));
+        }
         if let Err(error) = erase_journal_files(&self.paths.journal) {
             diagnostics::record("erase journal", error.code());
             failure.get_or_insert(CommandError::from(error));
@@ -284,6 +306,8 @@ impl Core {
         self.passphrase = None;
         self.last_error = None;
         self.picked = None;
+        self.plan_unreadable = false;
+        self.automatic_failure_at = None;
         self.open_journal(now);
         match failure {
             Some(error) => Err(error),

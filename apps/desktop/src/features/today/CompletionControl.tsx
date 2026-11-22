@@ -8,6 +8,7 @@ import type { CommandError, Entry } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { canComplete, documentText, isBlank } from '../../domain/entry';
+import { isStaleRefusal } from '../../state/autosave';
 import { ENTRY_STATUS_LABELS, entryStatus } from './status';
 
 /** What a completion request still needs, in plain English. */
@@ -53,7 +54,9 @@ export function CompletionControl({ entry, showControl, showScores, onMarkComple
     setMessage(null);
     const error = await action();
     setBusy(false);
-    if (!error) return;
+    // A saved entry that changed or disappeared is explained by the save failure notice,
+    // which offers to reload it.
+    if (!error || isStaleRefusal(error)) return;
     setMessage(error.code === 'completion' ? completionExplanation(latest.current, showScores) : error.message);
   }
 

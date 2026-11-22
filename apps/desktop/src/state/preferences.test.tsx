@@ -1,5 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiProvider, type JournalApi } from '../api/client';
 import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES } from '../api/memory';
 import { DEFAULT_PREFERENCES } from '../domain/preferences';
@@ -97,6 +97,19 @@ describe('PreferencesProvider', () => {
     expect(html).not.toHaveAttribute('data-reduce-motion');
   });
 
+  it('applies the text size to the whole document', async () => {
+    const current = renderPreferences(createMemoryApi({ storage: createMemoryStorage() }));
+    await screen.findByText('Theme: system');
+    await act(async () => {
+      await current.value?.update({ textScale: 150 });
+    });
+    expect(html.style.fontSize).toBe('150%');
+    await act(async () => {
+      await current.value?.update({ textScale: 100 });
+    });
+    expect(html.style.fontSize).toBe('');
+  });
+
   it('exposes Gentle view through the shared visibility rules', async () => {
     const current = renderPreferences(createMemoryApi({ storage: createMemoryStorage() }));
     await screen.findByText('Theme: system');
@@ -109,13 +122,35 @@ describe('PreferencesProvider', () => {
 });
 
 describe('cached appearance', () => {
+  afterEach(() => {
+    html.style.fontSize = '';
+  });
+
   it('restores the last theme at launch before the journal answers', () => {
-    applyAppearance({ theme: 'dark', reduceMotion: true });
+    applyAppearance({ theme: 'dark', reduceMotion: true, textScale: 100 });
     html.removeAttribute('data-theme');
     html.removeAttribute('data-reduce-motion');
     restoreCachedAppearance();
     expect(html).toHaveAttribute('data-theme', 'dark');
     expect(html).toHaveAttribute('data-reduce-motion', 'true');
+    expect(html.style.fontSize).toBe('');
+  });
+
+  it('applies the text size as the root font size and restores it at launch', () => {
+    applyAppearance({ theme: 'system', reduceMotion: false, textScale: 130 });
+    expect(html.style.fontSize).toBe('130%');
+    html.style.fontSize = '';
+    restoreCachedAppearance();
+    expect(html.style.fontSize).toBe('130%');
+    applyAppearance({ theme: 'system', reduceMotion: false, textScale: 100 });
+    expect(html.style.fontSize).toBe('');
+  });
+
+  it('ignores a cached text size the journal would not accept', () => {
+    window.localStorage.setItem('ttd-appearance-v1', JSON.stringify({ theme: 'light', textScale: 400 }));
+    restoreCachedAppearance();
+    expect(html).toHaveAttribute('data-theme', 'light');
+    expect(html.style.fontSize).toBe('');
   });
 
   it('ignores a damaged cache', () => {

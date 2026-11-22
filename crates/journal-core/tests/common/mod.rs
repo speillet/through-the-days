@@ -5,7 +5,9 @@
 
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used)]
 
-use journal_core::{Entry, Slot};
+mod fixtures;
+
+pub use fixtures::*;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -29,33 +31,32 @@ pub fn document(text: &str) -> Value {
     json!({"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]})
 }
 
+/// A document whose deepest node sits at `depth` levels, the document node being level 1:
+/// quotations nested around one paragraph of text.
+pub fn nested_document(depth: usize) -> Value {
+    let mut node = json!({"type": "paragraph", "content": [
+        {"type": "text", "text": "Synthetic words in a deeply nested quotation."}
+    ]});
+    for _ in 0..depth - 3 {
+        node = json!({"type": "blockquote", "content": [node]});
+    }
+    json!({"type": "doc", "content": [node]})
+}
+
 /// Writes a fictional schema-version-1 journal with one Morning entry and returns its id.
 ///
-/// Version 1 had no trash column, a unique index over every row and no perceived progress.
+/// The schema and payload are the frozen [`V1_SCHEMA`] and [`V1_ENTRY_PAYLOAD`], never generated
+/// from today's `Entry`, so a format change that breaks older journals fails the migration tests.
 pub fn previous_journal(path: &Path) -> String {
     let connection = rusqlite::Connection::open(path).unwrap();
-    connection
-        .execute_batch(
-            "CREATE TABLE journal_entries(id TEXT PRIMARY KEY,entry_date TEXT NOT NULL,slot TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL);
-            CREATE UNIQUE INDEX active_slot ON journal_entries(entry_date,slot);
-            CREATE TABLE preferences(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-            PRAGMA user_version=1;",
-        )
-        .unwrap();
-    let mut entry = Entry::draft("2026-11-22", Slot::Morning);
-    entry.revision = 1;
-    entry.mood = Some(3);
-    entry.reflection.difficulty = "Synthetic difficulty from the previous version.".into();
-    entry.document = document("Synthetic previous journal.");
-    let mut payload = serde_json::to_value(&entry).unwrap();
-    payload.as_object_mut().unwrap().remove("progress");
+    connection.execute_batch(V1_SCHEMA).unwrap();
     connection
         .execute(
-            "INSERT INTO journal_entries VALUES(?1,?2,'morning',1,?3)",
-            rusqlite::params![entry.id, entry.date, payload.to_string()],
+            V1_INSERT_ENTRY,
+            rusqlite::params![V1_ENTRY_ID, V1_ENTRY_PAYLOAD],
         )
         .unwrap();
-    entry.id
+    V1_ENTRY_ID.to_owned()
 }
 
 /// Runs SQL against the SQLite database at `path`, creating it when needed.

@@ -1,14 +1,21 @@
 // The journal page editor: Tiptap with useEditor and EditorContent in one
 // component. The person's words change only through their own editing; the
-// document reaches autosave through onChange after every edit.
+// document reaches autosave through onChange after every edit. A stored document
+// the editor cannot represent exactly opens read-only with an explanation, and
+// nothing it shows is ever reported, so autosave can never overwrite the original.
 
 import type { JSONContent } from '@tiptap/core';
 import { Selection } from '@tiptap/pm/state';
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react';
-import { useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react';
+import { useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react';
+import { Notice } from '../../components/Notice';
+import { canEditExactly, readableCopy } from './content';
 import { EditorToolbar } from './EditorToolbar';
 import { journalExtensions } from './extensions';
 import './editor.css';
+
+export const PROTECTED_DOCUMENT_MESSAGE =
+  "This entry contains content that this version of Through the Days can't edit without changing it, so it is read-only. The saved version stays exactly as it is, and you can still read and copy it.";
 
 export interface JournalEditorHandle {
   focus(position?: 'start' | 'end'): void;
@@ -44,8 +51,13 @@ export function JournalEditor({
     onChangeRef.current = onChange;
   });
   // Stable options, so the editor is configured once and never reloads its content.
-  const [content] = useState(initialContent);
+  const [opened] = useState(() =>
+    canEditExactly(initialContent)
+      ? { editable: true, content: initialContent }
+      : { editable: false, content: readableCopy(initialContent) },
+  );
   const [extensions] = useState(() => journalExtensions(placeholder));
+  const protectedNoticeId = useId();
   const editorProps = useMemo(
     () => ({
       attributes: {
@@ -53,18 +65,24 @@ export function JournalEditor({
         role: 'textbox',
         'aria-multiline': 'true',
         'aria-label': label,
+        // Read-only writing stays reachable with Tab, so it can be read and selected.
+        ...(opened.editable ? {} : { 'aria-readonly': 'true', 'aria-describedby': protectedNoticeId, tabindex: '0' }),
         class: 'journal-editor__content prose',
         spellcheck: 'true',
       },
     }),
-    [id, label],
+    [id, label, opened.editable, protectedNoticeId],
   );
 
   const editor = useEditor({
     extensions,
-    content,
+    content: opened.content,
+    editable: opened.editable,
     editorProps,
-    onUpdate: ({ editor: instance }) => onChangeRef.current(instance.getJSON()),
+    onUpdate: ({ editor: instance }) => {
+      // A read-only copy is never the stored document, so it must never reach autosave.
+      if (opened.editable) onChangeRef.current(instance.getJSON());
+    },
   });
 
   useImperativeHandle(
@@ -86,7 +104,12 @@ export function JournalEditor({
 
   return (
     <div className="journal-editor">
-      {showToolbar && editor ? <EditorToolbar editor={editor} controls={id} /> : null}
+      {opened.editable ? null : (
+        <Notice id={protectedNoticeId} tone="warning" politeness="off" className="journal-editor__protected">
+          {PROTECTED_DOCUMENT_MESSAGE}
+        </Notice>
+      )}
+      {showToolbar && opened.editable && editor ? <EditorToolbar editor={editor} controls={id} /> : null}
       <EditorContent editor={editor} className="journal-editor__surface" />
       {showWordCount && editor ? <WordCount editor={editor} /> : null}
     </div>

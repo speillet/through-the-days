@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{DAY, NOW, contains, document};
+use common::{DAY, NOW, contains, document, nested_document};
 use journal_core::{Action, Depth, Entry, Error, Journal, Preferences, Slot, Win};
 use serde_json::json;
 
@@ -134,12 +134,12 @@ fn trash_hides_sources_restores_only_free_slots_and_expires_after_thirty_days() 
     let replacement = journal
         .save(Entry::draft("2026-11-22", Slot::Morning))
         .unwrap();
-    assert!(journal.restore(&entry.id).is_err());
+    assert!(journal.restore(&entry.id, NOW).is_err());
     journal
         .trash(&replacement.id, replacement.revision, now)
         .unwrap();
     journal.permanently_delete(&replacement.id).unwrap();
-    let restored = journal.restore(&entry.id).unwrap();
+    let restored = journal.restore(&entry.id, NOW).unwrap();
     assert_eq!(restored.date, "2026-11-22");
     journal.trash(&restored.id, restored.revision, now).unwrap();
     let trash = journal.trash_items().unwrap();
@@ -151,7 +151,10 @@ fn trash_hides_sources_restores_only_free_slots_and_expires_after_thirty_days() 
     assert_eq!(journal.trash_items().unwrap().len(), 1);
     journal.purge_expired(now + 30 * DAY).unwrap();
     assert!(journal.trash_items().unwrap().is_empty());
-    assert_eq!(journal.restore(&entry.id), Err(Error::NotFound));
+    assert_eq!(
+        journal.restore(&entry.id, now + 30 * DAY),
+        Err(Error::NotFound)
+    );
 }
 
 /// journal-entries — Two independent slots / Independent observations.
@@ -632,7 +635,7 @@ fn occupied_restore_reports_a_conflict_without_overwriting_or_purging() {
     replacement.document = document("Synthetic replacement.");
     let replacement = journal.save(replacement).unwrap();
 
-    assert_eq!(journal.restore(&entry.id), Err(Error::Occupied));
+    assert_eq!(journal.restore(&entry.id, NOW), Err(Error::Occupied));
     assert_eq!(journal.get(&replacement.id).unwrap(), replacement);
     let trash = journal.trash_items().unwrap();
     assert_eq!(trash.len(), 1);
@@ -645,7 +648,7 @@ fn occupied_restore_reports_a_conflict_without_overwriting_or_purging() {
     journal
         .trash(&replacement.id, replacement.revision, NOW + 60)
         .unwrap();
-    let restored = journal.restore(&entry.id).unwrap();
+    let restored = journal.restore(&entry.id, NOW + 120).unwrap();
     assert_eq!(restored.revision, entry.revision + 1);
     assert_eq!(
         Entry {
@@ -711,7 +714,7 @@ fn permanent_deletion_removes_the_entry_text_from_the_live_database_file() {
     let journal = Journal::open(&path).unwrap();
     journal.trash(&entry.id, entry.revision, NOW).unwrap();
     journal.permanently_delete(&entry.id).unwrap();
-    assert_eq!(journal.restore(&entry.id), Err(Error::NotFound));
+    assert_eq!(journal.restore(&entry.id, NOW), Err(Error::NotFound));
     drop(journal);
     for file in std::fs::read_dir(directory.path()).unwrap() {
         let file = file.unwrap().path();
@@ -721,4 +724,116 @@ fn permanent_deletion_removes_the_entry_text_from_the_live_database_file() {
             file.display()
         );
     }
+}
+
+/// local-data-protection — Thirty-day recoverable trash / Retention expires: ordinary restoration
+/// is unavailable as soon as the 30 days have passed, even before a purge removes the entry.
+#[test]
+fn trash_past_its_thirty_days_cannot_be_restored_before_the_purge() {
+    let (_directory, journal) = temporary_journal();
+    let mut expired = Entry::draft("2026-10-20", Slot::Evening);
+    expired.document = document("Synthetic entry deleted 31 days ago.");
+    let expired = journal.save(expired).unwrap();
+    journal
+        .trash(&expired.id, expired.revision, NOW - 31 * DAY)
+        .unwrap();
+    let mut boundary = Entry::draft("2026-10-23", Slot::Morning);
+    boundary.document = document("Synthetic entry whose retention ends now.");
+    let boundary = journal.save(boundary).unwrap();
+    journal
+        .trash(&boundary.id, boundary.revision, NOW - 30 * DAY)
+        .unwrap();
+    let mut recent = Entry::draft("2026-10-23", Slot::Evening);
+    recent.document = document("Synthetic entry with one second of retention left.");
+    let recent = journal.save(recent).unwrap();
+    journal
+        .trash(&recent.id, recent.revision, NOW - 30 * DAY + 1)
+        .unwrap();
+
+    assert_eq!(journal.restore(&expired.id, NOW), Err(Error::NotFound));
+    assert_eq!(journal.restore(&boundary.id, NOW), Err(Error::NotFound));
+    assert_eq!(
+        journal.trash_items().unwrap().len(),
+        3,
+        "nothing was purged"
+    );
+    assert!(journal.list().unwrap().is_empty());
+    let restored = journal.restore(&recent.id, NOW).unwrap();
+    assert_eq!(restored.revision, recent.revision + 1);
+    assert_eq!(journal.list().unwrap(), vec![restored]);
+}
+
+/// journal-entries — active entries newest date first, Morning before Evening on each date.
+#[test]
+fn listing_puts_the_newest_date_first_and_morning_before_evening() {
+    let (_directory, journal) = temporary_journal();
+    let older_evening = journal
+        .save(Entry::draft("2026-11-21", Slot::Evening))
+        .unwrap();
+    let evening = journal
+        .save(Entry::draft("2026-11-22", Slot::Evening))
+        .unwrap();
+    let older_morning = journal
+        .save(Entry::draft("2026-11-21", Slot::Morning))
+        .unwrap();
+    let morning = journal
+        .save(Entry::draft("2026-11-22", Slot::Morning))
+        .unwrap();
+    assert_eq!(
+        journal.list().unwrap(),
+        vec![morning, evening, older_morning, older_evening]
+    );
+}
+
+/// journal-editor — User authorship: documents the editor cannot load (a link mark, an empty
+/// text node) are refused, so an entry never opens blank and is then saved over.
+#[test]
+fn documents_with_content_the_editor_cannot_load_are_refused() {
+    let (_directory, journal) = temporary_journal();
+    let mut entry = Entry::draft("2026-11-22", Slot::Morning);
+    entry.document = json!({"type": "doc", "content": [{"type": "paragraph", "content": [
+        {"type": "text", "text": "Synthetic stored words "},
+        {"type": "text", "marks": [{"type": "bold"}, {"type": "underline"}], "text": "kept"}
+    ]}]});
+    let saved = journal.save(entry).unwrap();
+
+    let mut linked = saved.clone();
+    linked.document["content"][0]["content"][1]["marks"] =
+        json!([{"type": "link", "attrs": {"href": "https://example.invalid"}}]);
+    assert_eq!(journal.save(linked), Err(Error::Document));
+    let mut empty_text = saved.clone();
+    empty_text.document["content"][0]["content"][1] = json!({"type": "text", "text": ""});
+    assert_eq!(journal.save(empty_text), Err(Error::Document));
+    let mut text_without_words = saved.clone();
+    text_without_words.document["content"][0]["content"][1] = json!({"type": "text"});
+    assert_eq!(journal.save(text_without_words), Err(Error::Document));
+    assert_eq!(journal.get(&saved.id).unwrap(), saved);
+}
+
+/// journal-editor — Readable rich writing; local-persistence — Progressive autosave and errors:
+/// every accepted document stays inside the desktop shell's JSON nesting limit, so it can always
+/// be sent, saved and read back; a deeper one is refused as an unsupported structure.
+#[test]
+fn documents_nest_at_most_thirty_two_levels_and_always_round_trip() {
+    let (_directory, journal) = temporary_journal();
+    let mut deepest = Entry::draft("2026-11-22", Slot::Evening);
+    deepest.document = nested_document(32);
+    // The desktop shell parses each command body with serde_json's default nesting limit.
+    let body = serde_json::to_vec(&json!({ "entry": deepest })).unwrap();
+    assert!(serde_json::from_slice::<serde_json::Value>(&body).is_ok());
+    let saved = journal.save(deepest).unwrap();
+    assert_eq!(journal.list().unwrap(), vec![saved.clone()]);
+    assert_eq!(journal.get(&saved.id).unwrap(), saved);
+
+    let mut too_deep = saved.clone();
+    too_deep.document = nested_document(33);
+    assert_eq!(journal.save(too_deep), Err(Error::Document));
+    let mut too_deep_list = Entry::draft("2026-11-21", Slot::Morning);
+    let mut item = json!({"type": "paragraph"});
+    for _ in 0..16 {
+        item = json!({"type": "bulletList", "content": [{"type": "listItem", "content": [item]}]});
+    }
+    too_deep_list.document = json!({"type": "doc", "content": [item]});
+    assert_eq!(journal.save(too_deep_list), Err(Error::Document));
+    assert_eq!(journal.list().unwrap(), vec![saved]);
 }

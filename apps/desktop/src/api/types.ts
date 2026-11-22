@@ -8,6 +8,8 @@ export type Slot = 'morning' | 'evening';
 export type Depth = 'quick' | 'daily' | 'deep';
 export type Theme = 'system' | 'light' | 'dark';
 export type WinOrigin = 'manual' | 'pride';
+/** Interface text size in percent of the default. */
+export type TextScale = 100 | 115 | 130 | 150;
 
 export interface Reflection {
   intention: string;
@@ -73,6 +75,8 @@ export interface Preferences {
   reduceMotion: boolean;
   defaultDepth: Depth;
   showWordCount: boolean;
+  /** Text size for the whole interface and the journal page; layout spacing is unchanged. */
+  textScale: TextScale;
 }
 
 export interface TrashItem {
@@ -100,6 +104,10 @@ export type ErrorCode =
   | 'backupValidation'
   | 'restore'
   | 'passphrase'
+  | 'damaged'
+  | 'backupRegistry'
+  | 'backupFolder'
+  | 'safetyBackupFailed'
   | 'notReady'
   | 'needsFolder'
   | 'needsPassphrase'
@@ -119,13 +127,22 @@ export interface StartupStatus {
   state: StartupState;
   /** Schema version of an existing journal that needs a protected upgrade. */
   fromVersion: number | null;
-  /** English explanation for unsupported/failed states. */
+  /**
+   * English explanation for unsupported/failed states, and for needsMigration when the
+   * automatic protected upgrade at launch could not run (for example its backup failed).
+   */
   message: string | null;
   /** Display-only path of the application data folder. */
   dataLocation: string;
 }
 
-export type BackupState = 'needsFolder' | 'needsPassphrase' | 'due' | 'upToDate' | 'failed';
+export type BackupState =
+  | 'settingsUnreadable'
+  | 'needsFolder'
+  | 'needsPassphrase'
+  | 'due'
+  | 'upToDate'
+  | 'failed';
 
 export interface BackupStatus {
   state: BackupState;
@@ -168,4 +185,9 @@ export interface RestoreOutcome {
   entries: number;
   /** A validated backup of the replaced journal was created first. */
   safetyBackup: boolean;
+  /**
+   * Display-only file name of an unreadable journal that was kept aside in the data folder
+   * (restore from the startup screen); null when the journal was replaced in place.
+   */
+  setAside: string | null;
 }

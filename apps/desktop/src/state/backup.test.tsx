@@ -93,6 +93,28 @@ describe('BackupProvider', () => {
     expect(run.mock.calls.length).toBeGreaterThan(calls);
   });
 
+  it('purges expired trash before the daily backup, so the backup never contains it', async () => {
+    const journal = await preparedJournal();
+    const saved = await journal.api.saveEntry(newDraft('2026-11-21', 'morning', 'Europe/Paris'));
+    await journal.api.trashEntry(saved.id, saved.revision);
+    journal.advanceDays(31);
+    const order: string[] = [];
+    const purge = journal.api.purgeExpiredTrash.bind(journal.api);
+    const daily = journal.api.runDailyBackup.bind(journal.api);
+    vi.spyOn(journal.api, 'purgeExpiredTrash').mockImplementation(async () => {
+      order.push('purge');
+      await purge();
+    });
+    vi.spyOn(journal.api, 'runDailyBackup').mockImplementation(async () => {
+      order.push('backup');
+      return daily();
+    });
+    renderBackup(journal.api);
+    expect(await screen.findByText('Backup upToDate, 1 saved')).toBeInTheDocument();
+    expect(order.slice(0, 2)).toEqual(['purge', 'backup']);
+    await expect(journal.api.listTrash()).resolves.toEqual([]);
+  });
+
   it('purges trash whose retention has passed', async () => {
     const journal = await preparedJournal();
     const saved = await journal.api.saveEntry(newDraft('2026-11-22', 'morning', 'Europe/Paris'));

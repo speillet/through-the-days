@@ -60,10 +60,11 @@ export function PreferencesProvider({ children, fallback = null }: { children?: 
 
   const theme = preferences?.theme;
   const reduceMotion = preferences?.reduceMotion;
+  const textScale = preferences?.textScale;
   useLayoutEffect(() => {
-    if (theme === undefined || reduceMotion === undefined) return;
-    applyAppearance({ theme, reduceMotion });
-  }, [theme, reduceMotion]);
+    if (theme === undefined || reduceMotion === undefined || textScale === undefined) return;
+    applyAppearance({ theme, reduceMotion, textScale });
+  }, [theme, reduceMotion, textScale]);
 
   const update = useCallback(
     (changes: Partial<Preferences>): Promise<boolean> => {

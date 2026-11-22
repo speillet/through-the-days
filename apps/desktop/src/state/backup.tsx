@@ -1,7 +1,8 @@
 // Backup status and the routine that keeps it honest: once the journal is open,
-// run the daily backup (D-007: catch up at launch, then daily while active) and
-// purge expired trash, immediately, every ten minutes, on window focus and when
-// the journal date changes.
+// purge expired trash and run the daily backup (D-007: catch up at launch, then
+// daily while active), immediately, every ten minutes, on window focus and when
+// the journal date changes. Purging first keeps trash past its 30 days out of the
+// backup made right after.
 
 import {
   createContext,
@@ -27,7 +28,7 @@ export interface BackupContextValue {
   refresh(): Promise<void>;
   /** Applies a status returned by a backup command (folder, passphrase, backup now…). */
   setStatus(status: BackupStatus): void;
-  /** Runs the daily backup and trash purge now. */
+  /** Runs the trash purge and the daily backup now. */
   runMaintenance(): Promise<void>;
 }
 
@@ -63,6 +64,11 @@ export function BackupProvider({
     if (running.current) return running.current;
     const run = (async () => {
       try {
+        await api.purgeExpiredTrash();
+      } catch {
+        // Expired items are purged at the next run or at the next launch.
+      }
+      try {
         setStatus(await api.runDailyBackup());
       } catch (caught) {
         setError(toCommandError(caught));
@@ -71,11 +77,6 @@ export function BackupProvider({
         } catch {
           // Keep the last known status.
         }
-      }
-      try {
-        await api.purgeExpiredTrash();
-      } catch {
-        // Expired items are purged at the next run or at the next launch.
       }
     })().finally(() => {
       running.current = null;

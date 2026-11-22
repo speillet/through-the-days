@@ -1,12 +1,14 @@
 // The editor schema. The Tiptap JSON document is canonical; Markdown is only a
 // read-only projection. The schema is limited to the node and mark types that
-// journal-core accepts (crates/journal-core/src/model.rs, validate_node), so
-// typing, shortcuts and pasting can never produce a document the journal refuses.
+// journal-core accepts (crates/journal-core/src/model.rs, validate_node), and to
+// its nesting limit, so typing, shortcuts and pasting can never produce a document
+// the journal refuses.
 
 import type { AnyExtension } from '@tiptap/core';
 import { CharacterCount, Placeholder } from '@tiptap/extensions';
-import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
+import { JournalMarkdown } from './markdown';
+import { NestingLimit } from './nesting';
 
 export const JOURNAL_NODE_TYPES = [
   'doc',
@@ -40,6 +42,7 @@ export function journalExtensions(placeholder: string): AnyExtension[] {
     Placeholder.configure({ placeholder }),
     // No length limit: the count is informative only.
     CharacterCount.configure({ limit: null, wordCounter: countWords }),
-    Markdown,
+    NestingLimit,
+    JournalMarkdown,
   ];
 }

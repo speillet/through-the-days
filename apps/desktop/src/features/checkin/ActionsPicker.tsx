@@ -1,16 +1,18 @@
 // Reported actions: things the person explicitly says they did. Preset
 // categories toggle on and off; custom actions are added in the person's own
-// words. Nothing here becomes a small win unless the person adds one.
+// words, and one being typed is saved with the entry straight away. Nothing here
+// becomes a small win unless the person adds one.
 
 import { Check, Plus, X } from 'lucide-react';
-import { useId, useState, type FormEvent } from 'react';
-import type { Action } from '../../api/types';
+import { useId, type FormEvent } from 'react';
+import type { Action, Entry } from '../../api/types';
 import { Button } from '../../components/Button';
 import { TAB_STOP } from '../../components/keyboard';
 import { TextField } from '../../components/TextField';
 import { ACTION_CATEGORIES, CUSTOM_ACTION_CATEGORY } from '../../domain/actions';
-import { isBlank, newId } from '../../domain/entry';
+import { newId } from '../../domain/entry';
 import type { EntryChange } from '../../state/autosave';
+import { useTypedItem } from './typedItem';
 
 export interface ActionsPickerProps {
   legend: string;
@@ -19,10 +21,22 @@ export interface ActionsPickerProps {
   onChange(change: EntryChange): void;
 }
 
+function writeCustomAction(entry: Entry, id: string, text: string): Entry {
+  const existing = entry.actions.find((action) => action.id === id);
+  if (!existing) return { ...entry, actions: [...entry.actions, { id, text, category: CUSTOM_ACTION_CATEGORY }] };
+  if (existing.text === text) return entry;
+  return { ...entry, actions: entry.actions.map((action) => (action.id === id ? { ...action, text } : action)) };
+}
+
 export function ActionsPicker({ legend, hint, actions, onChange }: ActionsPickerProps) {
   const id = useId();
-  const [custom, setCustom] = useState('');
-  const customActions = actions.filter((action) => action.category === CUSTOM_ACTION_CATEGORY);
+  const typed = useTypedItem(onChange, {
+    write: (actionId, text) => (entry) => writeCustomAction(entry, actionId, text),
+    remove: (actionId) => (entry) => ({ ...entry, actions: entry.actions.filter((action) => action.id !== actionId) }),
+  });
+  const customActions = actions.filter(
+    (action) => action.category === CUSTOM_ACTION_CATEGORY && action.id !== typed.typingId,
+  );
 
   function toggle(category: (typeof ACTION_CATEGORIES)[number]) {
     onChange((entry) =>
@@ -34,13 +48,7 @@ export function ActionsPicker({ legend, hint, actions, onChange }: ActionsPicker
 
   function addCustom(event: FormEvent) {
     event.preventDefault();
-    if (isBlank(custom)) return;
-    const text = custom;
-    onChange((entry) => ({
-      ...entry,
-      actions: [...entry.actions, { id: newId(), text, category: CUSTOM_ACTION_CATEGORY }],
-    }));
-    setCustom('');
+    typed.finish();
   }
 
   function remove(actionId: string) {
@@ -94,7 +102,11 @@ export function ActionsPicker({ legend, hint, actions, onChange }: ActionsPicker
         </ul>
       ) : null}
       <form className="inline-add" onSubmit={addCustom}>
-        <TextField label="Something else" value={custom} onChange={(event) => setCustom(event.currentTarget.value)} />
+        <TextField
+          label="Something else"
+          value={typed.text}
+          onChange={(event) => typed.type(event.currentTarget.value)}
+        />
         <Button type="submit" variant="secondary" size="small">
           Add
         </Button>

@@ -1,15 +1,18 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { discardAllSavers } from '../../state/autosave';
+import { flushAll } from '../../state/flush';
 import {
   checkedScore,
   chooseScore,
   createJournal,
+  DATE,
   goToStage,
   journalEditor,
   onlyEntry,
   renderToday,
+  SAVE_TIMEOUT_MS,
   scale,
   textOf,
   typeInEditor,
@@ -28,6 +31,20 @@ function steps() {
 
 function winItems() {
   return within(screen.getByRole('list', { name: 'Small wins' })).getAllByRole('listitem');
+}
+
+function winField() {
+  return screen.getByRole('textbox', { name: 'Add a small win' });
+}
+
+async function storedWins(api: Parameters<typeof onlyEntry>[0], date = DATE) {
+  return (await onlyEntry(api, date)).wins.map(({ text, origin }) => ({ text, origin }));
+}
+
+async function waitForStoredWin(api: Parameters<typeof onlyEntry>[0], text: string, date = DATE) {
+  await waitFor(async () => expect(await storedWins(api, date)).toEqual([{ text, origin: 'manual' }]), {
+    timeout: SAVE_TIMEOUT_MS,
+  });
 }
 
 describe('Check-in stages', () => {
@@ -146,6 +163,43 @@ describe('Check-in stages', () => {
     await user.click(screen.getByRole('button', { name: 'Rest' }));
     await waitForSaved();
     expect((await onlyEntry(api)).actions.map((action) => action.category)).toEqual(['reading']);
+  });
+
+  it('keeps a Morning intention reachable and editable after the entry moves to Evening', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api);
+    await goToStage(user, "Today's intention");
+    await user.type(screen.getByRole('textbox', { name: 'What would I like to try today?' }), 'Synthetic: a short walk.');
+    await waitForSaved();
+    await user.click(screen.getByRole('button', { name: 'Change date or slot' }));
+    const dialog = screen.getByRole('dialog', { name: 'Change date or slot' });
+    await user.click(within(dialog).getByRole('radio', { name: 'Evening' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Move entry' }));
+    await screen.findByRole('textbox', { name: /^Evening journal, / });
+
+    expect(steps().map((step) => step.textContent)).toEqual([
+      'How am I feeling?',
+      "Today's intention",
+      'What I did',
+      'Small wins and pride',
+      'Moving forward',
+      'What helped',
+      'Difficulties and next step',
+    ]);
+    await goToStage(user, "Today's intention");
+    const intention = screen.getByRole('textbox', { name: 'What would I like to try today?' });
+    expect(intention).toHaveValue('Synthetic: a short walk.');
+    // The Evening keeps its own next step and activities in their stages.
+    expect(screen.queryByRole('textbox', { name: 'One small step to try' })).not.toBeInTheDocument();
+    await user.clear(intention);
+    // Clearing the answer does not pull the stage away while it is open.
+    expect(screen.getByRole('heading', { level: 3, name: "Today's intention" })).toBeInTheDocument();
+    await user.type(intention, 'Synthetic: a longer walk.');
+    await waitFor(async () => expect((await onlyEntry(api)).reflection.intention).toBe('Synthetic: a longer walk.'), {
+      timeout: SAVE_TIMEOUT_MS,
+    });
+    expect((await onlyEntry(api)).slot).toBe('evening');
   });
 
   it('keeps pride missing when it is skipped while a difficulty is written', async () => {
@@ -324,5 +378,137 @@ describe('Small wins', () => {
     await typeInEditor(user, 'Synthetic: a plain day.');
     await waitForSaved();
     expect((await onlyEntry(api)).wins).toEqual([]);
+  });
+
+  it('keeps a multi-line answer added as a small win, line breaks included, when it is edited', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api);
+    await goToStage(user, 'Small wins and pride');
+    await user.type(screen.getByRole('textbox', { name: 'What am I proud of?' }), 'Finished the report{Enter}Called a friend');
+    await user.click(screen.getByRole('button', { name: 'Add as a small win' }));
+    const win = within(winItems()[0]).getByRole('textbox', { name: 'Small win 1' });
+    expect(win).toHaveValue('Finished the report\nCalled a friend');
+    await user.type(win, '!');
+    await waitFor(
+      async () => expect((await onlyEntry(api)).wins.map((item) => item.text)).toEqual(['Finished the report\nCalled a friend!']),
+      { timeout: SAVE_TIMEOUT_MS },
+    );
+  });
+});
+
+describe('Text typed into an add field', () => {
+  it('keeps a small win typed but not added when Continue is pressed', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api);
+    await goToStage(user, 'Small wins and pride');
+    await user.type(winField(), 'Synthetic: called a friend');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitForStoredWin(api, 'Synthetic: called a friend');
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    expect(within(winItems()[0]).getByRole('textbox', { name: 'Small win 1' })).toHaveValue('Synthetic: called a friend');
+    expect(winField()).toHaveValue('');
+  });
+
+  it('keeps an Evening activity typed but not added when the stage is skipped', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api);
+    await user.click(screen.getByRole('tab', { name: /^Evening/ }));
+    await screen.findByRole('textbox', { name: /^Evening journal, / });
+    await goToStage(user, 'What I did');
+    await user.type(screen.getByRole('textbox', { name: 'Something else' }), 'Synthetic: repotted a fern');
+    await user.click(screen.getByRole('button', { name: 'Skip' }));
+    await waitFor(
+      async () =>
+        expect((await onlyEntry(api)).actions.map((action) => [action.category, action.text])).toEqual([
+          ['', 'Synthetic: repotted a fern'],
+        ]),
+      { timeout: SAVE_TIMEOUT_MS },
+    );
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByRole('list', { name: 'Your own activities' })).toHaveTextContent('Synthetic: repotted a fern');
+    expect(screen.getByRole('textbox', { name: 'Something else' })).toHaveValue('');
+  });
+
+  it('keeps a typed small win when another step is chosen from the step list', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api);
+    await goToStage(user, 'Small wins and pride');
+    await user.type(winField(), 'Synthetic: watered the plants');
+    await goToStage(user, 'What helped');
+    await waitForStoredWin(api, 'Synthetic: watered the plants');
+  });
+
+  it('keeps a typed small win when the depth changes', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api);
+    await goToStage(user, 'Small wins and pride');
+    await user.type(winField(), 'Synthetic: made soup');
+    await user.click(screen.getByRole('radio', { name: /^Quick Check-in/ }));
+    await waitForStoredWin(api, 'Synthetic: made soup');
+    await user.click(screen.getByRole('radio', { name: /^Daily Journal/ }));
+    await goToStage(user, 'Small wins and pride');
+    expect(within(winItems()[0]).getByRole('textbox', { name: 'Small win 1' })).toHaveValue('Synthetic: made soup');
+  });
+
+  it('keeps a typed small win when the other slot is opened', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api, { delay: 60_000 });
+    await goToStage(user, 'Small wins and pride');
+    await user.type(winField(), 'Synthetic: a kind word');
+    await user.click(screen.getByRole('tab', { name: /^Evening/ }));
+    await screen.findByRole('textbox', { name: /^Evening journal, / });
+    expect(await storedWins(api)).toEqual([{ text: 'Synthetic: a kind word', origin: 'manual' }]);
+    expect((await onlyEntry(api)).slot).toBe('morning');
+  });
+
+  it('keeps a typed small win when another date is opened', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api, { delay: 60_000 });
+    await goToStage(user, 'Small wins and pride');
+    await user.type(winField(), 'Synthetic: an early night');
+    await user.click(screen.getByRole('button', { name: 'Previous day' }));
+    await screen.findByRole('heading', { level: 1, name: 'Saturday 21 November 2026' });
+    expect(await storedWins(api)).toEqual([{ text: 'Synthetic: an early night', origin: 'manual' }]);
+  });
+
+  it('keeps a typed small win when the app quits, and shows it after reopening', async () => {
+    const user = userEvent.setup();
+    const { api, restart } = createJournal();
+    const first = await renderToday(api, { delay: 60_000 });
+    await goToStage(user, 'Small wins and pride');
+    await user.type(winField(), 'Synthetic: finished a puzzle');
+    expect(await api.entriesOn(DATE)).toEqual([]);
+    // What the quit request does before the app exits.
+    await act(async () => {
+      await flushAll();
+    });
+    expect(await storedWins(api)).toEqual([{ text: 'Synthetic: finished a puzzle', origin: 'manual' }]);
+    first.unmount();
+
+    await renderToday(restart());
+    await goToStage(user, 'Small wins and pride');
+    expect(within(winItems()[0]).getByRole('textbox', { name: 'Small win 1' })).toHaveValue('Synthetic: finished a puzzle');
+  });
+
+  it('removes the typed item when the field is cleared again', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api);
+    await goToStage(user, 'Small wins and pride');
+    await user.type(winField(), 'Synthetic: second thoughts');
+    await user.clear(winField());
+    await chooseScore(user, 'How proud do I feel?', 6);
+    await waitFor(async () => expect(await onlyEntry(api)).toMatchObject({ pride: 6, wins: [] }), {
+      timeout: SAVE_TIMEOUT_MS,
+    });
+    expect(screen.queryByRole('list', { name: 'Small wins' })).not.toBeInTheDocument();
   });
 });

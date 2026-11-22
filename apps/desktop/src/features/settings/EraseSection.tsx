@@ -1,14 +1,17 @@
 // Erases everything the app keeps on this Mac after a typed ERASE confirmation,
-// then reopens a fresh journal. Backup files in the chosen folder are not the
-// app's to delete; the scope and that limit are stated before anything happens.
+// then reopens a fresh journal. Backup files in the chosen folder, and copies made by
+// other software such as Time Machine, are not the app's to delete; the scope and
+// those limits are stated before anything happens. The startup screen offers the
+// same dialog when the journal can't be opened.
 
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { toCommandError, useApi } from '../../api/client';
+import type { CommandError, StartupStatus } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
-import { Notice } from '../../components/Notice';
+import { Notice, type NoticeTone } from '../../components/Notice';
 import { TextField } from '../../components/TextField';
-import { flushAll } from '../../state/flush';
+import { flushAll, hasPending } from '../../state/flush';
 import { useNavigation } from '../../state/navigation';
 import { useStartup } from '../../state/startup';
 import '../backup/backup.css';
@@ -17,6 +20,17 @@ export const ERASE_CONFIRMATION = 'ERASE';
 
 export const ERASED_NOTICE =
   'All app data on this Mac was erased. Backup files in your backup folder were not deleted.';
+
+export const UNSAVED_WRITING_NOT_ERASED =
+  'Some writing hasn’t been saved yet, so nothing was erased. Wait until it shows Saved, then try again.';
+
+/** The warning shown in the reopened workspace when erasing stopped part of the way. */
+export function incompleteErasureNotice(error: CommandError): string {
+  if (error.code === 'keychain') {
+    return 'Your journal and backup settings on this Mac were erased, but the backup passphrase could not be removed from macOS Keychain. You can delete it yourself in the Keychain Access app: search for “throughthedays”. Backup files in your backup folder were not deleted.';
+  }
+  return 'Erasing did not finish, so some app data may still be on this Mac. The app reopened the journal as it is now: check what is left, then try erasing again.';
+}
 
 function EraseScope() {
   return (
@@ -33,7 +47,12 @@ function EraseScope() {
 const BACKUP_FILES_KEPT =
   'Backup files in your backup folder are not deleted. Delete them yourself in Finder if you no longer want them: anyone with a backup file and its passphrase can restore it.';
 
+export const OTHER_COPIES_KEPT =
+  'Copies made outside the app are not removed either. Time Machine backups of this Mac, including its local snapshots, contain your journal unencrypted unless the backup disk is encrypted. If iCloud Drive or another service syncs your backup folder, it keeps its own copies of the encrypted backups.';
+
 export function EraseSection() {
+  const { setStatus } = useStartup();
+  const { navigate } = useNavigation();
   const [open, setOpen] = useState(false);
   return (
     <div className="settings-stack">
@@ -42,6 +61,7 @@ export function EraseSection() {
       </p>
       <EraseScope />
       <p className="settings-note">{BACKUP_FILES_KEPT}</p>
+      <p className="settings-note">{OTHER_COPIES_KEPT}</p>
       <p className="settings-text">
         This version keeps no generated summaries, indexes or other data derived from your writing. Erasing is not
         forensic: traces can remain on the disk until macOS overwrites them.
@@ -51,19 +71,35 @@ export function EraseSection() {
           Erase all app data…
         </Button>
       </div>
-      <EraseDialog open={open} onClose={() => setOpen(false)} />
+      <EraseDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        onErased={(next, notice, tone) => {
+          setOpen(false);
+          navigate('today');
+          setStatus(next, notice, tone);
+        }}
+      />
     </div>
   );
 }
 
-function EraseDialog({ open, onClose }: { open: boolean; onClose(): void }) {
-  return open ? <OpenEraseDialog onClose={onClose} /> : null;
+export interface EraseDialogProps {
+  open: boolean;
+  onClose(): void;
+  /**
+   * Receives the journal's status once erasing ran, with the notice to show in the
+   * reopened workspace: a confirmation, or a warning when erasing stopped part of the way.
+   */
+  onErased(next: StartupStatus, notice: string, tone: NoticeTone): void;
 }
 
-function OpenEraseDialog({ onClose }: { onClose(): void }) {
+export function EraseDialog({ open, ...props }: EraseDialogProps) {
+  return open ? <OpenEraseDialog {...props} /> : null;
+}
+
+function OpenEraseDialog({ onClose, onErased }: Omit<EraseDialogProps, 'open'>) {
   const api = useApi();
-  const { setStatus } = useStartup();
-  const { navigate } = useNavigation();
   const formId = useId();
   const fieldRef = useRef<HTMLInputElement>(null);
   const [typed, setTyped] = useState('');
@@ -82,15 +118,37 @@ function OpenEraseDialog({ onClose }: { onClose(): void }) {
     }
     setFieldError(null);
     setBusy(true);
-    try {
-      // A save still in flight must not land in the fresh journal.
-      await flushAll();
-      const next = await api.eraseAppData(typed);
-      navigate('today');
-      setStatus(next, ERASED_NOTICE);
-    } catch (caught) {
-      setError(toCommandError(caught).message);
+    // A save still in flight must not land in the fresh journal.
+    await flushAll();
+    if (hasPending()) {
+      setError(UNSAVED_WRITING_NOT_ERASED);
       setBusy(false);
+      return;
+    }
+    try {
+      const next = await api.eraseAppData(typed);
+      onErased(next, ERASED_NOTICE, 'success');
+    } catch (caught) {
+      const failure = toCommandError(caught);
+      if (failure.code === 'confirmation') {
+        setFieldError(failure.message);
+        setBusy(false);
+        return;
+      }
+      // Erasing may have stopped part of the way, after the journal itself was erased:
+      // reopen every view on whatever journal is open now, and say what remains.
+      let next: StartupStatus | null = null;
+      try {
+        next = await api.startupStatus();
+      } catch {
+        next = null;
+      }
+      if (next?.state === 'ready') {
+        onErased(next, incompleteErasureNotice(failure), 'warning');
+      } else {
+        setError(failure.message);
+        setBusy(false);
+      }
     }
   }
 
@@ -108,6 +166,7 @@ function OpenEraseDialog({ onClose }: { onClose(): void }) {
           <p>This permanently erases, on this Mac:</p>
           <EraseScope />
           <p>{BACKUP_FILES_KEPT}</p>
+          <p>{OTHER_COPIES_KEPT}</p>
         </>
       }
       footer={

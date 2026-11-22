@@ -1,6 +1,6 @@
 // The open journal date in Charter, marked "Today" when it is today's date, with
-// day navigation. The date changes only through these controls: when the clock
-// passes midnight the open date stays where the person left it.
+// day navigation. A date chosen here stays when the clock passes midnight; Today
+// moves on by itself only from today's date with no entry open (see TodayView).
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Ref } from 'react';

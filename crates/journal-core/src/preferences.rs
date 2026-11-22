@@ -3,6 +3,9 @@ use chrono::{DateTime, Utc};
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 
+/// Interface text sizes the person can choose, in percent of the default size.
+const TEXT_SCALES: [u16; 4] = [100, 115, 130, 150];
+
 /// Display preferences stored in the journal.
 ///
 /// Missing fields take their defaults, so preferences stored by an earlier version still load;
@@ -25,6 +28,8 @@ pub struct Preferences {
     /// Writing depth offered first for a new entry; presentation only.
     pub default_depth: Depth,
     pub show_word_count: bool,
+    /// Text size of the interface and the journal page in percent: 100, 115, 130 or 150.
+    pub text_scale: u16,
 }
 
 impl Default for Preferences {
@@ -40,6 +45,7 @@ impl Default for Preferences {
             reduce_motion: false,
             default_depth: Depth::Daily,
             show_word_count: false,
+            text_scale: 100,
         }
     }
 }
@@ -52,6 +58,21 @@ impl Preferences {
             .parse::<chrono_tz::Tz>()
             .map_err(|_| Error::Date)?;
         Ok(now.with_timezone(&zone).date_naive().to_string())
+    }
+
+    /// The rules every stored preference meets: a known time zone ([`Error::Date`]), and a
+    /// supported theme and text size ([`Error::Document`]).
+    ///
+    /// Saving and restoring apply the same rules, so a restored journal never holds preferences
+    /// that would break today's date or the interface.
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        self.journal_date(Utc::now())?;
+        if !matches!(self.theme.as_str(), "system" | "light" | "dark")
+            || !TEXT_SCALES.contains(&self.text_scale)
+        {
+            return Err(Error::Document);
+        }
+        Ok(())
     }
 }
 
@@ -71,12 +92,9 @@ impl Journal {
         }
     }
 
-    /// Validates the time zone and theme, then stores the preferences.
+    /// Validates the time zone, theme and text size, then stores the preferences.
     pub fn set_preferences(&self, preferences: &Preferences) -> Result<(), Error> {
-        preferences.journal_date(Utc::now())?;
-        if !matches!(preferences.theme.as_str(), "system" | "light" | "dark") {
-            return Err(Error::Document);
-        }
+        preferences.validate()?;
         self.connection.execute(
             "INSERT INTO preferences(key,value) VALUES('display',?1)
              ON CONFLICT(key) DO UPDATE SET value=excluded.value",

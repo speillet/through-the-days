@@ -21,6 +21,11 @@ describe('Privacy information', () => {
     expect(text).toContain('Deleted entries stay in the trash for 30 days.');
     expect(text).toContain('the 30 most recent backups are kept, whatever their dates');
     expect(text).toContain('Deleting is not forensic erasure');
+    expect(text).toContain(
+      'Time Machine and other backups of this Mac keep their own copies of your journal, unencrypted unless the backup disk is encrypted.',
+    );
+    expect(text).toContain('Deleting entries or erasing app data doesn’t remove those copies');
+    expect(text).toContain('a service such as iCloud Drive keeps when it syncs your backup folder');
     // Never an encryption or FileVault claim the app cannot keep.
     expect(text).not.toMatch(/journal is encrypted|FileVault is (?:on|enabled)|vault password/i);
   });

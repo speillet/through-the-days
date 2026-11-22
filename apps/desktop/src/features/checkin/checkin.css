@@ -74,6 +74,14 @@
   gap: var(--space-4);
 }
 
+/* A read-only entry: the answers stay visible, their controls disabled. */
+.checkin__fields--read-only {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .checkin__nav {
   display: flex;
   flex-wrap: wrap;
@@ -369,6 +377,12 @@
   padding: var(--space-2);
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-sm);
+}
+
+/* A win's field starts one line high and grows with its lines. */
+.win .field__control--multiline {
+  min-height: 34px;
+  field-sizing: content;
 }
 
 .win__details {

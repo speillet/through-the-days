@@ -38,7 +38,7 @@ export function WritingSection() {
       />
       <Toggle
         label="Show scores"
-        hint="Mood, energy, pride and progress values in summaries. Hiding them never deletes them."
+        hint="Shows the mood, energy, pride and progress questions in the check-in; in Quick Check-in, the whole check-in. Hiding them keeps saved answers, and marking an entry complete still needs a mood and an energy score."
         checked={preferences.showScores}
         onChange={(showScores) => void update({ showScores })}
       />

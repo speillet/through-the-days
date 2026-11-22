@@ -1,6 +1,7 @@
 // How the journal is protected (D-004, D-006, D-003, D-009), stated accurately:
 // the live journal relies on macOS, backups are encrypted separately, nothing is
-// uploaded, and deleting is not forensic erasure. SettingsView renders the h2.
+// uploaded, copies kept by Time Machine or a sync service are outside the app's
+// reach, and deleting is not forensic erasure. SettingsView renders the h2.
 
 import { useStartup } from '../../state/startup';
 import { BACKUPS_KEPT } from '../backup/status';
@@ -53,6 +54,11 @@ export function PrivacySection() {
           Backups follow their own rule: the {BACKUPS_KEPT} most recent backups are kept, whatever their dates. A backup
           made before you deleted an entry can still contain it until that backup is removed, or until you delete the
           backup file yourself.
+        </p>
+        <p className="settings-text">
+          Time Machine and other backups of this Mac keep their own copies of your journal, unencrypted unless the backup
+          disk is encrypted. Deleting entries or erasing app data doesn’t remove those copies, nor the copies that a
+          service such as iCloud Drive keeps when it syncs your backup folder.
         </p>
         <p className="settings-text">
           Deleting is not forensic erasure: traces of deleted writing can remain on the disk until macOS overwrites

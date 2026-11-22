@@ -4,6 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toCommandError, useApi } from '../api/client';
 import type { CommandError, StartupStatus } from '../api/types';
+import type { NoticeTone } from '../components/Notice';
 import { discardAllSavers } from './autosave';
 
 export interface StartupContextValue {
@@ -13,19 +14,21 @@ export interface StartupContextValue {
   error: CommandError | null;
   refresh(): Promise<void>;
   /**
-   * Applies a status returned by migrateJournal or eraseAppData and reopens the
-   * workspace, with an optional English confirmation shown in the status area.
+   * Applies a status returned by migrateJournal, retryStartup, restoreBackup or eraseAppData
+   * and reopens the workspace, with an optional English notice shown in the status area: a
+   * confirmation by default, or a warning when the operation did not fully succeed.
    */
-  setStatus(status: StartupStatus, notice?: string): void;
+  setStatus(status: StartupStatus, notice?: string, tone?: NoticeTone): void;
   /**
    * Remounts every view so it re-reads the journal, for example after a restore.
    * Flush pending saves (state/flush.ts) before replacing the journal.
    */
-  reloadJournal(notice?: string): void;
+  reloadJournal(notice?: string, tone?: NoticeTone): void;
   /** Changes whenever the workspace is reopened; used as its React key. */
   journalKey: number;
-  /** Confirmation to show once the workspace reopens. */
+  /** Notice to show once the workspace reopens. */
   notice: string | null;
+  noticeTone: NoticeTone;
   dismissNotice(): void;
 }
 
@@ -37,6 +40,7 @@ export function StartupProvider({ children }: { children?: ReactNode }) {
   const [error, setError] = useState<CommandError | null>(null);
   const [journalKey, setJournalKey] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeTone, setNoticeTone] = useState<NoticeTone>('success');
 
   const refresh = useCallback(async () => {
     try {
@@ -48,19 +52,20 @@ export function StartupProvider({ children }: { children?: ReactNode }) {
     }
   }, [api]);
 
-  const reloadJournal = useCallback((message?: string) => {
+  const reloadJournal = useCallback((message?: string, tone: NoticeTone = 'success') => {
     // Input that still could not be saved belongs to the replaced journal; never
     // let it reach the new one (for example after erasing app data).
     discardAllSavers();
     setJournalKey((key) => key + 1);
     setNotice(message ?? null);
+    setNoticeTone(tone);
   }, []);
 
   const setStatus = useCallback(
-    (next: StartupStatus, message?: string) => {
+    (next: StartupStatus, message?: string, tone?: NoticeTone) => {
       setStatusState(next);
       setError(null);
-      reloadJournal(message);
+      reloadJournal(message, tone);
     },
     [reloadJournal],
   );
@@ -72,8 +77,8 @@ export function StartupProvider({ children }: { children?: ReactNode }) {
   }, [refresh]);
 
   const value = useMemo(
-    () => ({ status, error, refresh, setStatus, reloadJournal, journalKey, notice, dismissNotice }),
-    [status, error, refresh, setStatus, reloadJournal, journalKey, notice, dismissNotice],
+    () => ({ status, error, refresh, setStatus, reloadJournal, journalKey, notice, noticeTone, dismissNotice }),
+    [status, error, refresh, setStatus, reloadJournal, journalKey, notice, noticeTone, dismissNotice],
   );
   return <StartupContext.Provider value={value}>{children}</StartupContext.Provider>;
 }

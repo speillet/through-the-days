@@ -46,6 +46,8 @@ pub struct RestoreOutcome {
     pub entries: usize,
     /// A validated backup of the replaced journal was published first.
     pub safety_backup: bool,
+    /// A recovery folder holding the unopened journal and its SQLite companions.
+    pub set_aside: Option<String>,
 }
 
 /// Whether `name` can be the file name of a published backup: `ttd-…ttd.age`, at most 128
@@ -83,16 +85,24 @@ impl Core {
         &mut self,
         source: RestoreSource,
         passphrase: Zeroizing<String>,
+        without_safety_backup: bool,
         now: DateTime<Utc>,
     ) -> Result<RestoreOutcome, CommandError> {
-        self.journal()?;
         let source = self.restore_source(&source)?;
         // The safety backup can prune the oldest registered backup, which may be the one being
         // restored, so the restore reads a private copy (ciphertext only) taken beforehand.
         let staged = StagedCopy::of(&source, &self.paths.data_dir).map_err(|_| Error::Restore)?;
-        let safety_backup = if self.needs_safety_backup()? {
+        verify_backup(staged.path(), &passphrase)?;
+        if self.journal.is_none() {
+            return self.restore_unopened(staged.path(), &passphrase, now);
+        }
+        let needs_safety = match self.needs_safety_backup() {
+            Ok(needed) => needed,
+            Err(_) if without_safety_backup => false,
+            Err(_) => return Err(CommandError::safety_backup_failed()),
+        };
+        let safety_backup = if needs_safety {
             // Publishing prunes the oldest backup: only do it for a restore that can succeed.
-            verify_backup(staged.path(), &passphrase)?;
             self.publish_safety_backup(now)?;
             true
         } else {
@@ -109,6 +119,55 @@ impl Core {
         Ok(RestoreOutcome {
             entries,
             safety_backup,
+            set_aside: None,
+        })
+    }
+
+    /// Restores off to the side first, keeping every original SQLite file together for recovery.
+    fn restore_unopened(
+        &mut self,
+        backup: &Path,
+        passphrase: &str,
+        now: DateTime<Utc>,
+    ) -> Result<RestoreOutcome, CommandError> {
+        let candidate = tempfile::Builder::new()
+            .prefix(TEMPORARY_PREFIX)
+            .tempfile_in(&self.paths.data_dir)
+            .map_err(|_| Error::Storage)?;
+        let mut journal = journal_core::Journal::open(candidate.path())?;
+        journal.restore_from(backup, passphrase)?;
+        let entries = journal.list()?.len();
+        drop(journal);
+        let name = format!("journal-recovery-{}", uuid::Uuid::new_v4());
+        let recovery_dir = self.paths.data_dir.join(&name);
+        crate::paths::create_private_dir(&recovery_dir).map_err(|_| Error::Storage)?;
+        let mut moved = Vec::new();
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            let file = format!("journal.sqlite{suffix}");
+            let original = self.paths.data_dir.join(&file);
+            match fs::rename(&original, recovery_dir.join(&file)) {
+                Ok(()) => moved.push(file),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => (),
+                Err(_) => {
+                    for file in &moved {
+                        let _ = fs::rename(recovery_dir.join(file), self.paths.data_dir.join(file));
+                    }
+                    return Err(Error::Storage.into());
+                }
+            }
+        }
+        if candidate.persist_noclobber(&self.paths.journal).is_err() {
+            for file in &moved {
+                let _ = fs::rename(recovery_dir.join(file), self.paths.data_dir.join(file));
+            }
+            return Err(Error::Storage.into());
+        }
+        self.open_journal(now);
+        self.picked = None;
+        Ok(RestoreOutcome {
+            entries,
+            safety_backup: false,
+            set_aside: Some(name),
         })
     }
 

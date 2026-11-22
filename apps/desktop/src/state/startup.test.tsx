@@ -61,6 +61,23 @@ describe('StartupProvider', () => {
     act(() => current.value?.reloadJournal());
     expect(screen.getByText('Journal key: 2')).toBeInTheDocument();
   });
+
+  it('shows a warning instead of a confirmation when an operation did not fully succeed', async () => {
+    const current = renderStartup();
+    await screen.findByText('State: ready');
+    expect(current.value?.noticeTone).toBe('success');
+    act(() =>
+      current.value?.setStatus(
+        { state: 'ready', fromVersion: null, message: null, dataLocation: 'Synthetic' },
+        'Synthetic: erasing did not finish.',
+        'warning',
+      ),
+    );
+    expect(screen.getByText('Notice: Synthetic: erasing did not finish.')).toBeInTheDocument();
+    expect(current.value?.noticeTone).toBe('warning');
+    act(() => current.value?.reloadJournal('Synthetic restore complete.'));
+    expect(current.value?.noticeTone).toBe('success');
+  });
 });
 
 describe('NavigationProvider', () => {

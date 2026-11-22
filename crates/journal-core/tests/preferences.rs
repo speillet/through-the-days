@@ -42,9 +42,10 @@ fn preferences_stored_before_the_newer_display_options_still_load() {
         (
             defaults.reduce_motion,
             defaults.default_depth,
-            defaults.show_word_count
+            defaults.show_word_count,
+            defaults.text_scale
         ),
-        (false, Depth::Daily, false)
+        (false, Depth::Daily, false, 100)
     );
     drop(journal);
     rusqlite::Connection::open(&path)
@@ -68,9 +69,11 @@ fn preferences_stored_before_the_newer_display_options_still_load() {
             ..Preferences::default()
         }
     );
+    assert_eq!(stored.text_scale, 100);
     stored.reduce_motion = true;
     stored.default_depth = Depth::Quick;
     stored.show_word_count = true;
+    stored.text_scale = 130;
     journal.set_preferences(&stored).unwrap();
     drop(journal);
     assert_eq!(Journal::open(&path).unwrap().preferences().unwrap(), stored);
@@ -103,4 +106,44 @@ fn unknown_preference_fields_and_themes_are_rejected() {
         Journal::open(&path).unwrap().preferences(),
         Err(Error::Document)
     );
+}
+
+/// Text size: one of the offered sizes, stored with the other display preferences.
+#[test]
+fn text_size_is_one_of_the_offered_sizes() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.sqlite");
+    let journal = Journal::open(&path).unwrap();
+    for size in [100, 115, 130, 150] {
+        let preferences = Preferences {
+            text_scale: size,
+            ..Preferences::default()
+        };
+        journal.set_preferences(&preferences).unwrap();
+        assert_eq!(journal.preferences().unwrap(), preferences);
+    }
+    for unsupported in [0, 99, 120, 151, 300] {
+        let preferences = Preferences {
+            text_scale: unsupported,
+            ..Preferences::default()
+        };
+        assert_eq!(
+            journal.set_preferences(&preferences),
+            Err(Error::Document),
+            "{unsupported}"
+        );
+        assert_eq!(journal.preferences().unwrap().text_scale, 150);
+    }
+    let serialised = serde_json::to_value(Preferences::default()).unwrap();
+    assert_eq!(serialised["textScale"], 100);
+    for invalid in [
+        r#"{"textScale":115.5}"#,
+        r#"{"textScale":-115}"#,
+        r#"{"textScale":"115"}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<Preferences>(invalid).is_err(),
+            "{invalid}"
+        );
+    }
 }

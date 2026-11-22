@@ -5,7 +5,8 @@ mod common;
 use common::{
     BACKUP_MAGIC, DAY, NOW, PASSPHRASE, REGISTRY_FILE, ReadOnlyFolder, SeededBackup,
     backup_plaintext, contains, decrypt, document, encrypt_quickly, execute, image_user_version,
-    names_in, previous_journal, registered_names, seed_backup, sha256_hex, write_registry,
+    names_in, nested_document, previous_journal, registered_names, seed_backup, sha256_hex,
+    write_registry,
 };
 use journal_core::{
     BackupPlan, BackupRecord, DailyBackup, Entry, Error, Journal, Preferences, Slot, list_backups,
@@ -188,7 +189,7 @@ fn failed_daily_backup_records_no_success() {
     let preferences = Preferences::default();
     assert_eq!(
         journal.backup_if_due(&mut plan, Some(PASSPHRASE), day, &preferences),
-        Err(Error::Backup)
+        Err(Error::BackupFolder)
     );
     assert_eq!(
         journal.backup_if_due(&mut plan, Some("too short"), day, &preferences),
@@ -302,7 +303,7 @@ fn failed_backup_keeps_the_previous_valid_backup_and_lists_only_validated_ones()
         let _read_only = ReadOnlyFolder::new(&folder);
         assert_eq!(
             journal.backup_to(&folder, PASSPHRASE, NOW + DAY).err(),
-            Some(Error::Backup)
+            Some(Error::BackupFolder)
         );
     }
     assert_eq!(listed_names(&folder), vec![first_name.clone()]);
@@ -329,10 +330,10 @@ fn backup_that_cannot_be_registered_is_not_reported_or_left_behind() {
     let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
     assert_eq!(
         journal.backup_to(&folder, PASSPHRASE, NOW).err(),
-        Some(Error::Backup)
+        Some(Error::BackupRegistry)
     );
     assert_eq!(names_in(&folder), vec![REGISTRY_FILE.to_owned()]);
-    assert_eq!(list_backups(&folder), Err(Error::Backup));
+    assert_eq!(list_backups(&folder), Err(Error::BackupRegistry));
 }
 
 /// D-009 — keep the 30 latest validated backups; prune only after a validated replacement.
@@ -611,6 +612,52 @@ fn restore_validates_format_schema_and_content_before_replacing_the_journal() {
                 "INSERT INTO preferences VALUES('display','{\"unknownField\":true}');",
             ),
         ),
+        crafted(
+            "unknown-time-zone.age",
+            &variant(
+                "zone.sqlite",
+                "INSERT INTO preferences VALUES('display','{\"timeZone\":\"Mars/Olympus\"}');",
+            ),
+        ),
+        crafted(
+            "unknown-theme.age",
+            &variant(
+                "theme.sqlite",
+                "INSERT INTO preferences VALUES('display','{\"theme\":\"neon\"}');",
+            ),
+        ),
+        crafted(
+            "unsupported-text-size.age",
+            &variant(
+                "text-size.sqlite",
+                "INSERT INTO preferences VALUES('display','{\"textScale\":120}');",
+            ),
+        ),
+        crafted(
+            "link-mark.age",
+            &variant(
+                "link.sqlite",
+                "UPDATE journal_entries SET payload=json_set(payload,'$.document.content[0].content[0].marks',
+                 json('[{\"type\":\"link\",\"attrs\":{\"href\":\"https://example.invalid\"}}]'));",
+            ),
+        ),
+        crafted(
+            "empty-text.age",
+            &variant(
+                "empty-text.sqlite",
+                "UPDATE journal_entries SET payload=json_set(payload,'$.document.content[0].content[0].text','');",
+            ),
+        ),
+        crafted(
+            "too-deep.age",
+            &variant(
+                "deep.sqlite",
+                &format!(
+                    "UPDATE journal_entries SET payload=json_set(payload,'$.document',json('{}'));",
+                    nested_document(33)
+                ),
+            ),
+        ),
     ];
     for path in &rejected {
         assert_eq!(
@@ -624,7 +671,25 @@ fn restore_validates_format_schema_and_content_before_replacing_the_journal() {
     // The same crafting with an unmodified image restores, so each rejection comes from its defect.
     live.restore_from(&crafted("valid.age", &backup_plaintext(&image)), PASSPHRASE)
         .unwrap();
-    assert_eq!(live.list().unwrap(), vec![entry]);
+    assert_eq!(live.list().unwrap(), vec![entry.clone()]);
+    let preferences = crafted(
+        "valid-preferences.age",
+        &variant(
+            "valid-preferences.sqlite",
+            &format!(
+                "INSERT INTO preferences VALUES('display','{{\"theme\":\"dark\",\"textScale\":130}}');
+                 UPDATE journal_entries SET payload=json_set(payload,'$.document',json('{}'));",
+                nested_document(32)
+            ),
+        ),
+    );
+    live.restore_from(&preferences, PASSPHRASE).unwrap();
+    let restored = live.preferences().unwrap();
+    assert_eq!(
+        (restored.theme.as_str(), restored.text_scale),
+        ("dark", 130)
+    );
+    assert_eq!(live.get(&entry.id).unwrap().document, nested_document(32));
 }
 
 /// Validated backups are listed from the registry only, newest first.
@@ -684,6 +749,304 @@ fn listing_reports_only_registered_backups_that_still_exist() {
         "[1,[]]",
     ] {
         fs::write(folder.join(REGISTRY_FILE), damaged).unwrap();
-        assert_eq!(list_backups(&folder), Err(Error::Backup), "{damaged}");
+        assert_eq!(
+            list_backups(&folder),
+            Err(Error::BackupRegistry),
+            "{damaged}"
+        );
     }
+    let not_a_folder = directory.path().join("journal.sqlite");
+    assert_eq!(list_backups(&not_a_folder), Err(Error::BackupFolder));
+}
+
+/// D-009 (prune only after a validated replacement); local-data-protection — Daily backups (a
+/// success is recorded only for a backup that exists): with the clock behind registered backups,
+/// the new backup is kept, nothing older is deleted, and a retention warning is reported.
+#[test]
+fn a_backup_made_while_the_clock_is_behind_is_kept_and_nothing_is_deleted() {
+    let directory = tempfile::tempdir().unwrap();
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    // Below the retention count nothing is pruned, so a later creation time needs no warning.
+    let few = directory.path().join("few");
+    fs::create_dir(&few).unwrap();
+    let future = [
+        seed_backup(&few, NOW + DAY, "future"),
+        seed_backup(&few, NOW + 2 * DAY, "future"),
+    ];
+    write_registry(&few, &future);
+    let info = journal.backup_to(&few, PASSPHRASE, NOW).unwrap();
+    assert!(!info.retention_warning);
+    assert_eq!(listed_names(&few).len(), 3);
+    assert!(future.iter().all(|backup| few.join(&backup.name).exists()));
+
+    let folder = backup_folder(directory.path());
+    let seeded: Vec<_> = (1..=30)
+        .map(|day| seed_backup(&folder, NOW + day * DAY, &format!("future day {day}")))
+        .collect();
+    write_registry(&folder, &seeded);
+    let mut plan = BackupPlan {
+        folder: Some(folder.clone()),
+        ..BackupPlan::default()
+    };
+    let now = chrono::DateTime::from_timestamp(NOW, 0).unwrap();
+    assert_eq!(
+        journal
+            .backup_if_due(&mut plan, Some(PASSPHRASE), now, &Preferences::default())
+            .unwrap(),
+        DailyBackup::Saved
+    );
+    assert_eq!(plan.last_success_at, Some(NOW));
+    assert!(plan.retention_warning);
+
+    let listed = listed_names(&folder);
+    assert_eq!(listed.len(), 31);
+    let new: Vec<_> = listed
+        .iter()
+        .filter(|name| name.starts_with(&format!("ttd-{NOW}-")))
+        .collect();
+    assert_eq!(new.len(), 1, "{listed:?}");
+    assert!(folder.join(new[0]).is_file());
+    assert!(registered_names(&folder).contains(new[0]));
+    assert!(
+        seeded
+            .iter()
+            .all(|backup| folder.join(&backup.name).exists())
+    );
+}
+
+/// Elapsed time of `operation`, with its result.
+fn timed<T>(operation: impl FnOnce() -> T) -> (T, std::time::Duration) {
+    let start = std::time::Instant::now();
+    let result = operation();
+    (result, start.elapsed())
+}
+
+/// local-data-protection — Daily backups: an unavailable folder or a damaged registry fails
+/// before the snapshot is encrypted (two scrypt derivations of about a second each), and leaves
+/// no file behind.
+#[test]
+fn folder_and_registry_problems_fail_before_the_snapshot_is_encrypted() {
+    let directory = tempfile::tempdir().unwrap();
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    let mut entry = Entry::draft("2026-11-22", Slot::Morning);
+    entry.document = document("Synthetic entry that is never encrypted here.");
+    journal.save(entry).unwrap();
+
+    let folder = backup_folder(directory.path());
+    fs::write(folder.join(REGISTRY_FILE), "{ not a registry").unwrap();
+    let (result, elapsed) = timed(|| journal.backup_to(&folder, PASSPHRASE, NOW));
+    assert_eq!(result.err(), Some(Error::BackupRegistry));
+    assert!(elapsed.as_millis() < 1_000, "{elapsed:?}");
+    assert_eq!(names_in(&folder), vec![REGISTRY_FILE.to_owned()]);
+    assert_eq!(
+        fs::read_to_string(folder.join(REGISTRY_FILE)).unwrap(),
+        "{ not a registry"
+    );
+
+    let not_a_folder = directory.path().join("journal.sqlite");
+    let read_only = directory.path().join("read-only");
+    fs::create_dir(&read_only).unwrap();
+    let _read_only = ReadOnlyFolder::new(&read_only);
+    for unavailable in [
+        directory.path().join("unplugged drive"),
+        not_a_folder,
+        read_only.clone(),
+    ] {
+        let (result, elapsed) = timed(|| journal.backup_to(&unavailable, PASSPHRASE, NOW));
+        assert_eq!(
+            result.err(),
+            Some(Error::BackupFolder),
+            "{}",
+            unavailable.display()
+        );
+        assert!(elapsed.as_millis() < 1_000, "{elapsed:?}");
+    }
+    assert!(names_in(&read_only).is_empty());
+}
+
+/// Standard base64 without padding, as age headers write it.
+fn base64_unpadded(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut encoded = String::new();
+    for chunk in bytes.chunks(3) {
+        let group = chunk
+            .iter()
+            .enumerate()
+            .fold(0_u32, |group, (index, byte)| {
+                group | (u32::from(*byte) << (16 - 8 * index))
+            });
+        for index in 0..=chunk.len() {
+            encoded.push(char::from(
+                ALPHABET[((group >> (18 - 6 * index)) & 63) as usize],
+            ));
+        }
+    }
+    encoded
+}
+
+/// local-data-protection — Safe restore / Wrong credential or corrupt backup: a file whose
+/// unauthenticated header demands an excessive scrypt work factor (8 GiB of memory) is refused
+/// before any key derivation runs, and the journal is unchanged.
+#[test]
+fn a_backup_demanding_excessive_key_derivation_work_is_refused_at_once() {
+    assert_eq!(base64_unpadded(b"age"), "YWdl");
+    assert_eq!(base64_unpadded(b"ag"), "YWc");
+    let directory = tempfile::tempdir().unwrap();
+    let crafted = directory.path().join("demanding.age");
+    let mut bytes = format!(
+        "age-encryption.org/v1\n-> scrypt {} 23\n{}\n--- {}\n",
+        base64_unpadded(&[7_u8; 16]),
+        base64_unpadded(&[9_u8; 32]),
+        base64_unpadded(&[11_u8; 32]),
+    )
+    .into_bytes();
+    bytes.extend_from_slice(&[13_u8; 16 + 64]);
+    fs::write(&crafted, bytes).unwrap();
+
+    let mut journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    let mut entry = Entry::draft("2026-11-22", Slot::Evening);
+    entry.document = document("Synthetic entry that stays.");
+    let entry = journal.save(entry).unwrap();
+    let (verified, elapsed) = timed(|| journal_core::verify_backup(&crafted, PASSPHRASE));
+    assert_eq!(verified, Err(Error::Restore));
+    assert!(elapsed.as_millis() < 1_000, "{elapsed:?}");
+    let (restored, elapsed) = timed(|| journal.restore_from(&crafted, PASSPHRASE));
+    assert_eq!(restored, Err(Error::Restore));
+    assert!(elapsed.as_millis() < 1_000, "{elapsed:?}");
+    assert_eq!(journal.list().unwrap(), vec![entry]);
+}
+
+/// Writes an SQLite image with the journal's object names but weakened definitions: no primary
+/// keys, no checks and a non-unique `active_slot` index. Each entry is stored as given.
+fn weakened_backup(directory: &Path, name: &str, entries: &[&Entry]) -> PathBuf {
+    let image = directory.join(format!("{name}.sqlite"));
+    execute(
+        &image,
+        "CREATE TABLE journal_entries(id TEXT, entry_date TEXT, slot TEXT, revision INTEGER, payload TEXT, trashed_at INTEGER);
+         CREATE INDEX active_slot ON journal_entries(slot);
+         CREATE TABLE preferences(key TEXT, value TEXT);
+         PRAGMA user_version=2;",
+    );
+    let connection = rusqlite::Connection::open(&image).unwrap();
+    for entry in entries {
+        connection
+            .execute(
+                "INSERT INTO journal_entries VALUES(?1,?2,?3,?4,?5,NULL)",
+                rusqlite::params![
+                    entry.id,
+                    entry.date,
+                    serde_json::to_value(entry.slot).unwrap().as_str().unwrap(),
+                    entry.revision,
+                    serde_json::to_string(entry).unwrap()
+                ],
+            )
+            .unwrap();
+    }
+    drop(connection);
+    let backup = directory.join(format!("{name}.age"));
+    fs::write(
+        &backup,
+        encrypt_quickly(&backup_plaintext(&fs::read(&image).unwrap()), PASSPHRASE),
+    )
+    .unwrap();
+    backup
+}
+
+fn stored_definition(path: &Path, name: &str) -> String {
+    rusqlite::Connection::open(path)
+        .unwrap()
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE name=?1",
+            [name],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+/// local-data-protection — Safe restore: a restored journal always has this build's schema,
+/// whatever definitions the backup stored, so writing keeps working; content that the current
+/// schema's constraints refuse is not restored at all.
+#[test]
+fn restore_installs_this_builds_schema_whatever_definitions_the_backup_stored() {
+    let directory = tempfile::tempdir().unwrap();
+    let live_path = directory.path().join("live.sqlite");
+    let mut live = Journal::open(&live_path).unwrap();
+    let current = live
+        .save(Entry::draft("2026-11-22", Slot::Evening))
+        .unwrap();
+
+    let mut entry = Entry::draft("2026-11-20", Slot::Morning);
+    entry.document = document("Synthetic entry from a backup with weakened definitions.");
+    entry.revision = 1;
+    let mut same_slot = Entry::draft("2026-11-20", Slot::Morning);
+    same_slot.revision = 1;
+    for refused in [
+        weakened_backup(directory.path(), "duplicate-id", &[&entry, &entry]),
+        weakened_backup(directory.path(), "duplicate-slot", &[&entry, &same_slot]),
+    ] {
+        assert_eq!(
+            live.restore_from(&refused, PASSPHRASE),
+            Err(Error::Restore),
+            "{}",
+            refused.display()
+        );
+        assert_eq!(live.list().unwrap(), vec![current.clone()]);
+    }
+
+    let weakened = weakened_backup(directory.path(), "weakened", &[&entry]);
+    live.restore_from(&weakened, PASSPHRASE).unwrap();
+    assert_eq!(live.list().unwrap(), vec![entry.clone()]);
+    let mut edited = entry.clone();
+    edited.mood = Some(6);
+    let edited = live.save(edited).unwrap();
+    assert_eq!(edited.revision, 2);
+    live.save(Entry::draft("2026-11-21", Slot::Evening))
+        .unwrap();
+    let mut duplicate = Entry::draft("2026-11-20", Slot::Morning);
+    duplicate.document = document("Synthetic duplicate morning.");
+    assert_eq!(live.save(duplicate), Err(Error::Occupied));
+    live.set_preferences(&Preferences {
+        theme: "dark".into(),
+        ..Preferences::default()
+    })
+    .unwrap();
+    assert_eq!(live.preferences().unwrap().theme, "dark");
+
+    let table = stored_definition(&live_path, "journal_entries");
+    assert!(
+        table.contains("id TEXT PRIMARY KEY") && table.contains("CHECK(revision > 0)"),
+        "{table}"
+    );
+    assert!(stored_definition(&live_path, "active_slot").starts_with("CREATE UNIQUE INDEX"));
+    assert!(stored_definition(&live_path, "preferences").contains("key TEXT PRIMARY KEY"));
+}
+
+/// local-data-protection — Encrypted local backups before real use: a chosen folder is checked
+/// by writing, publishing and removing a small file, and an unusable one is refused clearly.
+#[test]
+fn folder_check_accepts_a_writable_folder_and_leaves_nothing_behind() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = backup_folder(directory.path());
+    fs::write(folder.join("notes.txt"), "Synthetic unrelated file").unwrap();
+    journal_core::probe_backup_folder(&folder).unwrap();
+    assert_eq!(names_in(&folder), vec!["notes.txt"]);
+
+    let file = directory.path().join("not-a-folder");
+    fs::write(&file, "Synthetic file where a folder was expected").unwrap();
+    let read_only = directory.path().join("read-only");
+    fs::create_dir(&read_only).unwrap();
+    let _read_only = ReadOnlyFolder::new(&read_only);
+    for unusable in [
+        directory.path().join("unplugged drive"),
+        file,
+        read_only.clone(),
+    ] {
+        assert_eq!(
+            journal_core::probe_backup_folder(&unusable),
+            Err(Error::BackupFolder),
+            "{}",
+            unusable.display()
+        );
+    }
+    assert!(names_in(&read_only).is_empty());
 }

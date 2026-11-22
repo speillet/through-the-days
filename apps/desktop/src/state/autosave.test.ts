@@ -12,6 +12,8 @@ import {
   findSaver,
   settleDetachedSavers,
   useEntryAutosave,
+  wellFormed,
+  wellFormedText,
   type SaverApi,
 } from './autosave';
 import { flushAll, hasPending } from './flush';
@@ -219,6 +221,37 @@ describe('entry autosave', () => {
     expect(saver.getSnapshot().entry).toMatchObject({ complete: false, revision: 4 });
   });
 
+  it('asks for a reload, keeping the draft, when completion is refused because the entry changed elsewhere', async () => {
+    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const stored = await api.saveEntry({ ...text(newDraft(DATE, 'morning', 'Europe/Paris'), 'Synthetic: done.'), mood: 4, energy: 6 });
+    await api.saveEntry({ ...stored, mood: 7 });
+    const saver = new EntrySaver({ api, initial: stored, create: draftFactory() });
+    await expect(saver.markComplete()).resolves.toEqual(failure('conflict'));
+    expect(saver.getSnapshot()).toMatchObject({
+      state: 'failed',
+      error: failure('conflict'),
+      needsReload: true,
+      entry: { complete: false, revision: 1 },
+    });
+    expect((await api.entriesOn(DATE))[0]).toMatchObject({ mood: 7, complete: false, revision: 2 });
+    // Nothing the person typed is pending, so leaving the entry stays possible.
+    expect(saver.hasPending()).toBe(false);
+    await expect(saver.flush()).resolves.toBe(true);
+  });
+
+  it('asks for a reload when a move is refused because the entry was removed elsewhere', async () => {
+    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const stored = await api.saveEntry({ ...newDraft(DATE, 'morning', 'Europe/Paris'), mood: 2 });
+    await api.trashEntry(stored.id, stored.revision);
+    const saver = new EntrySaver({ api, initial: stored, create: draftFactory() });
+    await expect(saver.move('2026-11-21', 'evening')).resolves.toEqual(failure('notFound'));
+    expect(saver.getSnapshot()).toMatchObject({
+      state: 'failed',
+      needsReload: true,
+      entry: { date: DATE, slot: 'morning', revision: 1 },
+    });
+  });
+
   it('refuses a move onto an occupied slot and leaves both entries untouched', async () => {
     const api = createMemoryApi({ storage: createMemoryStorage() });
     const evening = await api.saveEntry({ ...newDraft(DATE, 'evening', 'Europe/Paris'), mood: 7 });
@@ -280,6 +313,73 @@ describe('entry autosave', () => {
     await settle();
     expect(findSaver(DATE, 'morning')).toBeUndefined();
     expect(hasPending()).toBe(false);
+  });
+});
+
+describe('text the journal can store', () => {
+  it('replaces lone UTF-16 surrogates with U+FFFD and keeps whole characters', () => {
+    expect(wellFormedText('Synthetic \uD83C half')).toBe('Synthetic \uFFFD half');
+    expect(wellFormedText('\uDF3F tail first')).toBe('\uFFFD tail first');
+    expect(wellFormedText('end \uD83C')).toBe('end \uFFFD');
+    // Deliberate multilingual synthetic fixture with whole emoji.
+    const whole = 'Une journée calme 🌿☕';
+    expect(wellFormedText(whole)).toBe(whole);
+    const entry = newDraft(DATE, 'morning', 'Europe/Paris');
+    expect(wellFormed(entry)).toBe(entry);
+  });
+
+  it('saves well-formed text wherever a lone surrogate was typed or pasted', async () => {
+    const { api, requests } = controlledJournal();
+    const saver = new EntrySaver({ api, initial: null, create: draftFactory() });
+    saver.update((entry) => ({
+      ...text(entry, 'Synthetic \uD83C words'),
+      reflection: { ...entry.reflection, proudOf: 'Proud \uDF3F' },
+      wins: [{ id: 'win-1', text: 'Win \uD83C', origin: 'manual', includeInInsights: true }],
+      actions: [{ id: 'action-1', text: 'Walk \uDF3F', category: '' }],
+      anotherEmotion: 'calme \uD83C',
+    }));
+    const flushed = saver.flush();
+    await settle();
+    const sent = requests[0].entry;
+    expect(JSON.stringify(sent.document)).toContain('Synthetic \uFFFD words');
+    expect(sent.reflection.proudOf).toBe('Proud \uFFFD');
+    expect(sent.wins[0].text).toBe('Win \uFFFD');
+    expect(sent.actions[0].text).toBe('Walk \uFFFD');
+    expect(sent.anotherEmotion).toBe('calme \uFFFD');
+    expect(JSON.stringify(sent)).not.toMatch(/\\ud[89ab][0-9a-f]{2}(?!\\ud[c-f])/i);
+    requests[0].resolve();
+    await expect(flushed).resolves.toBe(true);
+  });
+
+  it('saves well-formed text for an explicit change too', async () => {
+    const { api, requests } = controlledJournal();
+    const initial = { ...text(newDraft(DATE, 'morning', 'Europe/Paris'), 'Synthetic \uD83C'), mood: 3, energy: 3, revision: 1 };
+    const saver = new EntrySaver({ api, initial, create: draftFactory() });
+    const completing = saver.markComplete();
+    await settle();
+    await settle();
+    expect(JSON.stringify(requests[0].entry.document)).toContain('Synthetic \uFFFD');
+    requests[0].resolve();
+    await expect(completing).resolves.toBeNull();
+  });
+});
+
+describe('acknowledged version', () => {
+  it('exposes the version the journal acknowledged, separately from local edits', async () => {
+    const { api, requests } = controlledJournal();
+    const saver = new EntrySaver({ api, initial: null, create: draftFactory() });
+    expect(saver.getSnapshot().saved).toBeNull();
+    saver.update((entry) => ({ ...entry, mood: 4 }));
+    void saver.flush();
+    await settle();
+    saver.update((entry) => ({ ...entry, energy: 5 }));
+    requests[0].resolve();
+    await settle();
+    expect(saver.getSnapshot().saved).toMatchObject({ mood: 4, energy: null, revision: 1 });
+    expect(saver.getSnapshot().entry).toMatchObject({ mood: 4, energy: 5, revision: 1 });
+    requests[1].resolve();
+    await settle();
+    expect(saver.getSnapshot().saved).toMatchObject({ mood: 4, energy: 5, revision: 2 });
   });
 });
 

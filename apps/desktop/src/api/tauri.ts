@@ -3,10 +3,11 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { toCommandError, type JournalApi } from './client';
+import { isCommandError, toCommandError, type JournalApi } from './client';
 import type {
   BackupRecord,
   BackupStatus,
+  CommandError,
   Entry,
   PickedBackup,
   Preferences,
@@ -18,10 +19,25 @@ import type {
 
 export const FLUSH_REQUEST_EVENT = 'app://flush-request';
 
-async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+/**
+ * A save the native side never received as a command, for example because the webview could
+ * not encode the entry. Retrying the same entry fails the same way, so the message asks for
+ * the last change to be undone instead of offering a plain retry.
+ */
+export const ENTRY_NOT_SENT: Readonly<CommandError> = Object.freeze({
+  code: 'document',
+  message: 'The entry could not be sent to the journal. Undo your last change and try again.',
+});
+
+/**
+ * Invokes a native command. A rejection that is not a native command error (an invoke or
+ * encoding failure) becomes `fallback`, or the generic English message.
+ */
+async function call<T>(command: string, args?: Record<string, unknown>, fallback?: CommandError): Promise<T> {
   try {
     return await invoke<T>(command, args);
   } catch (error) {
+    if (fallback && !isCommandError(error)) throw { ...fallback };
     throw toCommandError(error);
   }
 }
@@ -29,13 +45,14 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 export function createTauriApi(): JournalApi {
   return {
     startupStatus: () => call<StartupStatus>('startup_status'),
+    retryStartup: () => call<StartupStatus>('retry_startup'),
     today: () => call<string>('today'),
     getPreferences: () => call<Preferences>('get_preferences'),
     setPreferences: (preferences) => call<Preferences>('set_preferences', { preferences }),
     entriesOn: (date) => call<Entry[]>('entries_on', { date }),
     listEntries: () => call<Entry[]>('list_entries'),
     getEntry: (id) => call<Entry>('get_entry', { id }),
-    saveEntry: (entry) => call<Entry>('save_entry', { entry }),
+    saveEntry: (entry) => call<Entry>('save_entry', { entry }, ENTRY_NOT_SENT),
     trashEntry: async (id, revision) => {
       await call<null>('trash_entry', { id, revision });
     },
@@ -56,8 +73,8 @@ export function createTauriApi(): JournalApi {
     runDailyBackup: () => call<BackupStatus>('run_daily_backup'),
     listBackups: () => call<BackupRecord[]>('list_backups'),
     chooseRestoreFile: () => call<PickedBackup | null>('choose_restore_file'),
-    restoreBackup: (source: RestoreSource, passphrase) =>
-      call<RestoreOutcome>('restore_backup', { source, passphrase }),
+    restoreBackup: (source: RestoreSource, passphrase, withoutSafetyBackup = false) =>
+      call<RestoreOutcome>('restore_backup', { source, passphrase, withoutSafetyBackup }),
     migrateJournal: (passphrase, remember) =>
       call<StartupStatus>('migrate_journal', { passphrase, remember }),
     eraseAppData: (confirmation) => call<StartupStatus>('erase_app_data', { confirmation }),
@@ -68,7 +85,7 @@ export function createTauriApi(): JournalApi {
         Promise.resolve()
           .then(callback)
           .catch(() => {
-            // The native fallback still exits after its timeout if flushing failed.
+            // Keep the journal open when a save or flush listener fails.
           });
       }).then(
         (stop) => {
@@ -76,7 +93,7 @@ export function createTauriApi(): JournalApi {
           else unlisten = stop;
         },
         () => {
-          // Without the listener the native fallback still exits after its timeout.
+          // A missing listener must not turn a failed save into a forced quit.
         },
       );
       return () => {
@@ -86,6 +103,9 @@ export function createTauriApi(): JournalApi {
     },
     confirmExit: async () => {
       await call<null>('confirm_exit');
+    },
+    cancelExit: async () => {
+      await call<null>('cancel_exit');
     },
   };
 }

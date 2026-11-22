@@ -69,6 +69,14 @@ pub async fn startup_status(app: AppHandle) -> Result<StartupStatus, CommandErro
 }
 
 #[tauri::command]
+pub async fn retry_startup(app: AppHandle) -> Result<StartupStatus, CommandError> {
+    with_core(app, "retry_startup", |core| {
+        Ok(core.retry_startup(Utc::now()))
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn today(app: AppHandle) -> Result<String, CommandError> {
     with_core(app, "today", |core| core.today(Utc::now())).await
 }
@@ -124,7 +132,10 @@ pub async fn list_trash(app: AppHandle) -> Result<Vec<TrashItem>, CommandError> 
 
 #[tauri::command]
 pub async fn restore_entry(app: AppHandle, id: String) -> Result<Entry, CommandError> {
-    with_core(app, "restore_entry", move |core| core.restore_entry(&id)).await
+    with_core(app, "restore_entry", move |core| {
+        core.restore_entry(&id, Utc::now())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -232,10 +243,11 @@ pub async fn restore_backup(
     app: AppHandle,
     source: RestoreSource,
     passphrase: String,
+    without_safety_backup: bool,
 ) -> Result<RestoreOutcome, CommandError> {
     let passphrase = Zeroizing::new(passphrase);
     with_core(app, "restore_backup", move |core| {
-        core.restore_backup(source, passphrase, Utc::now())
+        core.restore_backup(source, passphrase, without_safety_backup, Utc::now())
     })
     .await
 }
@@ -243,11 +255,14 @@ pub async fn restore_backup(
 #[tauri::command]
 pub async fn migrate_journal(
     app: AppHandle,
-    passphrase: String,
+    passphrase: Option<String>,
     remember: bool,
 ) -> Result<StartupStatus, CommandError> {
-    let passphrase = Zeroizing::new(passphrase);
+    let passphrase = passphrase.map(Zeroizing::new);
     with_core(app, "migrate_journal", move |core| {
+        let passphrase = passphrase
+            .or_else(|| core.session_passphrase())
+            .ok_or_else(CommandError::needs_passphrase)?;
         core.migrate_journal(passphrase, remember, Utc::now())
     })
     .await
@@ -268,6 +283,12 @@ pub async fn erase_app_data(
 #[tauri::command]
 pub fn confirm_exit(app: AppHandle) -> Result<(), CommandError> {
     exit::confirm_and_exit(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_exit(app: AppHandle) -> Result<(), CommandError> {
+    app.state::<exit::ExitGate>().cancel();
     Ok(())
 }
 
@@ -368,7 +389,7 @@ mod tests {
     #[test]
     fn every_command_is_registered_and_called_with_its_argument_names() {
         let native = native_commands();
-        assert_eq!(native.len(), 25);
+        assert_eq!(native.len(), 27);
         assert_eq!(registered(), native.keys().cloned().collect());
         assert_eq!(renderer_calls(), native);
     }

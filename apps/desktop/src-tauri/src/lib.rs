@@ -29,6 +29,7 @@ pub fn run() {
         .setup(setup)
         .invoke_handler(tauri::generate_handler![
             commands::startup_status,
+            commands::retry_startup,
             commands::today,
             commands::get_preferences,
             commands::set_preferences,
@@ -53,6 +54,7 @@ pub fn run() {
             commands::migrate_journal,
             commands::erase_app_data,
             commands::confirm_exit,
+            commands::cancel_exit,
         ]);
     #[cfg(target_os = "macos")]
     let builder = builder.menu(menu::build).on_menu_event(menu::on_menu_event);

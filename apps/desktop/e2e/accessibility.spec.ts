@@ -2,31 +2,7 @@
 // views and protection dialogs in light and dark appearance. Automated rules are a
 // floor, not proof: VoiceOver and keyboard checks still happen in the native app.
 
-import AxeBuilder from '@axe-core/playwright';
-import type { Page } from '@playwright/test';
-import { entry, expect, openView, seedJournal, test } from './fixtures';
-
-async function expectNoSeriousViolations(page: Page, where: string) {
-  // Audit the settled page: a fading dialog has not reached its final contrast yet. Endless
-  // animations (a progress spinner) never finish and cancelled ones reject, so neither is awaited.
-  await page.evaluate(() =>
-    Promise.allSettled(
-      document
-        .getAnimations()
-        .filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime ?? Infinity))
-        .map((animation) => animation.finished),
-    ),
-  );
-  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
-  const serious = results.violations
-    .filter((violation) => violation.impact === 'serious' || violation.impact === 'critical')
-    .map((violation) => ({
-      rule: violation.id,
-      impact: violation.impact,
-      targets: violation.nodes.map((node) => node.target.join(' ')),
-    }));
-  expect(serious, `${where}: serious or critical accessibility violations`).toEqual([]);
-}
+import { entry, expect, expectNoSeriousViolations, openView, seedJournal, test } from './fixtures';
 
 for (const colorScheme of ['light', 'dark'] as const) {
   test(`Today, Trash and Settings have no serious accessibility violations (${colorScheme})`, async ({ page }) => {

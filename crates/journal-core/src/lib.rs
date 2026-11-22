@@ -20,7 +20,7 @@ pub use error::Error;
 pub use model::{Action, Depth, Entry, Reflection, Slot, Win, document_text};
 pub use plan::{BackupPlan, DailyBackup};
 pub use preferences::Preferences;
-pub use recovery::{BackupInfo, validate_passphrase, verify_backup};
+pub use recovery::{BackupInfo, probe_backup_folder, validate_passphrase, verify_backup};
 pub use registry::{BackupRecord, list_backups};
 pub use schema::schema_version;
 pub use store::{Journal, TrashItem, erase_journal_files};

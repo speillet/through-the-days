@@ -1,6 +1,7 @@
 // One entry: writing depth, the optional check-in beside the journal page, the
 // editor, save state and completion. Nothing is saved until the first answer or
-// keystroke; from then on every change is saved progressively.
+// keystroke; from then on every change is saved progressively. An entry whose
+// writing this version cannot edit exactly stays read-only, so it is never changed.
 
 import { CalendarClock, FileText, Leaf, Maximize2, Minimize2, Trash2 } from 'lucide-react';
 import { useEffect, useId, useImperativeHandle, useRef, useState, type Ref } from 'react';
@@ -13,10 +14,11 @@ import { RadioGroup } from '../../components/RadioGroup';
 import { DEPTH_OPTIONS, SLOT_LABELS } from '../../domain/copy';
 import { formatLongDate } from '../../domain/dates';
 import { EMPTY_DOCUMENT, newDraft } from '../../domain/entry';
-import { useEntryAutosave } from '../../state/autosave';
+import { useEntryAutosave, type AutosaveSnapshot } from '../../state/autosave';
 import { useFocusMode } from '../../state/focus';
 import { usePreferences } from '../../state/preferences';
 import { CheckIn, QuickCheckIn } from '../checkin/CheckIn';
+import { canEditExactly } from '../editor/content';
 import { JournalEditor, type JournalEditorHandle } from '../editor/JournalEditor';
 import { MarkdownDialog } from '../editor/MarkdownDialog';
 import { CompletionControl } from './CompletionControl';
@@ -24,9 +26,20 @@ import { MoveEntryDialog } from './MoveEntryDialog';
 import { SaveFailure, SaveStatus } from './SaveStatus';
 import { entryStatus, type EntryStatus } from './status';
 
+/**
+ * saved: nothing is left unsaved; retry: a save failed and may succeed later;
+ * reload: the save can never succeed (the saved entry changed, disappeared or its
+ * slot is taken), so only reloading the saved version can resolve it.
+ */
+export type FlushOutcome = 'saved' | 'retry' | 'reload';
+
 export interface EntryWorkspaceHandle {
-  /** Saves pending input; resolves false when it could not be saved. */
-  flush(): Promise<boolean>;
+  /** Saves pending input and says whether anything is left unsaved, and why. */
+  flush(): Promise<FlushOutcome>;
+  /** Whether this slot holds an entry (saved, or created by an answer or keystroke). */
+  hasEntry(): boolean;
+  /** Puts the caret at the end of the writing. */
+  focusEditor(): void;
 }
 
 export interface EntryWorkspaceProps {
@@ -39,11 +52,15 @@ export interface EntryWorkspaceProps {
   onStatusChange(slot: Slot, status: EntryStatus): void;
   /** Called whenever every change is saved. */
   onSaved?(): void;
+  /** Called with each version of the entry the journal acknowledges. */
+  onAcknowledged?(entry: Entry): void;
   onMoved(date: string, slot: Slot): void;
   onTrashed(): void;
   onReload(): void;
   ref?: Ref<EntryWorkspaceHandle>;
 }
+
+function ignoreChange(): void {}
 
 const PLACEHOLDERS: Record<Slot, string> = {
   morning: "Write freely. What's on your mind this morning?",
@@ -54,6 +71,16 @@ function isSaveShortcut(event: KeyboardEvent): boolean {
   return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 's';
 }
 
+function flushOutcome(saved: boolean, snapshot: AutosaveSnapshot): FlushOutcome {
+  if (saved) return 'saved';
+  return snapshot.needsReload ? 'reload' : 'retry';
+}
+
+/** Escape pressed while writing: the editor marks it handled, but it still means "leave focus mode". */
+function isFromEditor(event: KeyboardEvent): boolean {
+  return event.target instanceof Element && event.target.closest('.ProseMirror') !== null;
+}
+
 export function EntryWorkspace({
   date,
   slot,
@@ -62,6 +89,7 @@ export function EntryWorkspace({
   autosaveDelayMs,
   onStatusChange,
   onSaved,
+  onAcknowledged,
   onMoved,
   onTrashed,
   onReload,
@@ -84,6 +112,9 @@ export function EntryWorkspace({
   const entry = autosave.entry;
   const [blank] = useState(() => newDraft(date, slot, preferences.timeZone, preferences.defaultDepth));
   const [initialDocument] = useState(() => entry?.document ?? EMPTY_DOCUMENT);
+  // Any save would carry writing the journal may refuse or this version would change,
+  // so the whole entry is read-only; it can still be moved or put in the Trash.
+  const [readOnly] = useState(() => !canEditExactly(initialDocument));
   const [markdown, setMarkdown] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   const [trashing, setTrashing] = useState(false);
@@ -92,9 +123,19 @@ export function EntryWorkspace({
   const depth = entry?.depth ?? pendingDepth ?? preferences.defaultDepth;
   const status = entryStatus(entry);
   const showCheckIn = depth !== 'quick' || visibility.scores;
-  const { flush, saveNow, update } = autosave;
+  const { flush, saveNow } = autosave;
+  const latest = autosave.current;
+  const update = readOnly ? ignoreChange : autosave.update;
 
-  useImperativeHandle(ref, () => ({ flush }), [flush]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      flush: async () => flushOutcome(await flush(), latest()),
+      hasEntry: () => latest().entry !== null,
+      focusEditor: () => editorRef.current?.focus('end'),
+    }),
+    [latest, flush],
+  );
 
   useEffect(() => {
     onStatusChange(slot, status);
@@ -103,6 +144,10 @@ export function EntryWorkspace({
   useEffect(() => {
     if (autosave.state === 'saved') onSaved?.();
   }, [autosave.state, onSaved]);
+
+  useEffect(() => {
+    if (autosave.saved) onAcknowledged?.(autosave.saved);
+  }, [autosave.saved, onAcknowledged]);
 
   // ⌘S saves now, wherever focus is in the open entry.
   useEffect(() => {
@@ -115,11 +160,12 @@ export function EntryWorkspace({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [saveNow]);
 
-  // Escape leaves focus mode (dialogs handle their own Escape first).
+  // Escape leaves focus mode, also while writing. Dialogs and popovers handle their
+  // own Escape first (they prevent its default), and focus mode then stays on.
   useEffect(() => {
     if (!focusMode) return undefined;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      if (event.key !== 'Escape' || (event.defaultPrevented && !isFromEditor(event))) return;
       setFocusMode(false);
     }
     document.addEventListener('keydown', onKeyDown);
@@ -147,6 +193,7 @@ export function EntryWorkspace({
           hint="Optional. Switching keeps everything you wrote and answered."
           layout="row"
           className="depth-selector"
+          disabled={readOnly}
           value={depth}
           options={DEPTH_OPTIONS.map((option) => ({
             value: option.id,
@@ -173,12 +220,13 @@ export function EntryWorkspace({
         {showCheckIn ? (
           <div className="workspace__checkin" hidden={focusMode}>
             {depth === 'quick' ? (
-              <QuickCheckIn values={values} onChange={update} />
+              <QuickCheckIn values={values} readOnly={readOnly} onChange={update} />
             ) : (
               <CheckIn
                 slot={slot}
                 values={values}
                 showScores={visibility.scores}
+                readOnly={readOnly}
                 onChange={update}
                 onWriteDirectly={writeDirectly}
               />
@@ -217,7 +265,7 @@ export function EntryWorkspace({
           <footer className="journal-page__footer">
             <CompletionControl
               entry={entry}
-              showControl={visibility.completionPrompts}
+              showControl={visibility.completionPrompts && !readOnly}
               showScores={visibility.scores}
               onMarkComplete={autosave.markComplete}
               onMarkDraft={autosave.markDraft}

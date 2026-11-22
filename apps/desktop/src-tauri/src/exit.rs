@@ -2,21 +2,14 @@
 //!
 //! When the person asks the app to quit while a window is open, the renderer receives
 //! [`FLUSH_REQUEST_EVENT`], flushes its pending saves and calls the `confirm_exit` command.
-//! If it does not answer within [`FLUSH_TIMEOUT`], the app quits anyway: acknowledged revisions
-//! are already durable, so only unacknowledged input could be lost. Closing the window is
-//! handled by the renderer itself before it destroys the window.
+//! A failed flush cancels the request and leaves writing available for retry. Closing the
+//! window is handled by the renderer itself before it destroys the window.
 
-use std::{
-    sync::atomic::{AtomicBool, Ordering},
-    thread,
-    time::Duration,
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime};
 
 /// Event asking the renderer to flush pending saves before the app quits.
 pub const FLUSH_REQUEST_EVENT: &str = "app://flush-request";
-/// How long a quit waits for the renderer before it proceeds without confirmation.
-pub const FLUSH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// What to do with a request to quit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +47,10 @@ impl ExitGate {
     pub fn confirm(&self) -> bool {
         !self.confirmed.swap(true, Ordering::SeqCst)
     }
+
+    pub fn cancel(&self) {
+        self.flush_requested.store(false, Ordering::SeqCst);
+    }
 }
 
 /// Answers [`RunEvent::ExitRequested`] for quits that come from the system or the runtime.
@@ -88,7 +85,7 @@ pub fn request_quit<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-/// Quits after the renderer flushed, or after the fallback timeout. Only the first call exits.
+/// Quits only after the renderer flushed. Only the first call exits.
 pub fn confirm_and_exit<R: Runtime>(app: &AppHandle<R>) {
     if app.state::<ExitGate>().confirm() {
         app.exit(0);
@@ -113,19 +110,7 @@ pub fn on_run_event<R: Runtime>(app: &AppHandle<R>, event: RunEvent) {
 
 fn request_flush<R: Runtime>(app: &AppHandle<R>) {
     if app.emit(FLUSH_REQUEST_EVENT, ()).is_err() {
-        confirm_and_exit(app);
-        return;
-    }
-    let handle = app.clone();
-    let fallback = thread::Builder::new()
-        .name("exit-fallback".into())
-        .spawn(move || {
-            thread::sleep(FLUSH_TIMEOUT);
-            confirm_and_exit(&handle);
-        });
-    if fallback.is_err() {
-        // Never leave a quit waiting on a renderer that may not answer.
-        confirm_and_exit(app);
+        app.state::<ExitGate>().cancel();
     }
 }
 
@@ -157,5 +142,13 @@ mod tests {
         let gate = ExitGate::default();
         assert!(gate.confirm());
         assert!(!gate.confirm());
+    }
+
+    #[test]
+    fn a_failed_flush_can_cancel_and_retry_a_quit() {
+        let gate = ExitGate::default();
+        assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::FlushFirst);
+        gate.cancel();
+        assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::FlushFirst);
     }
 }

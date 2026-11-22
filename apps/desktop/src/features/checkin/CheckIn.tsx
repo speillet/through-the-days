@@ -1,13 +1,15 @@
 // The optional guided check-in beside the journal page. Each stage offers Back,
 // Skip and Continue; "Write directly" is always there, and the step list lets
-// the person revisit any stage. Moving between stages records nothing.
+// the person revisit any stage. Moving between stages records nothing. A
+// read-only entry keeps its answers visible but disabled.
 
 import { PenLine } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { Entry, Slot } from '../../api/types';
 import { Button } from '../../components/Button';
 import { classNames } from '../../components/classNames';
 import { TAB_STOP } from '../../components/keyboard';
+import { isBlank } from '../../domain/entry';
 import type { EntryChange } from '../../state/autosave';
 import { FeelingScores, StageFields } from './CheckInFields';
 import { checkInStages, type StageId } from './stages';
@@ -18,14 +20,29 @@ export interface CheckInProps {
   /** Current answers; a blank draft when nothing was recorded yet. */
   values: Entry;
   showScores: boolean;
+  /** Shows the answers without letting them change. */
+  readOnly?: boolean;
   onChange(change: EntryChange): void;
   /** Moves focus to the journal page. */
   onWriteDirectly(): void;
 }
 
-export function CheckIn({ slot, values, showScores, onChange, onWriteDirectly }: CheckInProps) {
+/** Answer fields, disabled together when the entry is read-only. */
+function Fields({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
+  return readOnly ? (
+    <fieldset disabled className="checkin__fields checkin__fields--read-only">
+      {children}
+    </fieldset>
+  ) : (
+    <div className="checkin__fields">{children}</div>
+  );
+}
+
+export function CheckIn({ slot, values, showScores, readOnly = false, onChange, onWriteDirectly }: CheckInProps) {
   const titleId = useId();
-  const stages = checkInStages(slot, showScores);
+  // Decided when the check-in opens, so clearing the answer never pulls the stage away.
+  const [intention] = useState(() => !isBlank(values.reflection.intention));
+  const stages = checkInStages(slot, showScores, { intention });
   const [current, setCurrent] = useState<StageId | 'done'>(stages[0].id);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const announceMove = useRef(false);
@@ -80,9 +97,9 @@ export function CheckIn({ slot, values, showScores, onChange, onWriteDirectly }:
           <h3 ref={headingRef} tabIndex={-1} className="checkin__stage-title">
             {stage.title}
           </h3>
-          <div className="checkin__fields">
+          <Fields readOnly={readOnly}>
             <StageFields stage={stage.id} slot={slot} values={values} showScores={showScores} onChange={onChange} />
-          </div>
+          </Fields>
           <div className="checkin__nav">
             {index > 0 ? (
               <Button variant="secondary" size="small" onClick={() => goTo(stages[index - 1].id)}>
@@ -120,7 +137,11 @@ export function CheckIn({ slot, values, showScores, onChange, onWriteDirectly }:
 }
 
 /** Quick Check-in: only mood and energy beside the page. */
-export function QuickCheckIn({ values, onChange }: Pick<CheckInProps, 'values' | 'onChange'>) {
+export function QuickCheckIn({
+  values,
+  readOnly = false,
+  onChange,
+}: Pick<CheckInProps, 'values' | 'readOnly' | 'onChange'>) {
   const titleId = useId();
   return (
     <section className="checkin panel" aria-labelledby={titleId}>
@@ -128,9 +149,9 @@ export function QuickCheckIn({ values, onChange }: Pick<CheckInProps, 'values' |
         How am I feeling?
       </h2>
       <p className="checkin__hint">Optional. A sentence or two on the page is plenty.</p>
-      <div className="checkin__fields">
+      <Fields readOnly={readOnly}>
         <FeelingScores values={values} onChange={onChange} />
-      </div>
+      </Fields>
     </section>
   );
 }

@@ -4,6 +4,7 @@
 
 import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
 import { TextField } from '../../components/TextField';
 import { formatLongDate, supportedTimeZones } from '../../domain/dates';
@@ -119,6 +120,7 @@ export function TimeZoneSection() {
         <select
           id={listId}
           ref={listRef}
+          tabIndex={TAB_STOP}
           className="field__control timezone-list"
           size={8}
           value={matches.includes(selected) ? selected : ''}

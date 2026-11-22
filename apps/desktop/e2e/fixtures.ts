@@ -2,6 +2,7 @@
 // any request leaving this machine, and helpers that seed the browser preview's
 // synthetic journal. Every record here is fictional.
 
+import AxeBuilder from '@axe-core/playwright';
 import { test as base, expect, type Locator, type Page } from '@playwright/test';
 import type { Entry, Preferences, Slot } from '../src/api/types';
 
@@ -54,6 +55,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   reduceMotion: false,
   defaultDepth: 'daily',
   showWordCount: false,
+  textScale: 100,
 };
 
 export function documentOf(text: string): Entry['document'] {
@@ -144,6 +146,45 @@ export async function tabTo(page: Page, target: Locator, maxPresses = 40): Promi
     await page.keyboard.press('Tab');
   }
   await expect(target).toBeFocused();
+}
+
+/**
+ * Audits the settled page with axe-core (WCAG 2.1 A and AA rules) and fails on serious or
+ * critical violations. Automated rules are a floor, not proof.
+ */
+export async function expectNoSeriousViolations(page: Page, where: string): Promise<void> {
+  // Audit the settled page: a fading dialog has not reached its final contrast yet. Endless
+  // animations (a progress spinner) never finish and cancelled ones reject, so neither is awaited.
+  await page.evaluate(() =>
+    Promise.allSettled(
+      document
+        .getAnimations()
+        .filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime ?? Infinity))
+        .map((animation) => animation.finished),
+    ),
+  );
+  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+  const serious = results.violations
+    .filter((violation) => violation.impact === 'serious' || violation.impact === 'critical')
+    .map((violation) => ({
+      rule: violation.id,
+      impact: violation.impact,
+      targets: violation.nodes.map((node) => node.target.join(' ')),
+    }));
+  expect(serious, `${where}: serious or critical accessibility violations`).toEqual([]);
+}
+
+/** Fails when the page or its main region scrolls sideways. */
+export async function expectNoHorizontalOverflow(page: Page, where: string): Promise<void> {
+  const sizes = await page.evaluate(() => {
+    const main = document.getElementById('main-content');
+    return {
+      page: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
+      main: main ? [main.scrollWidth, main.clientWidth] : [0, 0],
+    };
+  });
+  expect(sizes.page[0], `${where}: the page is wider than the window`).toBeLessThanOrEqual(sizes.page[1]);
+  expect(sizes.main[0], `${where}: the main region scrolls sideways`).toBeLessThanOrEqual(sizes.main[1]);
 }
 
 /** The French-word check shared with the unit guards (src/guards/sources.ts). */

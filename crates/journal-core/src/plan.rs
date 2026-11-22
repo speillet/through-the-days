@@ -42,7 +42,8 @@ impl BackupPlan {
     /// Loads the plan stored at `path`; a missing file is the default plan.
     ///
     /// An unreadable or corrupt file is [`Error::Backup`] rather than a silent reset, which
-    /// would forget the chosen folder and the last successful backup.
+    /// would forget the chosen folder and the last successful backup. A missing file is never
+    /// an error, so a caller can report any error as stored backup settings it cannot read.
     pub fn load(path: &Path) -> Result<Self, Error> {
         match fs::read(path) {
             Ok(bytes) => parse_json_object(&bytes, Error::Backup),
@@ -54,7 +55,7 @@ impl BackupPlan {
     /// Stores the plan at `path` atomically: a reader sees the previous or the new plan.
     pub fn store(&self, path: &Path) -> Result<(), Error> {
         let bytes = serde_json::to_vec_pretty(self).map_err(|_| Error::Backup)?;
-        write_atomically(path, &bytes, Error::Backup)
+        write_atomically(path, &bytes, |_| Error::Backup)
     }
 }
 

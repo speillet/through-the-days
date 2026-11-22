@@ -6,7 +6,7 @@ use common::{NOW, document};
 use journal_core::{Entry, Error, Journal, Slot};
 use std::collections::HashSet;
 
-const ALL: [Error; 16] = [
+const ALL: [Error; 19] = [
     Error::Storage,
     Error::Conflict,
     Error::Occupied,
@@ -15,12 +15,15 @@ const ALL: [Error; 16] = [
     Error::Document,
     Error::MigrationRequired,
     Error::Unsupported,
+    Error::Damaged,
     Error::Score,
     Error::Completion,
     Error::Reflection,
     Error::Emotion,
     Error::Backup,
     Error::BackupValidation,
+    Error::BackupRegistry,
+    Error::BackupFolder,
     Error::Restore,
     Error::Passphrase,
 ];
@@ -37,12 +40,15 @@ fn documented_code(error: Error) -> &'static str {
         Error::Document => "document",
         Error::MigrationRequired => "migrationRequired",
         Error::Unsupported => "unsupported",
+        Error::Damaged => "damaged",
         Error::Score => "score",
         Error::Completion => "completion",
         Error::Reflection => "reflection",
         Error::Emotion => "emotion",
         Error::Backup => "backup",
         Error::BackupValidation => "backupValidation",
+        Error::BackupRegistry => "backupRegistry",
+        Error::BackupFolder => "backupFolder",
         Error::Restore => "restore",
         Error::Passphrase => "passphrase",
     }
@@ -86,6 +92,19 @@ fn error_codes_are_stable_and_match_the_desktop_contract() {
         Error::Unsupported.to_string(),
         "This journal was created by a newer version of Through the Days or is not a journal database. It has not been changed."
     );
+    // The desktop shell and the browser preview repeat these messages word for word.
+    assert_eq!(
+        Error::Damaged.to_string(),
+        "Part of the journal file is damaged and could not be read. You can restore your journal from a backup."
+    );
+    assert_eq!(
+        Error::BackupRegistry.to_string(),
+        "This folder's list of backups is damaged or was made by a newer version. Choose a different backup folder; the backups already in it can still be restored with Choose a backup file…"
+    );
+    assert_eq!(
+        Error::BackupFolder.to_string(),
+        "The backup folder is not available or can't be written to. Reconnect the drive or choose another folder."
+    );
 }
 
 /// local-data-protection — Protected secrets and logs / Failure logging; product-guardrails —
@@ -94,7 +113,13 @@ fn error_codes_are_stable_and_match_the_desktop_contract() {
 fn error_messages_are_fixed_english_sentences_without_journal_text() {
     for error in ALL {
         let message = error.to_string();
-        assert!(message.is_ascii() && message.ends_with('.'), "{message}");
+        // A message may end by naming a menu command, which carries its ellipsis.
+        let sentence = message.strip_suffix('…').unwrap_or(&message);
+        assert!(sentence.is_ascii(), "{message}");
+        assert!(
+            message.ends_with('.') || sentence.ends_with("Choose a backup file"),
+            "{message}"
+        );
         assert!(
             message.chars().next().is_some_and(char::is_uppercase),
             "{message}"
@@ -135,7 +160,7 @@ fn error_messages_are_fixed_english_sentences_without_journal_text() {
             Error::Emotion,
             Error::Restore,
             Error::Passphrase,
-            Error::Unsupported
+            Error::Damaged
         ]
     );
     for failure in failures {

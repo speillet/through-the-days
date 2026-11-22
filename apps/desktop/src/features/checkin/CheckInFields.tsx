@@ -135,13 +135,18 @@ export function StageFields({ stage, slot, values, showScores, onChange }: Field
             onChange={onChange}
             hint="An intention, not a promise. It's never counted as done."
           />
-          <ReflectionField label="One small step to try" field="nextStep" values={values} onChange={onChange} />
-          <ActionsPicker
-            legend="Anything already done today?"
-            hint="Optional. Only what you record here counts as done."
-            actions={values.actions}
-            onChange={onChange}
-          />
+          {/* In the Evening, the next step and activities have their own stages. */}
+          {slot === 'morning' ? (
+            <>
+              <ReflectionField label="One small step to try" field="nextStep" values={values} onChange={onChange} />
+              <ActionsPicker
+                legend="Anything already done today?"
+                hint="Optional. Only what you record here counts as done."
+                actions={values.actions}
+                onChange={onChange}
+              />
+            </>
+          ) : null}
         </>
       );
     case 'actions':

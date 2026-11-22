@@ -2,10 +2,11 @@ import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { JournalApi } from '../../api/client';
+import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES, MEMORY_STORAGE_KEY } from '../../api/memory';
 import type { BackupStatus } from '../../api/types';
 import { useFocusMode, type FocusModeContextValue } from '../../state/focus';
 import { useNavigation, type NavigationContextValue } from '../../state/navigation';
-import { createTestApi, renderWithProviders } from '../../test/render';
+import { createTestApi, renderWithProviders, TEST_NOW } from '../../test/render';
 import { BackupBanner } from './BackupBanner';
 
 const PASSPHRASE = 'fictional-orchard-lantern';
@@ -196,5 +197,73 @@ describe('backup banner', () => {
     renderBanner(api);
     expect(await screen.findByText(/Some older backups could not be removed safely, so they were kept/)).toBeVisible();
     expect(screen.getByText(/Nothing was deleted/)).toBeVisible();
+  });
+
+  it('says when the backup settings could not be read, and never lets that be dismissed', async () => {
+    const user = userEvent.setup();
+    const storage = createMemoryStorage();
+    const first = createMemoryApi({ storage, now: () => TEST_NOW });
+    await first.chooseBackupFolder();
+    const stored = JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? '{}') as Record<string, unknown>;
+    stored.plan = { folderChosen: true, unknownField: 'written by a newer version' };
+    storage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(stored));
+    const { probes } = renderBanner(createMemoryApi({ storage, now: () => TEST_NOW }));
+
+    const banner = await screen.findByRole('group', { name: 'Backup status' });
+    expect(banner).toHaveTextContent('Backup settings could not be read');
+    expect(banner).toHaveTextContent(
+      'Backup settings on this Mac could not be read. Choose your backup folder and passphrase again; earlier backups are not affected.',
+    );
+    expect(banner).not.toHaveTextContent('Your journal isn’t backed up yet');
+    expect(within(banner).queryByRole('button', { name: /Dismiss|Not now/ })).not.toBeInTheDocument();
+    act(() => probes.focus?.setFocusMode(true));
+    expect(screen.getByText(/Backup settings on this Mac could not be read\./)).toBeInTheDocument();
+    act(() => probes.focus?.setFocusMode(false));
+    await user.click(within(banner).getByRole('button', { name: 'Backup settings' }));
+    expect(probes.navigation).toMatchObject({ view: 'settings', settingsSection: 'backups' });
+  });
+
+  it('offers another folder, and no pointless retry, when the folder’s list of backups is damaged', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.setBackupPassphrase(PASSPHRASE, false);
+    const damaged = failedStatus({ lastError: { code: 'backupRegistry', message: ERROR_MESSAGES.backupRegistry } });
+    vi.spyOn(api, 'runDailyBackup').mockResolvedValueOnce(damaged);
+    const backupStatus = vi.spyOn(api, 'backupStatus').mockResolvedValueOnce(damaged);
+    const choose = vi.spyOn(api, 'chooseBackupFolder');
+    renderBanner(api);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(ERROR_MESSAGES.backupRegistry);
+    expect(within(alert).queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    backupStatus.mockRestore();
+    await user.click(within(alert).getByRole('button', { name: 'Choose another folder…' }));
+    expect(choose).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('Today’s backup is done.')).toBeInTheDocument();
+    await expect(api.listBackups()).resolves.toHaveLength(1);
+  });
+
+  it('offers both trying again and another folder when the folder is unavailable', async () => {
+    const api = createTestApi();
+    const unavailable = failedStatus({ lastError: { code: 'backupFolder', message: ERROR_MESSAGES.backupFolder } });
+    vi.spyOn(api, 'runDailyBackup').mockResolvedValue(unavailable);
+    vi.spyOn(api, 'backupStatus').mockResolvedValue(unavailable);
+    renderBanner(api);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(`${ERROR_MESSAGES.backupFolder} Earlier backups are not affected.`);
+    expect(within(alert).getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(within(alert).getByRole('button', { name: 'Choose another folder…' })).toBeInTheDocument();
+  });
+
+  it('keeps a remembered passphrase remembered when it is entered again', async () => {
+    const user = userEvent.setup();
+    const api = await folderChosen();
+    const due: BackupStatus = { ...(await api.backupStatus()), remembered: true };
+    vi.spyOn(api, 'runDailyBackup').mockResolvedValue(due);
+    vi.spyOn(api, 'backupStatus').mockResolvedValue(due);
+    renderBanner(api);
+    await user.click(await screen.findByRole('button', { name: 'Enter passphrase' }));
+    const dialog = screen.getByRole('dialog', { name: 'Enter your backup passphrase' });
+    expect(within(dialog).getByRole('checkbox', { name: 'Remember in macOS Keychain' })).toBeChecked();
   });
 });

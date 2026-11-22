@@ -1,16 +1,25 @@
 // Browser-preview and test implementation of JournalApi. It keeps synthetic data
 // in Web Storage under one key, so reloading the page behaves like restarting the
-// app, and reproduces journal-core's rules (crates/journal-core/src) so the
-// interface meets the same validation, conflicts and errors as the native journal.
+// app, and reproduces journal-core's rules (crates/journal-core/src) and the native
+// shell's (apps/desktop/src-tauri/src/state) so the interface meets the same
+// validation, conflicts, states and errors as the native journal.
 //
 // Backups are simulated: nothing is encrypted, no file is written, and a
 // passphrase is never stored. Each simulated backup keeps a non-cryptographic
 // fingerprint of its passphrase only to reproduce the wrong-passphrase failure.
+//
+// Damage can be simulated in the stored data, for tests and the browser preview:
+// - a `journal` that is not a journal snapshot is a damaged journal file: the launch fails
+//   with the damaged message, like a journal whose header can't be read;
+// - an item of `journal.entries` whose `entry` is not an object is a damaged page in an
+//   open journal: every operation that reads the entries fails with `damaged`;
+// - a `plan` that is not a backup plan is an unreadable backup-plan.json
+//   (settingsUnreadable until a backup folder is chosen again).
 
 import { canComplete, isBlank, newId } from '../domain/entry';
 import { isEmotionId } from '../domain/emotions';
 import { isIsoDate, isValidTimeZone, todayIn } from '../domain/dates';
-import { DEFAULT_PREFERENCES } from '../domain/preferences';
+import { DEFAULT_PREFERENCES, isTextScale } from '../domain/preferences';
 import { UNKNOWN_ERROR_MESSAGE, type JournalApi } from './client';
 import type {
   BackupState,
@@ -19,7 +28,9 @@ import type {
   Entry,
   ErrorCode,
   Preferences,
+  RestoreOutcome,
   RestoreSource,
+  StartupState,
   StartupStatus,
   TrashItem,
 } from './types';
@@ -30,10 +41,17 @@ export const SYNTHETIC_BACKUP_PATH = '~/Documents/Synthetic backups';
 export const TRASH_RETENTION_SECONDS = 30 * 86_400;
 /** D-009: keep the 30 latest validated backups. */
 export const BACKUP_RETENTION_COUNT = 30;
+/** journal-core refuses documents nested deeper than this; the doc node is level 1. */
+export const MAX_DOCUMENT_DEPTH = 32;
+/** After a failed automatic backup, the daily routine waits this long unless the folder or passphrase changes. */
+export const AUTOMATIC_RETRY_SECONDS = 60 * 60;
+/** The native shell's message when the journal could not be opened for another reason. */
+export const OPEN_FAILED_MESSAGE = 'The journal could not be opened. It has not been changed.';
+const PREVIEW_DATA_LOCATION = 'Browser preview storage (synthetic data only)';
 const ERASE_CONFIRMATION = 'ERASE';
 const MAX_REVISION = 4_294_967_295; // u32::MAX in journal-core
 
-/** English messages, identical to journal-core's for the codes it defines. */
+/** English messages, identical to journal-core's and the native shell's for the codes they define. */
 export const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = Object.freeze({
   storage: 'The journal could not be saved. Check available disk space and try again.',
   conflict: 'This entry has changed. Reopen it before saving to avoid overwriting another revision.',
@@ -53,6 +71,13 @@ export const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = Object.freeze
   restore:
     'The backup could not be restored. Check the passphrase and choose a complete supported backup. Your current journal is unchanged.',
   passphrase: 'Choose a backup passphrase with at least 12 characters. Keep it somewhere safe for recovery.',
+  damaged: 'Part of the journal file is damaged and could not be read. You can restore your journal from a backup.',
+  backupRegistry:
+    "This folder's list of backups is damaged or was made by a newer version. Choose a different backup folder; the backups already in it can still be restored with Choose a backup file…",
+  backupFolder:
+    "The backup folder is not available or can't be written to. Reconnect the drive or choose another folder.",
+  safetyBackupFailed:
+    'A safety backup of your current journal could not be made, so nothing was restored. If your current journal is damaged, you can restore without a safety backup.',
   notReady: 'The journal is not open yet. Finish the step on screen first.',
   needsFolder: 'Choose a backup folder first.',
   needsPassphrase: 'Enter your backup passphrase first.',
@@ -65,12 +90,21 @@ function failure(code: ErrorCode): CommandError {
   return { code, message: ERROR_MESSAGES[code] };
 }
 
+function isFailure(value: unknown): value is CommandError {
+  return isRecord(value) && typeof value.code === 'string' && typeof value.message === 'string';
+}
+
 export interface MemoryApiOptions {
   /** Defaults to window.localStorage (or a private in-memory store when unavailable). */
   storage?: Storage;
   /** Clock for today, trash retention and backup times. */
   now?: () => Date;
-  /** Simulates a startup state such as needsMigration; defaults to ready. */
+  /**
+   * Simulates the state found at launch; by default it follows the stored journal (ready, or
+   * failed when the stored journal is damaged). "failed" is a passing failure that
+   * retryStartup clears; "unsupported" is a journal this version cannot open, which stays
+   * until a restore or an erase replaces it; "needsMigration" waits for migrateJournal.
+   */
   startup?: Partial<StartupStatus>;
 }
 
@@ -93,35 +127,58 @@ interface SimulatedBackup {
   snapshot: JournalSnapshot;
 }
 
+/** Device-local backup plan, kept outside the journal like backup-plan.json. */
+interface BackupPlan {
+  folderChosen: boolean;
+  lastSuccessDate: string | null;
+  lastSuccessAt: number | null;
+  retentionWarning: boolean;
+  /** Simulated Keychain item. */
+  rememberedFingerprint: string | null;
+}
+
+/** An unreadable journal kept aside by a restore from the startup screen, never deleted by it. */
+interface SetAsideJournal {
+  name: string;
+  journal: unknown;
+}
+
 interface PersistedState {
   version: 1;
   /** The live journal database. */
   journal: JournalSnapshot;
-  /** Device-local backup plan, kept outside the journal like backup-plan.json. */
-  plan: {
-    folderChosen: boolean;
-    lastSuccessDate: string | null;
-    lastSuccessAt: number | null;
-    retentionWarning: boolean;
-    /** Simulated Keychain item. */
-    rememberedFingerprint: string | null;
-  };
+  plan: BackupPlan;
   /** Files in the simulated backup folder; erasing app data never removes them. */
   folder: SimulatedBackup[];
+  setAside: SetAsideJournal[];
+}
+
+/** What load() read. Unreadable parts are written back unchanged until they are replaced. */
+interface Loaded {
+  state: PersistedState;
+  /** The stored journal when it is not a journal snapshot; undefined when readable. */
+  damagedJournal: unknown;
+  /** The stored backup plan when it cannot be read; undefined when readable. */
+  damagedPlan: unknown;
+}
+
+function emptyPlan(): BackupPlan {
+  return {
+    folderChosen: false,
+    lastSuccessDate: null,
+    lastSuccessAt: null,
+    retentionWarning: false,
+    rememberedFingerprint: null,
+  };
 }
 
 function initialState(): PersistedState {
   return {
     version: 1,
     journal: { entries: [], preferences: { ...DEFAULT_PREFERENCES } },
-    plan: {
-      folderChosen: false,
-      lastSuccessDate: null,
-      lastSuccessAt: null,
-      retentionWarning: false,
-      rememberedFingerprint: null,
-    },
+    plan: emptyPlan(),
     folder: [],
+    setAside: [],
   };
 }
 
@@ -171,11 +228,53 @@ function copy<T>(value: T): T {
 }
 
 // ---------------------------------------------------------------------------
-// Structural checks: the native command rejects these while deserialising.
+// Reading the stored state.
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+function readJournal(value: unknown): JournalSnapshot | undefined {
+  if (!isRecord(value) || !Array.isArray(value.entries) || !isRecord(value.preferences)) return undefined;
+  // Preferences stored by an earlier version take the defaults of newer fields.
+  return {
+    entries: value.entries as StoredEntry[],
+    preferences: { ...DEFAULT_PREFERENCES, ...value.preferences } as Preferences,
+  };
+}
+
+const PLAN_KEYS = ['folderChosen', 'lastSuccessDate', 'lastSuccessAt', 'retentionWarning', 'rememberedFingerprint'];
+
+/** Like BackupPlan::load: missing fields take their defaults, anything unknown or mistyped is unreadable. */
+function readPlan(value: unknown): BackupPlan | undefined {
+  if (value === undefined) return emptyPlan();
+  if (!isRecord(value) || Object.keys(value).some((key) => !PLAN_KEYS.includes(key))) return undefined;
+  const plan = { ...emptyPlan(), ...value } as Record<string, unknown>;
+  const nullable = (field: unknown, type: 'string' | 'number') => field === null || typeof field === type;
+  if (
+    typeof plan.folderChosen !== 'boolean' ||
+    typeof plan.retentionWarning !== 'boolean' ||
+    !nullable(plan.lastSuccessDate, 'string') ||
+    !nullable(plan.lastSuccessAt, 'number') ||
+    !nullable(plan.rememberedFingerprint, 'string')
+  ) {
+    return undefined;
+  }
+  return plan as unknown as BackupPlan;
+}
+
+function isStoredEntry(item: unknown): item is StoredEntry {
+  return isRecord(item) && isRecord(item.entry) && (item.trashedAt === null || typeof item.trashedAt === 'number');
+}
+
+/** The journal's entries, or the damaged error when part of the stored journal can't be read. */
+function entriesOf(state: PersistedState): StoredEntry[] {
+  if (!state.journal.entries.every(isStoredEntry)) throw failure('damaged');
+  return state.journal.entries;
+}
+
+// ---------------------------------------------------------------------------
+// Structural checks: the native command rejects these while deserialising.
 
 function rejectUnknownKeys(value: Record<string, unknown>, allowed: readonly string[]): void {
   if (Object.keys(value).some((key) => !allowed.includes(key))) throw failure('document');
@@ -286,7 +385,8 @@ function normaliseEntry(input: unknown): Entry {
 
 const UUID =
   /^(?:urn:uuid:)?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\{[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}|[0-9a-f]{32})$/i;
-const NODE_TYPES = new Set([
+/** The editor schema's nodes and marks (features/editor/extensions.ts); it has no links. */
+export const DOCUMENT_NODE_TYPES: ReadonlySet<string> = new Set([
   'doc',
   'paragraph',
   'text',
@@ -299,20 +399,24 @@ const NODE_TYPES = new Set([
   'hardBreak',
   'horizontalRule',
 ]);
-const MARK_TYPES = new Set(['bold', 'italic', 'strike', 'code', 'underline', 'link']);
+export const DOCUMENT_MARK_TYPES: ReadonlySet<string> = new Set(['bold', 'italic', 'strike', 'code', 'underline']);
 
-function validateNode(node: unknown): void {
-  if (!isRecord(node) || typeof node.type !== 'string' || !NODE_TYPES.has(node.type)) throw failure('document');
-  if (node.type === 'text' && typeof node.text !== 'string') throw failure('document');
+/** Only documents the editor can open again: known nodes and marks, no empty text, bounded nesting. */
+function validateNode(node: unknown, depth: number): void {
+  if (depth > MAX_DOCUMENT_DEPTH) throw failure('document');
+  if (!isRecord(node) || typeof node.type !== 'string' || !DOCUMENT_NODE_TYPES.has(node.type)) throw failure('document');
+  if (node.type === 'text' && (typeof node.text !== 'string' || node.text === '')) throw failure('document');
   if (node.marks !== undefined) {
     if (!Array.isArray(node.marks)) throw failure('document');
     for (const mark of node.marks) {
-      if (!isRecord(mark) || typeof mark.type !== 'string' || !MARK_TYPES.has(mark.type)) throw failure('document');
+      if (!isRecord(mark) || typeof mark.type !== 'string' || !DOCUMENT_MARK_TYPES.has(mark.type)) {
+        throw failure('document');
+      }
     }
   }
   if (node.content !== undefined) {
     if (!Array.isArray(node.content)) throw failure('document');
-    node.content.forEach(validateNode);
+    for (const child of node.content) validateNode(child, depth + 1);
   }
 }
 
@@ -340,7 +444,7 @@ function validateEntry(entry: Entry): void {
   }
   if (!isIsoDate(entry.date)) throw failure('date');
   if (!UUID.test(entry.id) || entry.document.type !== 'doc') throw failure('document');
-  validateNode(entry.document);
+  validateNode(entry.document, 1);
 }
 
 const PREFERENCE_KEYS = Object.keys(DEFAULT_PREFERENCES) as (keyof Preferences)[];
@@ -357,6 +461,7 @@ function normalisePreferences(input: unknown): Preferences {
   if (!isValidTimeZone(preferences.timeZone)) throw failure('date');
   if (!['system', 'light', 'dark'].includes(preferences.theme)) throw failure('document');
   if (!['quick', 'daily', 'deep'].includes(preferences.defaultDepth)) throw failure('document');
+  if (!isTextScale(preferences.textScale)) throw failure('document');
   return preferences;
 }
 
@@ -373,53 +478,91 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
   const nowUnix = () => Math.floor(now().getTime() / 1000);
 
   const requested = options.startup ?? {};
-  const requestedState = requested.state ?? 'ready';
-  let startup: StartupStatus = {
-    state: requestedState,
-    fromVersion: requested.fromVersion ?? (requestedState === 'needsMigration' ? 1 : null),
-    message:
-      requested.message ??
-      (requestedState === 'unsupported'
-        ? ERROR_MESSAGES.unsupported
-        : requestedState === 'failed'
-          ? 'The journal could not be opened. It has not been changed.'
-          : null),
-    dataLocation: requested.dataLocation ?? 'Browser preview storage (synthetic data only)',
-  };
+  const dataLocation = requested.dataLocation ?? PREVIEW_DATA_LOCATION;
+  // A simulated newer journal stays unreadable until a restore or an erase replaces it.
+  let simulatedNewerJournal = requested.state === 'unsupported';
 
-  // Session state: like the native app, a typed passphrase lives only in memory;
-  // a remembered one is read back from the simulated Keychain at launch.
-  let sessionFingerprint: string | null = load().plan.rememberedFingerprint;
-  let lastError: CommandError | null = null;
-  let pickedBackup: string | null = null;
-
-  function load(): PersistedState {
+  function load(): Loaded {
     let raw: string | null = null;
     try {
       raw = storage.getItem(MEMORY_STORAGE_KEY);
     } catch {
       raw = null;
     }
-    if (!raw) return initialState();
+    if (!raw) return { state: initialState(), damagedJournal: undefined, damagedPlan: undefined };
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(raw) as PersistedState;
-      if (parsed && parsed.version === 1 && isRecord(parsed.journal)) {
-        parsed.journal.preferences = { ...DEFAULT_PREFERENCES, ...parsed.journal.preferences };
-        return parsed;
-      }
+      parsed = JSON.parse(raw);
     } catch {
-      // A damaged preview store starts again; it only ever holds synthetic data.
+      parsed = undefined;
     }
-    return initialState();
+    if (!isRecord(parsed) || parsed.version !== 1) {
+      // Nothing in the store can be read: neither the journal nor the backup plan.
+      return { state: initialState(), damagedJournal: raw, damagedPlan: raw };
+    }
+    const fresh = initialState();
+    const journal = readJournal(parsed.journal);
+    const plan = readPlan(parsed.plan);
+    return {
+      state: {
+        version: 1,
+        journal: journal ?? fresh.journal,
+        plan: plan ?? fresh.plan,
+        folder: Array.isArray(parsed.folder) ? (parsed.folder as SimulatedBackup[]) : [],
+        setAside: Array.isArray(parsed.setAside) ? (parsed.setAside as SetAsideJournal[]) : [],
+      },
+      damagedJournal: journal ? undefined : parsed.journal,
+      damagedPlan: plan ? undefined : parsed.plan,
+    };
   }
 
-  function commit(next: PersistedState): void {
+  function commit(loaded: Loaded): void {
+    const { state, damagedJournal, damagedPlan } = loaded;
+    const stored = {
+      ...state,
+      journal: damagedJournal === undefined ? state.journal : damagedJournal,
+      plan: damagedPlan === undefined ? state.plan : damagedPlan,
+    };
     try {
-      storage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(next));
+      storage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(stored));
     } catch {
       throw failure('storage');
     }
   }
+
+  function startupStatusOf(state: StartupState, message: string | null = null, fromVersion: number | null = null) {
+    return { state, fromVersion, message, dataLocation };
+  }
+
+  /** Like the native launch: opens the journal and classifies what it found. */
+  function openJournal(): StartupStatus {
+    if (simulatedNewerJournal) return startupStatusOf('unsupported', ERROR_MESSAGES.unsupported);
+    if (load().damagedJournal !== undefined) return startupStatusOf('failed', ERROR_MESSAGES.damaged);
+    return startupStatusOf('ready');
+  }
+
+  let startup: StartupStatus = requested.state
+    ? startupStatusOf(
+        requested.state,
+        requested.message ??
+          (requested.state === 'unsupported'
+            ? ERROR_MESSAGES.unsupported
+            : requested.state === 'failed'
+              ? OPEN_FAILED_MESSAGE
+              : null),
+        requested.fromVersion ?? (requested.state === 'needsMigration' ? 1 : null),
+      )
+    : openJournal();
+
+  // Session state: like the native app, a typed passphrase lives only in memory;
+  // a remembered one is read back from the simulated Keychain at launch.
+  const launched = load();
+  let planUnreadable = launched.damagedPlan !== undefined;
+  let sessionFingerprint: string | null = launched.state.plan.rememberedFingerprint;
+  let lastError: CommandError | null = null;
+  let pickedBackup: string | null = null;
+  /** The last failed automatic backup, which pauses the daily routine for an hour. */
+  let automaticFailureAt: number | null = null;
 
   function requireReady(): void {
     if (startup.state !== 'ready') throw failure('notReady');
@@ -429,10 +572,11 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
     return todayIn(state.journal.preferences.timeZone, now());
   }
 
-  function statusOf(state: PersistedState): BackupStatus {
+  function statusOf({ state }: Loaded): BackupStatus {
     const { plan } = state;
     let backupState: BackupState;
-    if (!plan.folderChosen) backupState = 'needsFolder';
+    if (planUnreadable) backupState = 'settingsUnreadable';
+    else if (!plan.folderChosen) backupState = 'needsFolder';
     else if (plan.lastSuccessDate === journalToday(state)) backupState = 'upToDate';
     else if (sessionFingerprint === null) backupState = 'needsPassphrase';
     else if (lastError) backupState = 'failed';
@@ -451,10 +595,14 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
     };
   }
 
+  function folderChosen(state: PersistedState): boolean {
+    return !planUnreadable && state.plan.folderChosen;
+  }
+
   /** Publishes a simulated backup of the live journal into the folder. */
   function addBackup(state: PersistedState, passphraseFingerprint: string): void {
     const createdAt = nowUnix();
-    const snapshot = copy(state.journal);
+    const snapshot = copy({ ...state.journal, entries: entriesOf(state) });
     state.folder.push({
       name: `ttd-${createdAt}-${newId()}.ttd.age`,
       createdAt,
@@ -462,36 +610,45 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
       fingerprint: passphraseFingerprint,
       snapshot,
     });
-    // Keep the 30 latest, pruning only after the new backup exists.
+    // Keep the 30 latest, pruning only after the new backup exists, and never the new one.
     state.folder.sort((a, b) => a.createdAt - b.createdAt);
     while (state.folder.length > BACKUP_RETENTION_COUNT) state.folder.shift();
   }
 
   /** Backs up, records success only once the result is stored, and tracks failures. */
-  function publishBackup(state: PersistedState, passphraseFingerprint: string): void {
-    addBackup(state, passphraseFingerprint);
-    state.plan.lastSuccessDate = journalToday(state);
-    state.plan.lastSuccessAt = nowUnix();
-    state.plan.retentionWarning = false;
+  function publishBackup(loaded: Loaded, passphraseFingerprint: string): void {
+    const { state } = loaded;
     try {
-      commit(state);
-    } catch {
-      lastError = failure('backup');
+      addBackup(state, passphraseFingerprint);
+      state.plan.lastSuccessDate = journalToday(state);
+      state.plan.lastSuccessAt = nowUnix();
+      state.plan.retentionWarning = false;
+      commit(loaded);
+    } catch (caught) {
+      lastError = isFailure(caught) && caught.code === 'damaged' ? failure('damaged') : failure('backup');
       throw lastError;
     }
     lastError = null;
   }
 
+  function purgeExpired(state: PersistedState): boolean {
+    const cutoff = nowUnix() - TRASH_RETENTION_SECONDS;
+    const entries = entriesOf(state);
+    const kept = entries.filter((item) => item.trashedAt === null || item.trashedAt > cutoff);
+    state.journal.entries = kept;
+    return kept.length !== entries.length;
+  }
+
   function findActive(state: PersistedState, id: string): StoredEntry | undefined {
-    return state.journal.entries.find((item) => item.entry.id === id && item.trashedAt === null);
+    return entriesOf(state).find((item) => item.entry.id === id && item.trashedAt === null);
   }
 
   function findTrashed(state: PersistedState, id: string): StoredEntry | undefined {
-    return state.journal.entries.find((item) => item.entry.id === id && item.trashedAt !== null);
+    return entriesOf(state).find((item) => item.entry.id === id && item.trashedAt !== null);
   }
 
   function slotTaken(state: PersistedState, entry: Entry, exceptId?: string): boolean {
-    return state.journal.entries.some(
+    return entriesOf(state).some(
       (item) =>
         item.trashedAt === null &&
         item.entry.date === entry.date &&
@@ -500,50 +657,59 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
     );
   }
 
+  function activeCount(state: PersistedState): number {
+    return entriesOf(state).filter((item) => item.trashedAt === null).length;
+  }
+
   return {
     async startupStatus() {
       return { ...startup };
     },
 
+    async retryStartup() {
+      if (startup.state === 'failed' || startup.state === 'unsupported') startup = openJournal();
+      return { ...startup };
+    },
+
     async today() {
       requireReady();
-      return journalToday(load());
+      return journalToday(load().state);
     },
 
     async getPreferences() {
       requireReady();
-      return load().journal.preferences;
+      return load().state.journal.preferences;
     },
 
     async setPreferences(input) {
       requireReady();
       const preferences = normalisePreferences(input);
-      const state = load();
-      state.journal.preferences = preferences;
-      commit(state);
+      const loaded = load();
+      loaded.state.journal.preferences = preferences;
+      commit(loaded);
       return { ...preferences };
     },
 
     async entriesOn(date) {
       requireReady();
       if (!isIsoDate(date)) throw failure('date');
-      return load()
-        .journal.entries.filter((item) => item.trashedAt === null && item.entry.date === date)
+      return entriesOf(load().state)
+        .filter((item) => item.trashedAt === null && item.entry.date === date)
         .sort(sortBySlot)
         .map((item) => item.entry);
     },
 
     async listEntries() {
       requireReady();
-      return load()
-        .journal.entries.filter((item) => item.trashedAt === null)
+      return entriesOf(load().state)
+        .filter((item) => item.trashedAt === null)
         .sort((a, b) => (a.entry.date === b.entry.date ? sortBySlot(a, b) : a.entry.date < b.entry.date ? 1 : -1))
         .map((item) => item.entry);
     },
 
     async getEntry(id) {
       requireReady();
-      const found = findActive(load(), id);
+      const found = findActive(load().state, id);
       if (!found) throw failure('notFound');
       return found.entry;
     },
@@ -552,8 +718,9 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
       requireReady();
       const entry = normaliseEntry(input);
       validateEntry(entry);
-      const state = load();
-      const existing = state.journal.entries.find((item) => item.entry.id === entry.id);
+      const loaded = load();
+      const { state } = loaded;
+      const existing = entriesOf(state).find((item) => item.entry.id === entry.id);
       if (existing && existing.trashedAt !== null) throw failure('notFound');
       if ((existing?.entry.revision ?? 0) !== entry.revision) throw failure('conflict');
       let complete = entry.complete;
@@ -567,24 +734,24 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
       const saved: Entry = { ...entry, complete, revision: entry.revision + 1 };
       if (existing) existing.entry = saved;
       else state.journal.entries.push({ entry: saved, trashedAt: null });
-      commit(state);
+      commit(loaded);
       return copy(saved);
     },
 
     async trashEntry(id, revision) {
       requireReady();
-      const state = load();
-      const found = findActive(state, id);
+      const loaded = load();
+      const found = findActive(loaded.state, id);
       if (!found) throw failure('notFound');
       if (found.entry.revision !== revision) throw failure('conflict');
       found.trashedAt = nowUnix();
-      commit(state);
+      commit(loaded);
     },
 
     async listTrash() {
       requireReady();
-      return load()
-        .journal.entries.filter((item): item is StoredEntry & { trashedAt: number } => item.trashedAt !== null)
+      return entriesOf(load().state)
+        .filter((item): item is StoredEntry & { trashedAt: number } => item.trashedAt !== null)
         .sort((a, b) => b.trashedAt - a.trashedAt)
         .map(
           (item): TrashItem => ({
@@ -597,34 +764,33 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
 
     async restoreEntry(id) {
       requireReady();
-      const state = load();
+      const loaded = load();
+      const { state } = loaded;
       const found = findTrashed(state, id);
-      if (!found) throw failure('notFound');
+      // Once its 30 days have passed, an entry can't be restored, even before the next purge.
+      if (!found || (found.trashedAt ?? 0) <= nowUnix() - TRASH_RETENTION_SECONDS) throw failure('notFound');
       if (slotTaken(state, found.entry)) throw failure('occupied');
       if (found.entry.revision >= MAX_REVISION) throw failure('conflict');
       found.entry = { ...found.entry, revision: found.entry.revision + 1 };
       found.trashedAt = null;
-      commit(state);
+      commit(loaded);
       return copy(found.entry);
     },
 
     async deleteEntryPermanently(id) {
       requireReady();
-      const state = load();
+      const loaded = load();
+      const { state } = loaded;
       const found = findTrashed(state, id);
       if (!found) throw failure('notFound');
-      state.journal.entries = state.journal.entries.filter((item) => item !== found);
-      commit(state);
+      state.journal.entries = entriesOf(state).filter((item) => item !== found);
+      commit(loaded);
     },
 
     async purgeExpiredTrash() {
       requireReady();
-      const state = load();
-      const cutoff = nowUnix() - TRASH_RETENTION_SECONDS;
-      const kept = state.journal.entries.filter((item) => item.trashedAt === null || item.trashedAt > cutoff);
-      if (kept.length === state.journal.entries.length) return;
-      state.journal.entries = kept;
-      commit(state);
+      const loaded = load();
+      if (purgeExpired(loaded.state)) commit(loaded);
     },
 
     async backupStatus() {
@@ -632,109 +798,167 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
     },
 
     async chooseBackupFolder() {
-      const state = load();
-      state.plan.folderChosen = true;
-      commit(state);
-      return statusOf(state);
+      const loaded = load();
+      // Choosing a folder writes the backup plan again, replacing an unreadable one.
+      planUnreadable = false;
+      loaded.damagedPlan = undefined;
+      loaded.state.plan.folderChosen = true;
+      automaticFailureAt = null;
+      commit(loaded);
+      return statusOf(loaded);
     },
 
     async setBackupPassphrase(passphrase, remember) {
       validatePassphrase(passphrase);
-      const state = load();
+      const loaded = load();
       sessionFingerprint = fingerprint(passphrase);
-      state.plan.rememberedFingerprint = remember ? sessionFingerprint : null;
-      commit(state);
-      return statusOf(state);
+      loaded.state.plan.rememberedFingerprint = remember ? sessionFingerprint : null;
+      loaded.damagedPlan = undefined;
+      lastError = null;
+      automaticFailureAt = null;
+      commit(loaded);
+      return statusOf(loaded);
     },
 
     async forgetBackupPassphrase() {
-      const state = load();
+      const loaded = load();
       sessionFingerprint = null;
-      state.plan.rememberedFingerprint = null;
-      commit(state);
-      return statusOf(state);
+      loaded.state.plan.rememberedFingerprint = null;
+      loaded.damagedPlan = undefined;
+      commit(loaded);
+      return statusOf(loaded);
     },
 
     async backupNow() {
       requireReady();
-      const state = load();
-      if (!state.plan.folderChosen) throw failure('needsFolder');
+      const loaded = load();
+      if (!folderChosen(loaded.state)) throw failure('needsFolder');
       if (sessionFingerprint === null) throw failure('needsPassphrase');
-      publishBackup(state, sessionFingerprint);
-      return statusOf(state);
+      publishBackup(loaded, sessionFingerprint);
+      return statusOf(loaded);
     },
 
     async runDailyBackup() {
       requireReady();
-      const state = load();
+      const loaded = load();
+      const { state } = loaded;
       const due = state.plan.lastSuccessDate !== journalToday(state);
-      if (!due || !state.plan.folderChosen || sessionFingerprint === null) return statusOf(state);
+      if (!due || !folderChosen(state) || sessionFingerprint === null) return statusOf(loaded);
+      // After a failed automatic attempt, wait an hour; Back up now always tries.
+      if (automaticFailureAt !== null && nowUnix() - automaticFailureAt < AUTOMATIC_RETRY_SECONDS) {
+        return statusOf(loaded);
+      }
       try {
-        publishBackup(state, sessionFingerprint);
+        publishBackup(loaded, sessionFingerprint);
       } catch {
         // A failed daily attempt is reported in the status rather than thrown.
+        automaticFailureAt = nowUnix();
         return statusOf(load());
       }
-      return statusOf(state);
+      automaticFailureAt = null;
+      return statusOf(loaded);
     },
 
     async listBackups() {
-      const state = load();
-      if (!state.plan.folderChosen) return [];
+      const { state } = load();
+      if (!folderChosen(state)) return [];
       return [...state.folder]
         .sort((a, b) => b.createdAt - a.createdAt)
         .map(({ name, createdAt, sizeBytes }) => ({ name, createdAt, sizeBytes }));
     },
 
     async chooseRestoreFile() {
-      const newest = [...load().folder].sort((a, b) => b.createdAt - a.createdAt)[0];
+      const newest = [...load().state.folder].sort((a, b) => b.createdAt - a.createdAt)[0];
       pickedBackup = newest?.name ?? null;
       return newest ? { name: newest.name } : null;
     },
 
-    async restoreBackup(source: RestoreSource, passphrase) {
-      requireReady();
-      const state = load();
-      const name = source.kind === 'registered' ? (state.plan.folderChosen ? source.name : null) : pickedBackup;
+    async restoreBackup(source: RestoreSource, passphrase, withoutSafetyBackup = false): Promise<RestoreOutcome> {
+      if (startup.state === 'needsMigration') throw failure('notReady');
+      const loaded = load();
+      const { state } = loaded;
+      let name: string | null;
+      if (source.kind === 'registered') {
+        if (!folderChosen(state)) throw failure('needsFolder');
+        name = source.name;
+      } else {
+        name = pickedBackup;
+      }
+      // The chosen backup is always verified first: a wrong passphrase changes nothing.
       const backup = state.folder.find((item) => item.name === name);
       if (!backup || typeof passphrase !== 'string' || fingerprint(passphrase) !== backup.fingerprint) {
         throw failure('restore');
       }
+
+      if (startup.state !== 'ready') {
+        // No open journal: keep the unreadable one aside (never deleted) and restore into a fresh one.
+        const setAside = `journal.unreadable-${nowUnix()}.sqlite`;
+        state.setAside.push({ name: setAside, journal: loaded.damagedJournal ?? copy(state.journal) });
+        loaded.damagedJournal = undefined;
+        state.journal = copy(backup.snapshot);
+        purgeExpired(state);
+        commit(loaded);
+        simulatedNewerJournal = false;
+        startup = startupStatusOf('ready');
+        pickedBackup = null;
+        return { entries: activeCount(state), safetyBackup: false, setAside };
+      }
+
       let safetyBackup = false;
-      if (state.journal.entries.length > 0 && state.plan.folderChosen && sessionFingerprint !== null) {
-        addBackup(state, sessionFingerprint);
-        safetyBackup = true;
+      if (folderChosen(state) && sessionFingerprint !== null) {
+        let entries: StoredEntry[] | null = null;
+        try {
+          entries = entriesOf(state);
+        } catch {
+          // The current journal can't be read, so no safety backup of it can be made.
+          if (!withoutSafetyBackup) throw failure('safetyBackupFailed');
+        }
+        if (entries && entries.length > 0) {
+          addBackup(state, sessionFingerprint);
+          safetyBackup = true;
+        }
       }
       state.journal = copy(backup.snapshot);
-      commit(state);
-      return {
-        entries: state.journal.entries.filter((item) => item.trashedAt === null).length,
-        safetyBackup,
-      };
+      purgeExpired(state);
+      commit(loaded);
+      pickedBackup = null;
+      return { entries: activeCount(state), safetyBackup, setAside: null };
     },
 
     async migrateJournal(passphrase, remember) {
       if (startup.state !== 'needsMigration') return { ...startup };
-      const state = load();
-      if (!state.plan.folderChosen) throw failure('needsFolder');
-      validatePassphrase(passphrase);
-      sessionFingerprint = fingerprint(passphrase);
-      state.plan.rememberedFingerprint = remember ? sessionFingerprint : null;
-      addBackup(state, sessionFingerprint);
-      commit(state);
-      startup = { ...startup, state: 'ready', fromVersion: null, message: null };
+      const loaded = load();
+      if (!folderChosen(loaded.state)) throw failure('needsFolder');
+      let print: string;
+      if (passphrase === null) {
+        // Retrying with the passphrase already in this session never forgets a remembered one.
+        if (sessionFingerprint === null) throw failure('needsPassphrase');
+        print = sessionFingerprint;
+        if (remember) loaded.state.plan.rememberedFingerprint = print;
+      } else {
+        validatePassphrase(passphrase);
+        print = fingerprint(passphrase);
+        sessionFingerprint = print;
+        loaded.state.plan.rememberedFingerprint = remember ? print : null;
+      }
+      addBackup(loaded.state, print);
+      commit(loaded);
+      startup = startupStatusOf('ready');
       return { ...startup };
     },
 
     async eraseAppData(confirmation) {
       if (confirmation !== ERASE_CONFIRMATION) throw failure('confirmation');
-      const state = load();
-      const fresh = initialState();
-      commit({ ...fresh, folder: state.folder });
+      const { state } = load();
+      // Backup files in the chosen folder are not the app's to delete.
+      commit({ state: { ...initialState(), folder: state.folder }, damagedJournal: undefined, damagedPlan: undefined });
       sessionFingerprint = null;
       lastError = null;
       pickedBackup = null;
-      startup = { state: 'ready', fromVersion: null, message: null, dataLocation: startup.dataLocation };
+      planUnreadable = false;
+      automaticFailureAt = null;
+      simulatedNewerJournal = false;
+      startup = startupStatusOf('ready');
       return { ...startup };
     },
 
@@ -744,5 +968,6 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
     },
 
     async confirmExit() {},
+    async cancelExit() {},
   };
 }

@@ -23,6 +23,8 @@ const TITLES: Record<PassphrasePurpose, string> = {
 export interface PassphraseDialogProps {
   open: boolean;
   purpose: PassphrasePurpose;
+  /** The passphrase is remembered in Keychain now; the Remember choice starts from it. */
+  remembered?: boolean;
   onClose(): void;
   /** Receives the journal's status once it accepted the passphrase. */
   onSaved(status: BackupStatus): void;
@@ -32,11 +34,12 @@ export function PassphraseDialog({ open, ...props }: PassphraseDialogProps) {
   return open ? <OpenPassphraseDialog {...props} /> : null;
 }
 
-function OpenPassphraseDialog({ purpose, onClose, onSaved }: Omit<PassphraseDialogProps, 'open'>) {
+function OpenPassphraseDialog({ purpose, remembered = false, onClose, onSaved }: Omit<PassphraseDialogProps, 'open'>) {
   const api = useApi();
   const formId = useId();
   const passphraseRef = useRef<HTMLInputElement>(null);
-  const [values, setValues] = useState<PassphraseValues>(EMPTY_PASSPHRASE);
+  // Re-entering a remembered passphrase keeps it remembered unless the person unticks the box.
+  const [values, setValues] = useState<PassphraseValues>({ ...EMPTY_PASSPHRASE, remember: remembered });
   const [problems, setProblems] = useState<PassphraseProblems>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

@@ -1,6 +1,6 @@
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { newDraft } from '../../domain/entry';
 import { useNavigation, type NavigationContextValue } from '../../state/navigation';
 import { createTestApi, renderWithProviders } from '../../test/render';
@@ -26,6 +26,10 @@ async function renderSettings(api = createTestApi()) {
 function section(name: string) {
   return screen.getByRole('region', { name });
 }
+
+afterEach(() => {
+  document.documentElement.style.fontSize = '';
+});
 
 describe('Settings', () => {
   it('shows the sections in their documented order', async () => {
@@ -97,6 +101,49 @@ describe('Settings', () => {
     expect(within(section('Writing')).getByRole('radio', { name: /Deep Reflection/ })).toHaveAccessibleName(
       /Guided worksheets are not available yet/,
     );
+  });
+
+  it('describes Deep Reflection as the full check-in and free writing', async () => {
+    await renderSettings();
+    expect(within(section('Writing')).getByRole('radio', { name: /Deep Reflection/ })).toHaveAccessibleName(
+      /The full check-in and free writing for now\. Guided worksheets are not available yet\./,
+    );
+  });
+
+  it('says what Show scores hides, and that completing an entry still needs mood and energy', async () => {
+    await renderSettings();
+    const toggle = within(section('Writing')).getByRole('switch', { name: 'Show scores' });
+    expect(toggle).toHaveAccessibleDescription(
+      'Shows the mood, energy, pride and progress questions in the check-in; in Quick Check-in, the whole check-in. Hiding them keeps saved answers, and marking an entry complete still needs a mood and an energy score.',
+    );
+    expect(toggle).not.toHaveAccessibleDescription(/summaries/);
+  });
+
+  it('offers four text sizes and applies the chosen one to all text', async () => {
+    const user = userEvent.setup();
+    const { api } = await renderSettings();
+    const textSize = within(section('Appearance')).getByRole('group', { name: 'Text size' });
+    expect(within(textSize).getAllByRole('radio').map((radio) => radio.getAttribute('value'))).toEqual([
+      '100',
+      '115',
+      '130',
+      '150',
+    ]);
+    expect(within(textSize).getAllByRole('radio').map((radio) => radio.parentElement?.textContent)).toEqual([
+      'Default100%',
+      'Large115%',
+      'Larger130%',
+      'Largest150%',
+    ]);
+    expect(within(textSize).getByRole('radio', { name: /Default/ })).toBeChecked();
+    expect(textSize).toHaveAccessibleDescription(/⌘\+ to make text larger, ⌘− to make it smaller and ⌘0/);
+
+    await user.click(within(textSize).getByRole('radio', { name: /Larger/ }));
+    expect(document.documentElement.style.fontSize).toBe('130%');
+    await expect(api.getPreferences()).resolves.toMatchObject({ textScale: 130 });
+    await user.click(within(textSize).getByRole('radio', { name: /Default/ }));
+    expect(document.documentElement.style.fontSize).toBe('');
+    await expect(api.getPreferences()).resolves.toMatchObject({ textScale: 100 });
   });
 
   it('changes the time zone for new entries without moving existing dates', async () => {

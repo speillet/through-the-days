@@ -30,8 +30,9 @@ pub struct Journal {
 impl Journal {
     /// Opens the journal at `path`, creating the current schema when nothing is stored there.
     ///
-    /// An older supported journal returns [`Error::MigrationRequired`] and a newer or foreign
-    /// database returns [`Error::Unsupported`]; both are detected read-only and left unchanged.
+    /// An older supported journal returns [`Error::MigrationRequired`], a newer or foreign
+    /// database [`Error::Unsupported`], and a file whose header or schema cannot be read
+    /// [`Error::Damaged`]; all are detected read-only and left unchanged.
     pub fn open(path: &Path) -> Result<Self, Error> {
         if let Some(refusal) = schema::inspect(path)?.refusal() {
             return Err(refusal);
@@ -64,9 +65,7 @@ impl Journal {
             },
         };
         validate_passphrase(passphrase)?;
-        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-        let mut connection = Connection::open_with_flags(path, flags)?;
-        connection.busy_timeout(BUSY_TIMEOUT)?;
+        let mut connection = open_for_upgrade(path)?;
         let before = data_version(&connection)?;
         if schema::user_version(&connection)? != from {
             return Err(Error::Conflict);
@@ -162,11 +161,11 @@ impl Journal {
         Ok(serde_json::from_str(&payload)?)
     }
 
-    /// Returns active entries, newest journal date first and Evening before Morning.
+    /// Returns active entries, newest journal date first and Morning before Evening on a date.
     pub fn list(&self) -> Result<Vec<Entry>, Error> {
         self.entries(
             "SELECT payload FROM journal_entries WHERE trashed_at IS NULL
-             ORDER BY entry_date DESC, slot DESC",
+             ORDER BY entry_date DESC, CASE slot WHEN 'morning' THEN 0 ELSE 1 END",
             [],
         )
     }
@@ -224,12 +223,16 @@ impl Journal {
     }
 
     /// Returns a trashed entry to its date and slot when that slot is free.
-    pub fn restore(&self, id: &str) -> Result<Entry, Error> {
+    ///
+    /// An entry whose 30-day retention ended at or before `now` (Unix seconds) is no longer
+    /// restorable and reports [`Error::NotFound`], even before a purge removes it.
+    pub fn restore(&self, id: &str, now: i64) -> Result<Entry, Error> {
         let transaction = self.connection.unchecked_transaction()?;
         let payload: String = transaction
             .query_row(
-                "SELECT payload FROM journal_entries WHERE id=?1 AND trashed_at IS NOT NULL",
-                [id],
+                "SELECT payload FROM journal_entries
+                 WHERE id=?1 AND trashed_at IS NOT NULL AND trashed_at>?2",
+                params![id, now.saturating_sub(TRASH_RETENTION_SECONDS)],
                 |row| row.get(0),
             )
             .optional()?
@@ -300,15 +303,101 @@ pub fn erase_journal_files(path: &Path) -> Result<(), Error> {
     Ok(())
 }
 
+/// Commits that survive power loss, not only a crash of the app.
+///
+/// On macOS a plain `fsync` leaves recent writes in the drive's cache; SQLite issues
+/// `F_FULLFSYNC` for commits and checkpoints only with these settings. Elsewhere they change
+/// nothing. They apply to one connection and never change the database file.
+const DURABLE_COMMITS: &str =
+    "PRAGMA synchronous=FULL; PRAGMA fullfsync=ON; PRAGMA checkpoint_fullfsync=ON;";
+
 /// Connection settings for the live journal: durable commits and zeroed deleted content.
 pub(crate) fn configure(connection: &Connection) -> Result<(), Error> {
     connection.execute_batch(
-        "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;
-         PRAGMA secure_delete=ON;",
+        "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON;",
     )?;
+    connection.execute_batch(DURABLE_COMMITS)?;
     Ok(())
+}
+
+/// The connection that snapshots and then upgrades an older journal.
+///
+/// It keeps the stored journal mode, so the file stays byte-for-byte unchanged until the upgrade
+/// commits, but that commit is flushed like any other.
+fn open_for_upgrade(path: &Path) -> Result<Connection, Error> {
+    let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    let connection = Connection::open_with_flags(path, flags)?;
+    connection.busy_timeout(BUSY_TIMEOUT)?;
+    connection.execute_batch(DURABLE_COMMITS)?;
+    Ok(connection)
 }
 
 fn data_version(connection: &Connection) -> Result<i64, Error> {
     Ok(connection.pragma_query_value(None, "data_version", |row| row.get(0))?)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "a failed unwrap is a failed test")]
+mod tests {
+    use super::{Journal, open_for_upgrade};
+    use rusqlite::Connection;
+
+    #[allow(dead_code, reason = "the shared fixtures serve several test crates")]
+    mod fixtures {
+        include!("../tests/common/fixtures.rs");
+    }
+
+    fn flush_settings(connection: &Connection) -> (i64, i64, i64) {
+        let value = |name: &str| -> i64 {
+            connection
+                .pragma_query_value(None, name, |row| row.get(0))
+                .unwrap()
+        };
+        (
+            value("synchronous"),
+            value("fullfsync"),
+            value("checkpoint_fullfsync"),
+        )
+    }
+
+    /// local-persistence — Atomic acknowledged revisions / Crash after saved acknowledgment: the
+    /// live journal asks for full flushes, so an acknowledged commit also survives power loss.
+    #[test]
+    fn journal_connections_request_full_flushes_for_commits_and_checkpoints() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("journal.sqlite");
+        let mut journal = Journal::open(&path).unwrap();
+        assert_eq!(flush_settings(&journal.connection), (2, 1, 1));
+
+        let folder = directory.path().join("backups");
+        std::fs::create_dir(&folder).unwrap();
+        let passphrase = "synthetic unit-test passphrase";
+        let backup = journal
+            .backup_to(&folder, passphrase, 1_795_363_200)
+            .unwrap();
+        journal.restore_from(&backup.path, passphrase).unwrap();
+        assert_eq!(flush_settings(&journal.connection), (2, 1, 1));
+    }
+
+    /// local-persistence — Safe migrations: the upgrade commit is flushed like any other, without
+    /// changing the older journal before its pre-migration backup.
+    #[test]
+    fn the_upgrade_connection_requests_full_flushes_without_changing_the_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("previous.sqlite");
+        let previous = Connection::open(&path).unwrap();
+        previous.execute_batch(fixtures::V1_SCHEMA).unwrap();
+        previous
+            .execute(
+                fixtures::V1_INSERT_ENTRY,
+                [fixtures::V1_ENTRY_ID, fixtures::V1_ENTRY_PAYLOAD],
+            )
+            .unwrap();
+        drop(previous);
+        let original = std::fs::read(&path).unwrap();
+        let connection = open_for_upgrade(&path).unwrap();
+        assert_eq!(flush_settings(&connection), (2, 1, 1));
+        drop(connection);
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+    }
 }

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { newDraft } from '../domain/entry';
 import { DEFAULT_PREFERENCES } from '../domain/preferences';
 import type { JournalApi } from './client';
-import { createTauriApi, FLUSH_REQUEST_EVENT } from './tauri';
+import { createTauriApi, ENTRY_NOT_SENT, FLUSH_REQUEST_EVENT } from './tauri';
 
 afterEach(() => {
   clearMocks();
@@ -26,6 +26,7 @@ describe('native journal commands', () => {
     const entry = newDraft('2026-11-22', 'morning', 'Europe/Paris');
     const invocations: Array<[keyof JournalApi, () => Promise<unknown>, string, unknown]> = [
       ['startupStatus', () => api.startupStatus(), 'startup_status', {}],
+      ['retryStartup', () => api.retryStartup(), 'retry_startup', {}],
       ['today', () => api.today(), 'today', {}],
       ['getPreferences', () => api.getPreferences(), 'get_preferences', {}],
       ['setPreferences', () => api.setPreferences(DEFAULT_PREFERENCES), 'set_preferences', { preferences: DEFAULT_PREFERENCES }],
@@ -55,7 +56,17 @@ describe('native journal commands', () => {
         'restoreBackup',
         () => api.restoreBackup({ kind: 'registered', name: 'ttd-1-a.ttd.age' }, 'synthetic passphrase'),
         'restore_backup',
-        { source: { kind: 'registered', name: 'ttd-1-a.ttd.age' }, passphrase: 'synthetic passphrase' },
+        {
+          source: { kind: 'registered', name: 'ttd-1-a.ttd.age' },
+          passphrase: 'synthetic passphrase',
+          withoutSafetyBackup: false,
+        },
+      ],
+      [
+        'restoreBackup',
+        () => api.restoreBackup({ kind: 'picked' }, 'synthetic passphrase', true),
+        'restore_backup',
+        { source: { kind: 'picked' }, passphrase: 'synthetic passphrase', withoutSafetyBackup: true },
       ],
       [
         'migrateJournal',
@@ -63,8 +74,15 @@ describe('native journal commands', () => {
         'migrate_journal',
         { passphrase: 'synthetic passphrase', remember: false },
       ],
+      [
+        'migrateJournal',
+        () => api.migrateJournal(null, true),
+        'migrate_journal',
+        { passphrase: null, remember: true },
+      ],
       ['eraseAppData', () => api.eraseAppData('ERASE'), 'erase_app_data', { confirmation: 'ERASE' }],
       ['confirmExit', () => api.confirmExit(), 'confirm_exit', {}],
+      ['cancelExit', () => api.cancelExit(), 'cancel_exit', {}],
     ];
     for (const [, invoke] of invocations) await invoke();
     expect(calls).toEqual(invocations.map(([, , command, args]) => [command, args]));
@@ -84,6 +102,39 @@ describe('native journal commands', () => {
       message: 'This entry has changed.',
     });
     await expect(api.getEntry('x')).rejects.toEqual({ code: 'unknown', message: 'Something went wrong. Please try again.' });
+  });
+
+  it('explains a save the journal never received, such as an entry the webview could not send', async () => {
+    // Tauri answers a body it cannot parse (too deeply nested, a lone surrogate) with plain text.
+    mockIPC((command) => {
+      if (command === 'save_entry') throw 'Synthetic: the request body could not be parsed';
+      throw new Error('Synthetic invoke failure');
+    });
+    const api = createTauriApi();
+    await expect(api.saveEntry(newDraft('2026-11-22', 'evening', 'Europe/Paris'))).rejects.toEqual({
+      code: 'document',
+      message: 'The entry could not be sent to the journal. Undo your last change and try again.',
+    });
+    expect(ENTRY_NOT_SENT.code).toBe('document');
+    // Other commands keep the generic message.
+    await expect(api.listEntries()).rejects.toEqual({ code: 'unknown', message: 'Something went wrong. Please try again.' });
+  });
+
+  it('passes the new native error codes through with their English messages', async () => {
+    const errors = [
+      { code: 'damaged', message: 'Part of the journal file is damaged and could not be read.' },
+      { code: 'safetyBackupFailed', message: 'A safety backup of your current journal could not be made.' },
+      { code: 'backupRegistry', message: 'This folder’s list of backups is damaged.' },
+      { code: 'backupFolder', message: 'The backup folder is not available.' },
+    ];
+    let next = 0;
+    mockIPC(() => {
+      throw errors[next++];
+    });
+    const api = createTauriApi();
+    for (const error of errors) {
+      await expect(api.restoreBackup({ kind: 'picked' }, 'synthetic passphrase')).rejects.toEqual(error);
+    }
   });
 
   it('listens for native quit requests until unsubscribed', async () => {

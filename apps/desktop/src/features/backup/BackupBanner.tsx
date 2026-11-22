@@ -1,8 +1,9 @@
 // The backup banner in the status area of every view. Gentle view never hides it.
 // It asks for what a due backup needs (a folder or the passphrase), reports a
-// failed backup with a way to try again, and confirms a backup only after the
-// journal reports it. A passphrase request or a failure cannot be dismissed; in
-// focus mode only those stay visible.
+// failed backup with what to do next, says when the backup settings of this Mac
+// could not be read, and confirms a backup only after the journal reports it. A
+// passphrase request, unreadable settings or a failure cannot be dismissed; in focus
+// mode only those stay visible.
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { toCommandError, useApi } from '../../api/client';
@@ -13,7 +14,7 @@ import { useBackup } from '../../state/backup';
 import { useFocusMode } from '../../state/focus';
 import { useNavigation } from '../../state/navigation';
 import { PassphraseDialog } from './PassphraseDialog';
-import { RETENTION_WARNING } from './status';
+import { RETENTION_WARNING, SETTINGS_UNREADABLE_TEXT } from './status';
 import './backup.css';
 
 type Phase = 'idle' | 'backingUp' | 'done';
@@ -26,6 +27,8 @@ export function BackupBanner() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [choosingFolder, setChoosingFolder] = useState(false);
   const [setupPostponed, setSetupPostponed] = useState(false);
   const [retentionDismissed, setRetentionDismissed] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -76,6 +79,22 @@ export function BackupBanner() {
     }
   }
 
+  /** A folder the backups can't use: choose another one, then make the due backup there. */
+  async function chooseAnotherFolder() {
+    if (choosingFolder) return;
+    setFolderError(null);
+    setChoosingFolder(true);
+    try {
+      const next = await api.chooseBackupFolder();
+      setChoosingFolder(false);
+      if (next.state === 'due') await backUpAfterPassphrase(next);
+      else setStatus(next);
+    } catch (caught) {
+      setFolderError(toCommandError(caught).message);
+      setChoosingFolder(false);
+    }
+  }
+
   function openSettings() {
     navigate('settings', { section: 'backups' });
   }
@@ -117,8 +136,29 @@ export function BackupBanner() {
         Enter your backup passphrase to make today’s encrypted backup. You can keep writing in the meantime.
       </Notice>,
     );
+  } else if (status?.state === 'settingsUnreadable') {
+    notices.push(
+      <Notice
+        key="settings"
+        tone="warning"
+        title="Backup settings could not be read"
+        actions={
+          focusMode ? null : (
+            <Button variant="primary" size="small" onClick={openSettings}>
+              Backup settings
+            </Button>
+          )
+        }
+      >
+        {SETTINGS_UNREADABLE_TEXT}
+      </Notice>,
+    );
   } else if (status?.state === 'failed') {
+    const code = status.lastError?.code;
     const message = status.lastError?.message ?? retryError ?? 'The backup could not be created.';
+    // A damaged list of backups stays damaged: only another folder helps. An unavailable
+    // folder may come back (a drive reconnected), so trying again still makes sense.
+    const folderProblem = code === 'backupRegistry' || code === 'backupFolder';
     notices.push(
       <Notice
         key="failed"
@@ -126,9 +166,21 @@ export function BackupBanner() {
         title="Backup failed"
         actions={
           <>
-            <Button variant="secondary" size="small" onClick={() => void tryAgain()}>
-              Try again
-            </Button>
+            {code === 'backupRegistry' ? null : (
+              <Button variant="secondary" size="small" onClick={() => void tryAgain()}>
+                Try again
+              </Button>
+            )}
+            {folderProblem ? (
+              <Button
+                variant={code === 'backupRegistry' ? 'secondary' : 'quiet'}
+                size="small"
+                busy={choosingFolder}
+                onClick={() => void chooseAnotherFolder()}
+              >
+                Choose another folder…
+              </Button>
+            ) : null}
             {focusMode ? null : (
               <Button variant="quiet" size="small" onClick={openSettings}>
                 Backup settings
@@ -137,7 +189,8 @@ export function BackupBanner() {
           </>
         }
       >
-        {message} Earlier backups are not affected.
+        <p>{message} Earlier backups are not affected.</p>
+        {folderError ? <p>The backup folder was not changed. {folderError}</p> : null}
       </Notice>,
     );
   } else if (status?.state === 'needsFolder' && !setupPostponed && !focusMode) {
@@ -209,6 +262,7 @@ export function BackupBanner() {
       <PassphraseDialog
         open={dialogOpen}
         purpose="due"
+        remembered={status?.remembered ?? false}
         onClose={() => setDialogOpen(false)}
         onSaved={(next) => {
           focusBanner.current = true;

@@ -6,7 +6,7 @@
 
 use crate::{
     Error,
-    fsutil::{TEMPORARY_PREFIX, parse_json_object, write_atomically},
+    fsutil::{TEMPORARY_PREFIX, backup_folder_error, parse_json_object, write_atomically},
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -54,7 +54,9 @@ pub struct BackupRecord {
 /// Lists the registered validated backups whose file still exists in `folder`, newest first.
 ///
 /// A folder without a registry, including a folder that is currently unavailable, has no
-/// validated backups. An unreadable or unrecognised registry is [`Error::Backup`].
+/// validated backups. A damaged registry, or one with a newer registry version, is
+/// [`Error::BackupRegistry`]; a registry the folder does not let this app read is
+/// [`Error::BackupFolder`].
 pub fn list_backups(folder: &Path) -> Result<Vec<BackupRecord>, Error> {
     let mut backups = read(folder)?;
     sort_newest_first(&mut backups);
@@ -82,58 +84,70 @@ pub(crate) fn register(folder: &Path, backup: Registered) -> Result<(), Error> {
 /// Keeps the [`RETAINED_BACKUPS`] newest registered backups that still exist and deletes older
 /// ones. Returns `true` when something could not be pruned safely (a retention warning).
 ///
+/// `published` names the backup just registered at `published_at` (Unix seconds). It always
+/// counts first and is never deleted. Retention orders the others by creation time, which only
+/// works while none of them claims to be newer than the backup just made; when one does (the
+/// clock was set back, or ran ahead earlier) and pruning is due, nothing is deleted and a warning
+/// is reported.
+///
 /// Entries whose file is gone are forgotten. Entries with an unsafe name, a non-regular file or
 /// a changed digest are forgotten without touching the file: they are no longer backups this
 /// application manages. Nothing outside the registry is ever deleted.
-pub(crate) fn prune(folder: &Path) -> bool {
+pub(crate) fn prune(folder: &Path, published: &str, published_at: i64) -> bool {
     let Ok(mut backups) = read(folder) else {
         return true;
     };
     sort_newest_first(&mut backups);
+    if let Some(position) = backups.iter().position(|backup| backup.name == published) {
+        let newest = backups.remove(position);
+        backups.insert(0, newest);
+    }
     let mut warning = false;
     let mut changed = false;
-    let mut retained = 0;
     let mut kept = Vec::with_capacity(backups.len());
+    let mut existing = Vec::with_capacity(backups.len());
     for backup in backups {
         if !is_backup_name(&backup.name) {
             (warning, changed) = (true, true);
             continue;
         }
-        let path = folder.join(&backup.name);
-        match fs::symlink_metadata(&path) {
-            Ok(metadata) if metadata.is_file() => {}
-            Ok(_) => {
-                (warning, changed) = (true, true);
-                continue;
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                changed = true;
-                continue;
-            }
+        match fs::symlink_metadata(folder.join(&backup.name)) {
+            Ok(metadata) if metadata.is_file() => existing.push(backup),
+            Ok(_) => (warning, changed) = (true, true),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => changed = true,
             Err(_) => {
                 warning = true;
                 kept.push(backup);
-                continue;
             }
         }
-        if retained < RETAINED_BACKUPS {
-            retained += 1;
-            kept.push(backup);
-            continue;
-        }
-        match file_digest(&path) {
-            Ok(digest) if digest == backup.sha256 => {
-                if fs::remove_file(&path).is_ok() {
-                    changed = true;
-                } else {
+    }
+    let clock_behind = existing.len() > RETAINED_BACKUPS
+        && existing
+            .iter()
+            .any(|backup| backup.name != published && backup.created_at > published_at);
+    if clock_behind {
+        warning = true;
+        kept.extend(existing);
+    } else {
+        for (position, backup) in existing.into_iter().enumerate() {
+            if position < RETAINED_BACKUPS {
+                kept.push(backup);
+                continue;
+            }
+            match file_digest(&folder.join(&backup.name)) {
+                Ok(digest) if digest == backup.sha256 => {
+                    if fs::remove_file(folder.join(&backup.name)).is_ok() {
+                        changed = true;
+                    } else {
+                        warning = true;
+                        kept.push(backup);
+                    }
+                }
+                Ok(_) => (warning, changed) = (true, true),
+                Err(_) => {
                     warning = true;
                     kept.push(backup);
                 }
-            }
-            Ok(_) => (warning, changed) = (true, true),
-            Err(_) => {
-                warning = true;
-                kept.push(backup);
             }
         }
     }
@@ -178,13 +192,15 @@ pub(crate) fn remove_stale_temporaries(folder: &Path) {
     }
 }
 
-/// Lowercase hexadecimal SHA-256 digest of a file.
+/// Lowercase hexadecimal SHA-256 digest of a file in the backup folder.
 pub(crate) fn file_digest(path: &Path) -> Result<String, Error> {
-    let mut source = File::open(path).map_err(|_| Error::Backup)?;
+    let mut source = File::open(path).map_err(|error| backup_folder_error(&error))?;
     let mut digest = Sha256::new();
     let mut buffer = vec![0_u8; 64 * 1024];
     loop {
-        let length = source.read(&mut buffer).map_err(|_| Error::Backup)?;
+        let length = source
+            .read(&mut buffer)
+            .map_err(|error| backup_folder_error(&error))?;
         if length == 0 {
             break;
         }
@@ -193,15 +209,22 @@ pub(crate) fn file_digest(path: &Path) -> Result<String, Error> {
     Ok(format!("{:x}", digest.finalize()))
 }
 
-fn read(folder: &Path) -> Result<Vec<Registered>, Error> {
+/// Reads the registered backups of `folder`; a folder without a registry has none.
+///
+/// Invalid JSON, unknown fields, another registry version or a directory in the registry's
+/// place are [`Error::BackupRegistry`]. Any other failure to read it is [`Error::BackupFolder`].
+pub(crate) fn read(folder: &Path) -> Result<Vec<Registered>, Error> {
     let bytes = match fs::read(folder.join(REGISTRY_FILE)) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(_) => return Err(Error::Backup),
+        Err(error) if error.kind() == io::ErrorKind::IsADirectory => {
+            return Err(Error::BackupRegistry);
+        }
+        Err(_) => return Err(Error::BackupFolder),
     };
-    let registry: RegistryFile = parse_json_object(&bytes, Error::Backup)?;
+    let registry: RegistryFile = parse_json_object(&bytes, Error::BackupRegistry)?;
     if registry.version != REGISTRY_VERSION {
-        return Err(Error::Backup);
+        return Err(Error::BackupRegistry);
     }
     let mut names = HashSet::new();
     Ok(registry
@@ -211,13 +234,14 @@ fn read(folder: &Path) -> Result<Vec<Registered>, Error> {
         .collect())
 }
 
+/// Replaces the registry atomically; I/O failures are classified by [`backup_folder_error`].
 fn write(folder: &Path, backups: &[Registered]) -> Result<(), Error> {
     let registry = RegistryFile {
         version: REGISTRY_VERSION,
         backups: backups.to_vec(),
     };
     let bytes = serde_json::to_vec_pretty(&registry).map_err(|_| Error::Backup)?;
-    write_atomically(&folder.join(REGISTRY_FILE), &bytes, Error::Backup)
+    write_atomically(&folder.join(REGISTRY_FILE), &bytes, backup_folder_error)
 }
 
 fn sort_newest_first(backups: &mut [Registered]) {

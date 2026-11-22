@@ -31,7 +31,7 @@ export const DEPTH_OPTIONS: readonly DepthOption[] = [
     id: 'deep',
     label: 'Deep Reflection',
     duration: 'About 15–20 minutes',
-    summary: 'Free writing for now. Guided worksheets are not available yet.',
+    summary: 'The full check-in and free writing for now. Guided worksheets are not available yet.',
   },
 ];
 

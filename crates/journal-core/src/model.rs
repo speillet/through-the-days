@@ -189,7 +189,7 @@ impl Entry {
         {
             return Err(Error::Document);
         }
-        validate_node(&self.document)
+        validate_node(&self.document, 1)
     }
 
     /// Whether an explicit completion request may succeed: writing, mood and energy are present.
@@ -225,6 +225,32 @@ fn default_time_zone() -> String {
     "Europe/Paris".into()
 }
 
+/// Node types of the editor schema, `JOURNAL_NODE_TYPES` in
+/// `apps/desktop/src/features/editor/extensions.ts`.
+const NODE_TYPES: [&str; 11] = [
+    "doc",
+    "paragraph",
+    "text",
+    "heading",
+    "bulletList",
+    "orderedList",
+    "listItem",
+    "blockquote",
+    "codeBlock",
+    "hardBreak",
+    "horizontalRule",
+];
+
+/// Mark types of the editor schema, `JOURNAL_MARK_TYPES` in the same file. Links are not part
+/// of the journal document.
+const MARK_TYPES: [&str; 5] = ["bold", "italic", "strike", "code", "underline"];
+
+/// Deepest node nesting a journal document may have; the document node itself is level 1.
+///
+/// The editor never nests deeper, and the limit keeps every accepted document well inside the
+/// JSON nesting limit (128) of the desktop shell's command parser and of stored payloads.
+const MAXIMUM_DOCUMENT_DEPTH: usize = 32;
+
 /// Plain text of an editor document, one line per text block.
 pub fn document_text(node: &Value) -> String {
     if let Some(text) = node.get("text").and_then(Value::as_str) {
@@ -242,45 +268,76 @@ pub fn document_text(node: &Value) -> String {
         .unwrap_or_default()
 }
 
-fn validate_node(node: &Value) -> Result<(), Error> {
+/// Accepts only what the editor schema has: its node and mark types (no links), non-empty text
+/// nodes, and at most [`MAXIMUM_DOCUMENT_DEPTH`] levels. A document the editor could not load
+/// would open as a blank page, and the next edit would replace the stored writing.
+fn validate_node(node: &Value, depth: usize) -> Result<(), Error> {
+    if depth > MAXIMUM_DOCUMENT_DEPTH {
+        return Err(Error::Document);
+    }
     let kind = node
         .get("type")
         .and_then(Value::as_str)
         .ok_or(Error::Document)?;
-    if !matches!(
-        kind,
-        "doc"
-            | "paragraph"
-            | "text"
-            | "heading"
-            | "bulletList"
-            | "orderedList"
-            | "listItem"
-            | "blockquote"
-            | "codeBlock"
-            | "hardBreak"
-            | "horizontalRule"
-    ) {
+    if !NODE_TYPES.contains(&kind) {
         return Err(Error::Document);
     }
-    if kind == "text" && node.get("text").and_then(Value::as_str).is_none() {
+    // ProseMirror refuses empty text nodes; an empty block simply has no content.
+    if kind == "text"
+        && node
+            .get("text")
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+    {
         return Err(Error::Document);
     }
     if let Some(marks) = node.get("marks") {
         for mark in marks.as_array().ok_or(Error::Document)? {
-            // The editor's default extensions include links; they annotate text and never load it.
-            if !matches!(
-                mark.get("type").and_then(Value::as_str),
-                Some("bold" | "italic" | "strike" | "code" | "underline" | "link")
-            ) {
+            if !mark
+                .get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|kind| MARK_TYPES.contains(&kind))
+            {
                 return Err(Error::Document);
             }
         }
     }
     if let Some(content) = node.get("content") {
         for child in content.as_array().ok_or(Error::Document)? {
-            validate_node(child)?;
+            validate_node(child, depth + 1)?;
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "a failed unwrap is a failed test")]
+mod tests {
+    use super::{MARK_TYPES, NODE_TYPES};
+
+    /// journal-editor — Portable document fidelity: the journal accepts exactly the node and mark
+    /// types of the editor schema, so a document one accepts the other can represent.
+    #[test]
+    fn accepted_node_and_mark_types_match_the_editor_schema() {
+        let source = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../apps/desktop/src/features/editor/extensions.ts"
+        ))
+        .unwrap();
+        let editor_list = |name: &str| -> Vec<String> {
+            source
+                .split(&format!("export const {name} = ["))
+                .nth(1)
+                .unwrap()
+                .split(']')
+                .next()
+                .unwrap()
+                .split(',')
+                .map(|item| item.trim().trim_matches('\'').to_owned())
+                .filter(|item| !item.is_empty())
+                .collect()
+        };
+        assert_eq!(editor_list("JOURNAL_NODE_TYPES"), NODE_TYPES);
+        assert_eq!(editor_list("JOURNAL_MARK_TYPES"), MARK_TYPES);
+    }
 }

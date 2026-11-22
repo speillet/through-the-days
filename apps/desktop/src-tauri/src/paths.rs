@@ -46,7 +46,12 @@ pub fn resolve_data_dir(
     {
         return std::path::absolute(PathBuf::from(value)).ok();
     }
-    platform_dir()
+    let path = platform_dir()?;
+    if cfg!(debug_assertions) {
+        Some(path.with_file_name("com.throughthedays.app.dev"))
+    } else {
+        Some(path)
+    }
 }
 
 /// Creates the data folder, readable only by the person's account when this call creates it.
@@ -77,6 +82,22 @@ pub fn remove_stale_temporaries(folder: &Path) {
     }
 }
 
+/// Erases journals kept aside by a startup recovery; unrelated folders are preserved.
+pub fn erase_recovery_folders(folder: &Path) -> io::Result<()> {
+    for entry in fs::read_dir(folder)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let owned = name
+            .to_str()
+            .and_then(|n| n.strip_prefix("journal-recovery-"))
+            .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok());
+        if owned && entry.file_type()?.is_dir() {
+            fs::remove_dir_all(entry.path())?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, reason = "a failed unwrap is a failed test")]
 mod tests {
@@ -92,11 +113,14 @@ mod tests {
     fn debug_builds_honour_a_non_empty_data_folder_override() {
         let chosen = resolve_data_dir(Some("/tmp/ttd-synthetic".into()), platform);
         assert_eq!(chosen, Some(PathBuf::from("/tmp/ttd-synthetic")));
+        let development = Some(PathBuf::from(
+            "/Synthetic/Application Support/com.throughthedays.app.dev",
+        ));
         assert_eq!(
             resolve_data_dir(Some(OsString::new()), platform),
-            platform()
+            development
         );
-        assert_eq!(resolve_data_dir(None, platform), platform());
+        assert_eq!(resolve_data_dir(None, platform), development);
     }
 
     #[test]

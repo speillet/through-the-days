@@ -1,36 +1,42 @@
 // Small wins: dated items the person explicitly recognises. They can be added,
 // edited and removed, and each can be kept out of future summaries. Nothing is
-// added automatically; "Nothing to add today" is always a fine answer.
+// added automatically; "Nothing to add today" is always a fine answer. A win being
+// typed is saved with the entry straight away, and a win keeps its line breaks.
 
 import { Check, X } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
-import type { Win } from '../../api/types';
+import type { Entry, Win } from '../../api/types';
 import { Button } from '../../components/Button';
 import { TAB_STOP } from '../../components/keyboard';
-import { TextField } from '../../components/TextField';
-import { isBlank, newId } from '../../domain/entry';
+import { TextArea, TextField } from '../../components/TextField';
+import { isBlank } from '../../domain/entry';
 import type { EntryChange } from '../../state/autosave';
+import { useTypedItem } from './typedItem';
 
 export interface WinsListProps {
   wins: readonly Win[];
   onChange(change: EntryChange): void;
 }
 
+function writeWin(entry: Entry, id: string, text: string): Entry {
+  const existing = entry.wins.find((win) => win.id === id);
+  if (!existing) return { ...entry, wins: [...entry.wins, { id, text, origin: 'manual', includeInInsights: true }] };
+  if (existing.text === text) return entry;
+  return { ...entry, wins: entry.wins.map((win) => (win.id === id ? { ...win, text } : win)) };
+}
+
 export function WinsList({ wins, onChange }: WinsListProps) {
   const id = useId();
-  const [draft, setDraft] = useState('');
   const [nothingToAdd, setNothingToAdd] = useState(false);
+  const typed = useTypedItem(onChange, {
+    write: (winId, text) => (entry) => writeWin(entry, winId, text),
+    remove: (winId) => (entry) => ({ ...entry, wins: entry.wins.filter((win) => win.id !== winId) }),
+  });
+  const listed = wins.filter((win) => win.id !== typed.typingId);
 
   function add(event: FormEvent) {
     event.preventDefault();
-    if (isBlank(draft)) return;
-    const text = draft;
-    onChange((entry) => ({
-      ...entry,
-      wins: [...entry.wins, { id: newId(), text, origin: 'manual', includeInInsights: true }],
-    }));
-    setDraft('');
-    setNothingToAdd(false);
+    if (typed.finish()) setNothingToAdd(false);
   }
 
   function updateWin(winId: string, patch: Partial<Pick<Win, 'text' | 'includeInInsights'>>) {
@@ -51,9 +57,9 @@ export function WinsList({ wins, onChange }: WinsListProps) {
         Optional. Only what you add here counts as a small win. Untick “Include in insights” to keep one out of
         future summaries.
       </p>
-      {wins.length > 0 ? (
+      {listed.length > 0 ? (
         <ul className="wins__list" aria-label="Small wins">
-          {wins.map((win, index) => (
+          {listed.map((win, index) => (
             <WinRow
               key={win.id}
               win={win}
@@ -65,7 +71,11 @@ export function WinsList({ wins, onChange }: WinsListProps) {
         </ul>
       ) : null}
       <form className="inline-add" onSubmit={add}>
-        <TextField label="Add a small win" value={draft} onChange={(event) => setDraft(event.currentTarget.value)} />
+        <TextField
+          label="Add a small win"
+          value={typed.text}
+          onChange={(event) => typed.type(event.currentTarget.value)}
+        />
         <Button type="submit" variant="secondary" size="small">
           Add
         </Button>
@@ -85,6 +95,11 @@ export function WinsList({ wins, onChange }: WinsListProps) {
   );
 }
 
+/** Rows for a win's text: one per line, within reason. */
+function rowsFor(text: string): number {
+  return Math.min(6, text.split('\n').length);
+}
+
 function WinRow({
   win,
   position,
@@ -96,14 +111,17 @@ function WinRow({
   onUpdate(patch: Partial<Pick<Win, 'text' | 'includeInInsights'>>): void;
   onRemove(): void;
 }) {
-  // Local text, so clearing the field never sends a win without words.
+  // Local text, so clearing the field never sends a win without words. A multi-line
+  // field, because a win added from "What am I proud of?" can have several lines.
   const [text, setText] = useState(win.text);
   const blank = isBlank(text);
   return (
     <li className="win">
-      <TextField
+      <TextArea
         label={`Small win ${position}`}
         labelHidden
+        rows={rowsFor(text)}
+        className="win__text"
         value={text}
         error={blank ? 'A small win needs some words. Remove it if you prefer.' : undefined}
         onChange={(event) => {

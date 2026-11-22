@@ -4,6 +4,7 @@
 // retry. Savers outlive the view that showed them while they still hold unsaved
 // input, so leaving Today, closing the window or quitting still waits for them
 // (state/flush.ts), and returning to the same date and slot picks them up again.
+// Every save sends well-formed text: a lone UTF-16 surrogate becomes U+FFFD.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { toCommandError, useApi, type JournalApi } from '../api/client';
@@ -23,6 +24,8 @@ export type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'failed';
 export interface AutosaveSnapshot {
   /** The person's local copy; null until the first interaction creates the draft. */
   entry: Entry | null;
+  /** The entry as the journal last acknowledged it (the saved version); null while nothing is saved. */
+  saved: Entry | null;
   state: SaveState;
   /** Why the last save failed; cleared by the next acknowledged save. */
   error: CommandError | null;
@@ -34,6 +37,52 @@ export interface AutosaveSnapshot {
 export type EntryChange = (entry: Entry) => Entry;
 
 const RELOAD_CODES: ReadonlySet<string> = new Set(['conflict', 'notFound', 'occupied']);
+
+/** Refusals of an explicit change (completion, move) that only reloading the saved version can resolve. */
+const STALE_CODES: ReadonlySet<string> = new Set(['conflict', 'notFound']);
+
+/** The saved entry changed or disappeared: the saver then fails and offers to reload it. */
+export function isStaleRefusal(error: CommandError): boolean {
+  return STALE_CODES.has(error.code);
+}
+
+const SURROGATE = /[\uD800-\uDFFF]/;
+// Without the u flag the pattern sees UTF-16 code units: a valid pair first, else a lone half.
+const SURROGATE_UNITS = /[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g;
+
+/**
+ * Replaces lone UTF-16 surrogates (half of an emoji pasted on its own) with U+FFFD.
+ * The native journal cannot read them, so they would make every save of the entry fail.
+ */
+export function wellFormedText(text: string): string {
+  if (!SURROGATE.test(text)) return text;
+  return text.replace(SURROGATE_UNITS, (units) => (units.length === 2 ? units : '\uFFFD'));
+}
+
+/** The same value with every string well formed; unchanged parts keep their identity. */
+export function wellFormed<T>(value: T): T {
+  if (typeof value === 'string') return wellFormedText(value) as T;
+  if (Array.isArray(value)) {
+    let changed = false;
+    const items = value.map((item: unknown) => {
+      const fixed = wellFormed(item);
+      if (fixed !== item) changed = true;
+      return fixed;
+    });
+    return (changed ? items : value) as T;
+  }
+  if (typeof value === 'object' && value !== null) {
+    let changed = false;
+    const fields: Record<string, unknown> = {};
+    for (const [key, field] of Object.entries(value)) {
+      const fixed = wellFormed(field);
+      if (fixed !== field) changed = true;
+      fields[key] = fixed;
+    }
+    return (changed ? fields : value) as T;
+  }
+  return value;
+}
 
 const NOTHING_TO_COMPLETE: CommandError = {
   code: 'completion',
@@ -59,6 +108,7 @@ export class EntrySaver {
   private readonly create: () => Entry;
   private readonly delayMs: number;
   private entry: Entry | null;
+  private saved: Entry | null;
   /** Counts local edits; acknowledgedEdits is the count the journal has acknowledged. */
   private edits = 0;
   private acknowledgedEdits = 0;
@@ -78,6 +128,7 @@ export class EntrySaver {
     this.create = create;
     this.delayMs = delayMs;
     this.entry = initial;
+    this.saved = initial;
     this.state = initial ? 'saved' : 'idle';
     this.snapshot = this.buildSnapshot();
   }
@@ -269,7 +320,7 @@ export class EntrySaver {
       this.state = 'saving';
       this.emit();
     }
-    const request = this.api.saveEntry(sent);
+    const request = this.api.saveEntry(wellFormed(sent));
     this.inFlight = request.catch(() => undefined);
     try {
       this.acknowledge(await request, sent, edits);
@@ -287,6 +338,7 @@ export class EntrySaver {
   /** Adopts the acknowledged revision; edits made during the save stay local and pending. */
   private acknowledge(saved: Entry, sent: Entry, edits: number): void {
     this.acknowledgedEdits = edits;
+    this.saved = saved;
     const local = this.entry as Entry;
     if (this.edits === edits) {
       // The journal may have returned a completed entry to draft (its writing was cleared).
@@ -306,6 +358,8 @@ export class EntrySaver {
   /**
    * Saves one explicit change on its own (completion, a new date or slot). A refusal
    * rolls back only that change and returns the English reason; other edits are kept.
+   * When the saved entry changed or disappeared meanwhile, the saver fails like a
+   * refused save, so the page offers to reload the saved version.
    */
   private async commit(apply: EntryChange, rollback: EntryChange): Promise<CommandError | null> {
     const base = this.entry;
@@ -318,17 +372,23 @@ export class EntrySaver {
     const edits = this.edits;
     this.state = 'saving';
     this.emit();
-    const request = this.api.saveEntry(next);
+    const request = this.api.saveEntry(wellFormed(next));
     this.inFlight = request.catch(() => undefined);
     try {
       this.acknowledge(await request, next, edits);
       if (this.isDirty()) this.schedule();
       return null;
     } catch (caught) {
+      const error = toCommandError(caught);
       this.entry = rollback(this.entry as Entry);
-      if (this.edits === edits) {
-        // Nothing else changed meanwhile: the local copy matches the saved entry again.
-        this.acknowledgedEdits = edits;
+      // Nothing else changed meanwhile: the local copy matches the saved entry again.
+      const unchanged = this.edits === edits;
+      if (unchanged) this.acknowledgedEdits = edits;
+      if (isStaleRefusal(error)) {
+        this.error = error;
+        this.state = 'failed';
+        this.emit();
+      } else if (unchanged) {
         this.state = 'saved';
         this.emit();
       } else {
@@ -336,7 +396,7 @@ export class EntrySaver {
         this.emit();
         this.schedule();
       }
-      return toCommandError(caught);
+      return error;
     } finally {
       this.inFlight = null;
     }
@@ -355,7 +415,13 @@ export class EntrySaver {
   }
 
   private buildSnapshot(): AutosaveSnapshot {
-    return { entry: this.entry, state: this.state, error: this.error, needsReload: this.needsReload() };
+    return {
+      entry: this.entry,
+      saved: this.saved,
+      state: this.state,
+      error: this.error,
+      needsReload: this.needsReload(),
+    };
   }
 
   private emit(): void {
@@ -390,6 +456,8 @@ export interface UseEntryAutosaveOptions {
 }
 
 export interface EntryAutosave extends AutosaveSnapshot {
+  /** The saver's latest snapshot, read at call time (event handlers, imperative handles). */
+  current(): AutosaveSnapshot;
   update(change: EntryChange): void;
   flush(): Promise<boolean>;
   saveNow(): Promise<boolean>;
@@ -415,6 +483,7 @@ export function useEntryAutosave({ date, slot, initial, create, delayMs }: UseEn
   return useMemo(
     () => ({
       ...snapshot,
+      current: saver.getSnapshot,
       update: saver.update,
       flush: saver.flush,
       saveNow: saver.saveNow,

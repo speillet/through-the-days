@@ -3,7 +3,16 @@
 // to disk here, but the interface meets the same states, rules and errors.
 
 import type { Page } from '@playwright/test';
-import { entry, expect, openView, seedJournal, storedJournal, test, type Seed } from './fixtures';
+import {
+  entry,
+  expect,
+  expectNoSeriousViolations,
+  openView,
+  seedJournal,
+  storedJournal,
+  test,
+  type Seed,
+} from './fixtures';
 
 const PASSPHRASE = 'fictional-quiet-harbour';
 
@@ -43,7 +52,7 @@ test('restores, refuses an occupied slot and deletes permanently from the trash'
   expect(journal.journal.entries.some((item) => item.entry.id === occupied.id)).toBe(false);
 });
 
-async function setUpBackups(page: Page) {
+async function setUpBackups(page: Page, { remember = false }: { remember?: boolean } = {}) {
   await openView(page, 'Settings');
   const section = page.getByRole('region', { name: 'Backups' });
   await section.getByRole('button', { name: 'Choose backup folder…' }).click();
@@ -54,9 +63,22 @@ async function setUpBackups(page: Page) {
   await expect(dialog.getByRole('checkbox', { name: 'Remember in macOS Keychain' })).not.toBeChecked();
   await dialog.getByLabel('Backup passphrase').fill(PASSPHRASE);
   await dialog.getByLabel('Confirm passphrase').fill(PASSPHRASE);
+  if (remember) await dialog.getByRole('checkbox', { name: 'Remember in macOS Keychain' }).check();
   await dialog.getByRole('button', { name: 'Save passphrase' }).click();
   await expect(section.getByText('Today’s backup is done.')).toBeVisible();
   return section;
+}
+
+/** Rewrites the stored preview journal as a damaged file would read, then restarts the app. */
+async function damageAndRestart(page: Page, damage: 'header' | 'page') {
+  await page.evaluate((kind) => {
+    const key = 'ttd-preview-v1';
+    const stored = JSON.parse(window.localStorage.getItem(key) ?? '{}');
+    if (kind === 'header') stored.journal = 'Synthetic damaged journal header';
+    else stored.journal.entries.push({ entry: 'Synthetic damaged page', trashedAt: null });
+    window.localStorage.setItem(key, JSON.stringify(stored));
+  }, damage);
+  await page.reload();
 }
 
 test('sets up backups, backs up now and refuses a wrong passphrase without changing the journal', async ({ page }) => {
@@ -149,4 +171,81 @@ test('erases all app data after ERASE is typed, keeping backup files', async ({ 
   const journal = await storedJournal(page);
   expect(journal.journal.entries).toEqual([]);
   expect(journal.folder).toHaveLength(1);
+});
+
+test('restores a journal that can no longer be opened from a backup file, keeping the damaged one', async ({
+  page,
+}) => {
+  const written = entry('2026-11-22', 'morning', 'Fictional morning that a backup brings back.');
+  await seedJournal(page, { active: [written] });
+  await setUpBackups(page);
+  await damageAndRestart(page, 'header');
+
+  await expect(page.getByRole('heading', { level: 1, name: 'The journal could not be opened' })).toBeVisible();
+  await expect(page.getByRole('alert').first()).toContainText('Part of the journal file is damaged');
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByText('The journal still could not be opened.')).toBeVisible();
+  await expectNoSeriousViolations(page, 'Journal that could not be opened');
+
+  await page.getByRole('button', { name: 'Restore from a backup file…' }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'Restore this backup?' });
+  await expect(dialog).toContainText('The journal that can’t be opened is kept aside in the app’s data folder');
+  await expectNoSeriousViolations(page, 'Restore dialog on the startup screen');
+  await dialog.getByLabel('Passphrase for this backup').fill(PASSPHRASE);
+  await dialog.getByRole('button', { name: 'Replace journal and restore' }).click();
+
+  await expect(page.getByRole('status').filter({ hasText: 'Backup restored' })).toContainText(
+    /Backup restored: 1 entry in your journal\. The journal that could not be opened was kept in the app’s data folder as journal\.unreadable-\d+\.sqlite\./,
+  );
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+  const journal = (await storedJournal(page)) as Awaited<ReturnType<typeof storedJournal>> & {
+    setAside: { name: string; journal: unknown }[];
+  };
+  expect(journal.journal.entries.map((item) => item.entry.id)).toEqual([written.id]);
+  expect(journal.setAside).toEqual([
+    { name: expect.stringMatching(/^journal\.unreadable-\d+\.sqlite$/), journal: 'Synthetic damaged journal header' },
+  ]);
+});
+
+test('erases app data from the screen of a journal that can no longer be opened', async ({ page }) => {
+  await seedJournal(page, { active: [entry('2026-11-22', 'evening', 'Fictional entry in a damaged journal.')] });
+  await setUpBackups(page);
+  await damageAndRestart(page, 'header');
+  await page.getByRole('button', { name: 'Erase app data…' }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'Erase all app data?' });
+  await dialog.getByLabel('Type ERASE to confirm').fill('ERASE');
+  await dialog.getByRole('button', { name: 'Erase all app data' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'All app data on this Mac was erased.' })).toBeVisible();
+  const journal = await storedJournal(page);
+  expect(journal.journal.entries).toEqual([]);
+  expect(journal.folder).toHaveLength(1);
+});
+
+test('restores over a damaged journal only after confirming there is no safety backup', async ({ page }) => {
+  const written = entry('2026-11-21', 'evening', 'Fictional evening kept in the backup.');
+  await seedJournal(page, { active: [written] });
+  await setUpBackups(page, { remember: true });
+  await damageAndRestart(page, 'page');
+
+  await openView(page, 'Settings');
+  const section = page.getByRole('region', { name: 'Backups' });
+  await section
+    .getByRole('button', { name: /^Restore the backup from/ })
+    .first()
+    .click();
+  const dialog = page.getByRole('alertdialog', { name: 'Restore this backup?' });
+  await dialog.getByLabel('Passphrase for this backup').fill(PASSPHRASE);
+  await dialog.getByRole('button', { name: 'Replace journal and restore' }).click();
+  await expect(dialog.getByRole('alert')).toContainText(
+    'A safety backup of your current journal could not be made, so nothing was restored.',
+  );
+  await expect(dialog).toContainText('Choose this only if your current journal is damaged.');
+  await expectNoSeriousViolations(page, 'Restore without a safety backup');
+  await dialog.getByRole('button', { name: 'Restore without a safety backup' }).click();
+
+  await expect(page.getByRole('status').filter({ hasText: 'Backup restored' })).toContainText(
+    'Backup restored: 1 entry in your journal.',
+  );
+  const journal = await storedJournal(page);
+  expect(journal.journal.entries.map((item) => item.entry.id)).toEqual([written.id]);
 });

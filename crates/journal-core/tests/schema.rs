@@ -51,15 +51,12 @@ fn newer_or_foreign_databases_are_unsupported_and_left_unchanged() {
         &negative,
         &format!("{journal_tables} PRAGMA user_version=-1;"),
     );
-    let text = directory.path().join("text.sqlite");
-    fs::write(&text, "Synthetic plain text that is not a database at all.").unwrap();
 
     let cases = [
         (&newer, Ok(Some(3))),
         (&foreign, Ok(Some(0))),
         (&current_without_tables, Ok(Some(2))),
         (&negative, Err(Error::Unsupported)),
-        (&text, Err(Error::Unsupported)),
     ];
     for (path, version) in cases {
         let original = fs::read(path).unwrap();
@@ -146,7 +143,7 @@ fn migration_that_cannot_complete_leaves_the_previous_journal_intact() {
     fs::write(&unwritable, "Synthetic file where a folder was expected").unwrap();
     assert_eq!(
         Journal::migrate_with_backup(&path, &unwritable, PASSPHRASE, NOW).err(),
-        Some(Error::Backup)
+        Some(Error::BackupFolder)
     );
     assert_eq!(fs::read(&path).unwrap(), original);
 

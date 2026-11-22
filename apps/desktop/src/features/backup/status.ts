@@ -33,8 +33,14 @@ export function hasProblems(problems: PassphraseProblems): boolean {
 }
 
 /** One sentence for the current state, in the order the journal derives it. */
+/** Shown wherever the backup plan of this Mac could not be read; it is never dismissible. */
+export const SETTINGS_UNREADABLE_TEXT =
+  'Backup settings on this Mac could not be read. Choose your backup folder and passphrase again; earlier backups are not affected.';
+
 export function backupStateText(status: BackupStatus): string {
   switch (status.state) {
+    case 'settingsUnreadable':
+      return SETTINGS_UNREADABLE_TEXT;
     case 'needsFolder':
       return 'Backups are not set up yet. Choose a backup folder and a passphrase to start.';
     case 'upToDate':

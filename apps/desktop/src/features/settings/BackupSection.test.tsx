@@ -2,10 +2,11 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { JournalApi } from '../../api/client';
+import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES, MEMORY_STORAGE_KEY } from '../../api/memory';
 import type { BackupStatus, Entry } from '../../api/types';
 import { newDraft } from '../../domain/entry';
 import { useStartup, type StartupContextValue } from '../../state/startup';
-import { createTestApi, renderWithProviders } from '../../test/render';
+import { createTestApi, renderWithProviders, TEST_NOW } from '../../test/render';
 import { BackupSection } from './BackupSection';
 
 const PASSPHRASE = 'fictional-harbour-compass';
@@ -273,5 +274,52 @@ describe('Backups settings', () => {
     expect(screen.getByText(/Some older backups could not be removed safely/)).toBeVisible();
     expect(await screen.findByText(/The backups in this folder could not be listed\./)).toBeVisible();
     expect(facts()).toHaveTextContent('Last successful backup20 November 2026 at 10:00');
+  });
+
+  it('says the backup settings of this Mac could not be read until a folder is chosen again', async () => {
+    const user = userEvent.setup();
+    const storage = createMemoryStorage();
+    const first = createMemoryApi({ storage, now: () => TEST_NOW });
+    await first.chooseBackupFolder();
+    await first.setBackupPassphrase(PASSPHRASE, false);
+    await first.backupNow();
+    const stored = JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? '{}') as Record<string, unknown>;
+    stored.plan = 'Synthetic unreadable backup plan';
+    storage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(stored));
+    await renderSection(createMemoryApi({ storage, now: () => TEST_NOW }));
+
+    const status = screen.getByRole('heading', { level: 3, name: 'Status' }).parentElement as HTMLElement;
+    expect(status).toHaveTextContent('Backup settings could not be read');
+    expect(status).toHaveTextContent('Choose your backup folder and passphrase again; earlier backups are not affected.');
+    expect(status).not.toHaveTextContent('Backups are not set up yet');
+
+    await user.click(screen.getByRole('button', { name: 'Choose backup folder…' }));
+    expect(await screen.findByText('A backup is due. Enter your backup passphrase so the app can make it.')).toBeVisible();
+    expect(status).not.toHaveTextContent('Backup settings could not be read');
+    // The backups made before are still there to restore.
+    expect(await screen.findByRole('list', { name: 'Backups in this folder' })).toBeInTheDocument();
+  });
+
+  it('says what to do when the folder’s list of backups is damaged', async () => {
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    vi.spyOn(api, 'listBackups').mockRejectedValue({ code: 'backupRegistry', message: ERROR_MESSAGES.backupRegistry });
+    await renderSection(api);
+    expect(
+      await screen.findByText(`The backups in this folder could not be listed. ${ERROR_MESSAGES.backupRegistry}`),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Choose a backup file…' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Change backup folder…' })).toBeVisible();
+  });
+
+  it('keeps the Keychain choice when a remembered passphrase is changed', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE, true);
+    await renderSection(api);
+    await user.click(screen.getByRole('button', { name: 'Change passphrase…' }));
+    const dialog = screen.getByRole('dialog', { name: 'Change the backup passphrase' });
+    expect(within(dialog).getByRole('checkbox', { name: 'Remember in macOS Keychain' })).toBeChecked();
   });
 });

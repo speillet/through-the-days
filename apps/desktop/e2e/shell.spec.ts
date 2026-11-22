@@ -1,5 +1,6 @@
 // The workspace offline, in English on a French system, with appearance choices
-// that survive a restart and motion that respects reduced-motion settings.
+// (theme and text size) that survive a restart and motion that respects
+// reduced-motion settings.
 
 import { entry, expect, frenchWordIn, openView, seedJournal, test } from './fixtures';
 
@@ -75,4 +76,39 @@ test('turns off transitions when reduced motion is requested', async ({ page }) 
   expect(await railTransition()).toBe('0s');
   await page.getByRole('button', { name: 'Collapse sidebar' }).click();
   await expect(page.getByRole('button', { name: 'Expand sidebar' })).toBeVisible();
+});
+
+test('enlarges all text, the journal page included, from Settings and the keyboard', async ({ page }) => {
+  await page.goto('/');
+  const html = page.locator('html');
+  const writing = page.locator('.journal-editor__content').first();
+  await expect(writing).toBeVisible();
+  const writingSize = () => writing.evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+  // WebKit reports 130% of 16px as 20.799999px, so sizes are compared as numbers.
+  const rootSize = () => html.evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+  const defaultSize = await writingSize();
+  expect(await rootSize()).toBe(16);
+
+  await openView(page, 'Settings');
+  const textSize = page.getByRole('group', { name: 'Text size' });
+  await textSize.getByRole('radio', { name: /Largest/ }).check();
+  await expect.poll(rootSize).toBeCloseTo(24, 1);
+  await openView(page, 'Today');
+  await expect(writing).toBeVisible();
+  expect(await writingSize()).toBeCloseTo(defaultSize * 1.5, 1);
+
+  // Command-minus steps down, and the size survives a restart.
+  await page.keyboard.press('Meta+Minus');
+  await expect.poll(rootSize).toBeCloseTo(20.8, 1);
+  await page.reload();
+  await expect.poll(rootSize).toBeCloseTo(20.8, 1);
+  await expect(writing).toBeVisible();
+  expect(await writingSize()).toBeCloseTo(defaultSize * 1.3, 1);
+
+  await page.keyboard.press('Meta+Equal');
+  await expect.poll(rootSize).toBeCloseTo(24, 1);
+  await page.keyboard.press('Meta+Digit0');
+  await expect.poll(rootSize).toBe(16);
+  await openView(page, 'Settings');
+  await expect(textSize.getByRole('radio', { name: /Default/ })).toBeChecked();
 });
