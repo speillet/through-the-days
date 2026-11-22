@@ -6,7 +6,7 @@ The person can choose a structured reflection or manageable action without depen
 
 ## What Changes
 
-- Deliver milestone 3 (README phase 3).
+- Deliver milestone 3 (README phase 3): manual exercises and experiments first, then optional AI; expanded templates remain a P2 follow-up.
 - Ship manual exercises first; add an optional local model only after manual workflows work. Keep source authorship, consent, and user control visible.
 - Keep the proposal and its tasks visibly unimplemented until verification.
 
@@ -14,7 +14,7 @@ The person can choose a structured reflection or manageable action without depen
 
 ### New Capabilities
 
-- cbt-worksheets: Offline thought records, action plans, problem solving, and follow-up.
+- cbt-worksheets: Offline exercises and existing action plans extended with predictions, observed outcomes, lessons, and neutral review.
 - llm-assistance: User-requested local/remote suggestions with explicit consent and bounded behavior.
 
 ### Modified Capabilities
@@ -25,10 +25,10 @@ None. The delivered capability inventory is currently empty.
 
 Dependencies: build-offline-journal; add-journal-reading is the preceding product milestone.
 
-Sources: README §§18–20 and 13 phase 3.
+Sources: README §§18–20 and 13 phase 3; appendix INT-03/09 (§§5, 11) and §13.4.
 
 Out of scope: Diagnosis, treatment promises, hidden reasoning disclosure, automatic journal rewriting, automatic score changes, or automatic goal resets.
 
-Open decisions: Resolve O-005 and the exact provider/output limits before enabling an adapter. Confirm reminder and follow-up behavior during the exercise prototype.
+Open decisions: Confirm reviewed template wording and experiment revision/deletion policy when implementing that slice. Resolve O-005 and the exact provider/output limits before enabling an adapter. Confirm reminder and follow-up behavior during the exercise prototype.
 
 Status: draft planning baseline derived from the README and recorded user decisions; no application implementation is claimed.

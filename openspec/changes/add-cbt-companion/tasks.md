@@ -17,6 +17,16 @@ Status: draft implementation sequence; no tasks have been completed. Resolve thi
 - [ ] 3.1 Add a remote adapter only with per-request preview/consent and Keychain credentials. Verify with tests proving a fresh send preview and consent for every remote request; include the slice's tests and relevant documentation.
 - [ ] 3.2 Verify cancellation, malformed output, loop prevention, English prompt instructions/fallbacks, metadata-only default retention, and absence of silent mutations. Verify with synthetic request/response, retention-choice, malformed-output, loop, cancellation, and fallback checks; include the slice's tests and relevant documentation.
 
+## 4. Experiments on existing action plans
+
+- [ ] 4.1 Extend cbt_action_plans with prediction, outcome, and lesson fields rather than adding a parallel experiment store; verify a fully manual create/review flow, neutral statuses, declined suggestions, and no changes to goals.
+- [ ] 4.2 Add auditable retrospective corrections and one optional review reminder; verify original timestamps, Skip behavior, Gentle view, and removal from derived views after deletion.
+
+## 5. Expanded templates and shared AI boundary
+
+- [ ] 5.1 Review and deliver the P2 library templates only after the original manual flows work; verify bounded steps, offline operation, and clear delivery status for unavailable templates.
+- [ ] 5.2 Exercise the shared AI boundary with prompt-like instructions embedded in synthetic sources; verify unchanged consent/source permissions, no arbitrary actions, and at most two suggested exercises/actions. Include slice tests and documentation.
+
 ## Workflow follow-up
 
 - Archive only after all tracked work is delivered and its verification evidence is recorded.

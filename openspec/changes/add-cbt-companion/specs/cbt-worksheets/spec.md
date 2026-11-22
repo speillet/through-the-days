@@ -53,3 +53,65 @@ The system SHALL present exercises as optional reflection tools, keep English fi
 
 - **WHEN** the person declines or exits an exercise
 - **THEN** normal journal editing remains available without completing the exercise.
+
+### Requirement: Prediction-to-learning experiments
+
+The system SHALL let a person explicitly create an optional behavioural experiment from an action plan or manually, recording a prediction, feasible step, effort, optional review time, observed outcome, and lesson without requiring emotional improvement.
+
+#### Scenario: No AI required
+
+- **WHEN** the person creates an experiment with no model installed
+- **THEN** prediction, step, optional schedule, observation, and lesson can all be recorded manually.
+
+#### Scenario: Declined suggestion
+
+- **WHEN** the person declines a suggested action
+- **THEN** no approved experiment or decision is stored.
+
+#### Scenario: Neutral follow-up
+
+- **WHEN** the person reviews an experiment as Done, Partly, Not yet, or No longer relevant, or chooses Skip
+- **THEN** only an explicitly chosen outcome is recorded; Skip invents neither completion nor failure.
+
+#### Scenario: Retrospective correction
+
+- **WHEN** the person edits a prediction or outcome later
+- **THEN** the edit is auditable without replacing the original recorded timestamps.
+
+#### Scenario: Deleted experiment
+
+- **WHEN** the person deletes an experiment
+- **THEN** it is removed from active timeline layers and derived results, and stale cached excerpts are invalidated.
+
+### Requirement: Bounded action review
+
+Experiment reminders SHALL be off by default, offer at most one optional review reminder per plan unless explicitly configured otherwise, and respect Gentle view and the person's ability to pause.
+
+#### Scenario: No reminder consent
+
+- **WHEN** the person creates a plan without enabling a review reminder
+- **THEN** no automatic review notification is scheduled.
+
+#### Scenario: Topic repeated without new evidence
+
+- **WHEN** the person repeatedly revisits the same topic without new information
+- **THEN** the flow offers Pause this topic, Try one small action, or Return to writing without marking any action complete.
+
+### Requirement: Progressive offline exercise library
+
+The system SHALL keep the existing manual exercises and progressively add Behavioural Experiment, Coping Estimate, Positive Evidence Journal, and Values-to-Action Reflection as bounded, inspectable offline templates.
+
+#### Scenario: Later templates not shipped
+
+- **WHEN** the extended library is not yet delivered
+- **THEN** the original three manual exercises remain usable and later templates are not presented as working.
+
+#### Scenario: AI-free library
+
+- **WHEN** the person selects a delivered template with AI disabled
+- **THEN** its steps can be completed manually without forced positivity, prescriptive unsafe tasks, or a claim of clinical benefit.
+
+#### Scenario: Suggested exercise choice
+
+- **WHEN** optional assistance suggests exercises
+- **THEN** it offers at most two options with a short rationale and leaves the choice to the person.

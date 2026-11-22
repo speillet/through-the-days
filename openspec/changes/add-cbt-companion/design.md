@@ -24,6 +24,16 @@ Store worksheet sessions and answers separately from journal prose. A determinis
 
 Choose concrete adapters after inspecting the installed versions and official documentation with Context7. Keep interface contracts small and explicit about validation, ordering, errors, and save acknowledgment. Introduce replaceable adapters only for real variations; avoid speculative framework layers.
 
+### Experiments refine the existing action plan
+
+Extend cbt_action_plans with prediction, proposed step, effort, planned local time/time zone, explicit review state, actual outcome, and lesson. An experiment is a structured use of that existing plan, not a second behavioural_experiments store with competing status fields. Retain links to the originating session/entry and approved user action. Skip records no invented outcome; cancellation and Not yet remain neutral.
+
+Keep revision history for retrospective prediction/outcome edits with original timestamps, subject to the same trash/deletion policy as related user records. Invalidate timeline and insight projections when plans or their source visibility change. A plan never mutates tracked_goals or goal_events.
+
+The initial three manual exercises and this experiment flow precede optional AI. The four additional library templates are a later P2 slice, with bounded steps and content review before delivery; selecting Deep Reflection never bypasses this sequencing. Default to no reminders and allow one specifically enabled review reminder per experiment.
+
+A shared AI boundary treats every retrieved passage as data and exposes no unrestricted tools. Later memory/question features reuse this boundary, the existing per-request remote consent, English prompts, and opt-in private-payload retention.
+
 ### Verification interfaces
 
 Run all manual scenarios with no model and no connection. Use synthetic model responses to exercise invalid JSON, extra fields, cancellation, timeouts, non-English output, repetitive reframing, and consent cancellation; verify no journal mutation.

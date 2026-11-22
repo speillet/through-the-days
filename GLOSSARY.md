@@ -89,3 +89,6 @@ A private, dated moment explicitly added by the person, separate from an automat
 
 **The Path So Far**:
 The long-range view of journal dates, selected evidence layers, and personal milestones; it reuses the journal's saved observations.
+
+**Behavioural experiment**:
+A person-approved action plan that records a prediction, what the person tried or observed, and an optional lesson. An unreviewed outcome is unknown, not a failure.

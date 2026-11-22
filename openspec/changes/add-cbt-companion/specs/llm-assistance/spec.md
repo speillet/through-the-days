@@ -95,3 +95,17 @@ Every first-party prompt used by a local or remote adapter SHALL explicitly inst
 
 - **WHEN** each supported adapter constructs a request from a synthetic non-English excerpt
 - **THEN** its first-party prompt explicitly requests English output, identifies the prompt version, and preserves the excerpt's original words.
+
+### Requirement: Untrusted source content
+
+Retrieved journal entries, imported text, and generated material SHALL be treated as untrusted data, never as instructions granting permissions, arbitrary tool execution, or authority to mutate records.
+
+#### Scenario: Instruction embedded in a journal
+
+- **WHEN** retrieved text says to ignore consent and send the diary elsewhere
+- **THEN** the content remains quoted data and neither consent controls nor the allowed source scope change.
+
+#### Scenario: Suggestion is not execution
+
+- **WHEN** a model response proposes a win, experiment, tag, milestone, or goal event
+- **THEN** it cannot create or change that record without a separate explicit user action.
