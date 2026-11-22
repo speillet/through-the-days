@@ -5,6 +5,7 @@ context: |
   Product brief: README.md. Later explicit user decisions: docs/product-decisions.md.
   Stack: Tauri 2, React, TypeScript, Vite, Rust, SQLite. Python analytics is an independent later CLI.
   All artifacts and first-party product copy are English. Preserve the language of user-authored text.
+  In-app LLMs share llm-assistance's compassionate evidence-calibrated disagreement and self-correction policy (D-008).
   First milestone: two-slot journal, skippable check-in, editor, durable persistence, trash, encrypted backups and tested restore.
   Current changes are proposed behavior; main specs represent delivered behavior after verification and archive.
   Appendix choices and exclusions: docs/appendix-integration.md. Writing depths/progress/Gentle view preserve the original completion rule.

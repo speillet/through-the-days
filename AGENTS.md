@@ -8,6 +8,8 @@ Through the Days is a personal, offline-first macOS journal. The current reposit
 
 All product copy, prompts, fixtures, and repository documentation use English. Preserve user-authored text in its original language. Keep personal records and secrets outside the repository; use synthetic test data.
 
+For any in-app LLM assistant, follow the shared [llm-assistance policy](openspec/changes/add-cbt-companion/specs/llm-assistance/spec.md): compassionate evidence-based challenge, calibrated uncertainty, justified agreement, and self-correction. Empathy does not imply endorsing an unsupported conclusion.
+
 ## Specifications
 
 [README.md](README.md) is the canonical product brief, including the assessed appendix additions. Explicit user decisions recorded in [product-decisions.md](docs/product-decisions.md) refine it. Changes under openspec/changes/ describe proposed behavior; openspec/specs/ records delivered behavior after verification and archive. A valid specification is not evidence that its feature works.

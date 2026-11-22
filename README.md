@@ -68,6 +68,7 @@ The product must remain useful **without any ChatGPT import, internet connection
 - **Private by default:** never push journal text or imported conversations to GitHub by default.
 - **Autonomy and safety:** no automatic psychiatric labels, forced exercises, penalties for missing a day, or shame around a restarted counter.
 - **Auditable CBT:** the model can suggest questions and optional reframes but must not present its inferences as established facts.
+- **Compassionate honesty:** every in-app LLM assistant supports the person without automatically endorsing their conclusions; it challenges evidenced errors respectfully and acknowledges its own uncertainty or mistakes.
 
 ---
 
@@ -897,6 +898,9 @@ Help transform a painful recurring thought into **a structured observation, a pl
 
 ### 18.3. LLM experience: Socratic, not authoritarian
 
+- **Supportive, not sycophantic:** the CBT companion and every other in-app LLM assistant, local or remote, must not agree merely to please. Acknowledge the person's feelings while questioning unsupported conclusions and clearly identifying factual errors or contradictions supported by the selected evidence.
+- **Make disagreement useful:** explain the specific issue briefly, distinguish facts from interpretations, and propose a focused question, check, or constructive alternative. Critique the claim or action without humiliating, blaming, diagnosing, or treating the person as inherently wrong.
+- **Calibrate and self-correct:** when context is insufficient, say so instead of inventing an error; agree when justified, respect personal values/preferences, and revise an incorrect criticism when new evidence appears. Disagreement is not a demand to accept the model's view. Keep the existing option to stop and the acute-distress support flow.
 - **Only on user request:** **“Explore with CBT”** from an entry or **CBT Exercises** page; no unsolicited automatic therapeutic analysis.
 - The person chooses A/B/C, or the model proposes **at most two options** with an observable, short justification. The user decides.
 - **One question at a time** with configurable limits (for example, seven thought-record steps); provide **Skip**, **Pause** and **Back to Journal** on every step.
@@ -933,7 +937,7 @@ Thought Record:
 - **Optional remote API:** provider configuration and credentials in macOS Keychain; **consent before each send**, with a preview showing exactly which excerpts and fields will leave the device. Never transmit the whole diary by default.
 - **Minimal context:** active entry and current exercise answers. Prior entries are included only if explicitly selected.
 - **Structured output:** validate a JSON object such as `question`, `step`, `optional_reframe`, `suggested_action`, `warnings`, `source_excerpt_ids` with a strict schema. Reject unexpected properties and escape rendered text. Retain model output only if the user chooses.
-- **Prompt versioning:** enforce English output, neutrality, clear separation of facts/hypotheses, no diagnosis, permission to stop, and **no encouragement of rumination loops**.
+- **Prompt versioning:** enforce English output, the shared compassionate and non-sycophantic stance, clear separation of facts/hypotheses, no diagnosis, permission to stop, and **no encouragement of rumination loops**. Before enabling a model/prompt version, run synthetic cases for evidence-based correction, blind agreement, unjustified contradiction, uncertainty, and self-correction on every affected assistant surface; JSON validity alone is insufficient.
 - **Robustness:** reasonable timeouts, cancellation, network failure handling, manual fallback, cost/context budgets and logging restricted to non-sensitive metadata.
 
 ### 18.6. Next-day review and progress summary
@@ -1130,6 +1134,7 @@ Do not define success solely by fewer negative words or longer unbroken streaks.
 33. **Derived-data control:** clearing summaries/pins/embeddings preserves original writing; source deletion/exclusion immediately invalidates their excerpts.
 34. **Private portability:** selected Markdown/PDF/CSV and JSON export/import/import preserve IDs, timestamps, missing values and confirmed outcomes without duplicate records, revived trash or invented counters.
 35. **Untrusted AI input:** instructions inside journal/imported text never override consent or permissions; unsupported sources/quotes are rejected and private payload retention remains opt-in.
+36. **Compassionate challenge:** local/remote assistants, including CBT and Ask My Journal, challenge evidenced errors and unsupported conclusions respectfully, distinguish empathy from agreement, accept justified views, acknowledge uncertainty and their own mistakes, and preserve consent, stopping, and acute-distress safeguards.
 
 ---
 

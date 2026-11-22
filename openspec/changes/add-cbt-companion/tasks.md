@@ -15,12 +15,14 @@ Status: phase-3 draft; no tasks are complete. Manual worksheets and experiments 
 ## 3. Shared AI boundary and optional local assistance
 
 - [ ] 3.1 Specify bounded contracts, consent previews, and verified country-aware support behavior; exercise prompt-like instructions in synthetic sources and verify unchanged permissions and no arbitrary actions.
-- [ ] 3.2 Add opt-in local assistance only after the manual experiment flow works; verify offline operation after model download, at most two suggestions, and no journal mutation. Include adapter tests and documentation.
+- [ ] 3.2 Define shared versioned stance instructions and synthetic acceptance cases before enabling an adapter; verify evidence-backed correction, no blind agreement, uncertainty, justified agreement, self-correction, respectful tone, and preserved consent/source permissions across affected surfaces.
+- [ ] 3.3 Add opt-in local assistance only after the manual experiment flow works; verify offline operation after model download, the shared stance cases, at most two suggestions, and no journal mutation. Include adapter tests and documentation.
 
 ## 4. Optional remote adapter and integration
 
 - [ ] 4.1 Add a remote adapter only with per-request preview/consent and Keychain credentials; verify each request requires fresh consent and document exact shared fields.
 - [ ] 4.2 Verify cancellation, malformed output, loop prevention, English prompts/fallbacks, metadata-only default retention, and absence of silent mutations using synthetic request/response fixtures.
+- [ ] 4.3 Run the shared stance cases for each supported local/remote model and affected assistant surface; record model/prompt versions and results, and repeat the cases before enabling a changed version.
 
 ## Workflow follow-up
 

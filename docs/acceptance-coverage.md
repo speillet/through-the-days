@@ -39,6 +39,7 @@ Every numbered acceptance case in README §20 is assigned below. Milestone 1 is 
 | 33 | Independent clearing and source-deletion propagation | 1, then each derivative feature | [product-guardrails](../openspec/changes/build-offline-journal/specs/product-guardrails/spec.md) — Independent derived-data control |
 | 34 | Selected private formats and idempotent round trip | 6 | [private-data-portability](../openspec/changes/ship-macos-and-approved-exports/specs/private-data-portability/spec.md) — Versioned identity-preserving round trip |
 | 35 | Untrusted source instructions and opt-in payload retention | 3; questions in 4.1 | [llm-assistance](../openspec/changes/add-cbt-companion/specs/llm-assistance/spec.md) — Untrusted source content |
+| 36 | Supportive correction, calibrated disagreement, and self-correction | 3, then every affected assistant surface | [llm-assistance](../openspec/changes/add-cbt-companion/specs/llm-assistance/spec.md) — Compassionate evidence-based challenge; Calibrated respectful disagreement; Shared stance instructions and evaluation |
 
 ## Coverage requiring more than one capability
 

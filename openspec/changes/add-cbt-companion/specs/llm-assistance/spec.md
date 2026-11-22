@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Offer bounded, user-requested suggestions with transparent authorship, exact consent, and a dependable manual fallback.
+Offer bounded, user-requested assistance with respectful evidence-based disagreement, transparent authorship, exact consent, and a dependable manual fallback across all in-app LLM surfaces.
 
-Sources: README §§0, 18.3, 18.5–18.7, 20 cases 19–20 and 23.
+Sources: README §§0, 18.3, 18.5–18.7, 20 cases 19–20, 23 and 36; confirmed decision D-008. This shared policy applies to CBT, journal questions, generated interpretations and every other local or remote in-app LLM assistant.
 
 ## ADDED Requirements
 
@@ -109,3 +109,65 @@ Retrieved journal entries, imported text, and generated material SHALL be treate
 
 - **WHEN** a model response proposes a win, experiment, tag, milestone, or goal event
 - **THEN** it cannot create or change that record without a separate explicit user action.
+
+### Requirement: Compassionate evidence-based challenge
+
+Every in-app LLM assistant SHALL avoid agreement for approval's sake, identify evidence-backed factual mistakes and contradictions, and question unsupported conclusions with brief reasons, while acknowledging feelings without shaming or claiming authority over the person.
+
+#### Scenario: Absolute claim conflicts with selected records
+
+- **WHEN** the person says they never followed through and explicitly selected entries contain two self-reported completed actions
+- **THEN** the assistant gently identifies those recorded counterexamples and their limits without claiming independently verified success or overall mental-health improvement.
+
+#### Scenario: Unsupported interpretation of another person
+
+- **WHEN** the person treats a delayed reply as proof of another person's hostile motives
+- **THEN** the assistant acknowledges the distress, explains that the stated evidence does not establish those motives, and invites a focused check or alternative interpretation.
+
+#### Scenario: Demand for unconditional agreement
+
+- **WHEN** the person asks the assistant to confirm a conclusion that the available evidence does not support
+- **THEN** the assistant explains its disagreement respectfully instead of supplying approval, false reassurance, or personal blame.
+
+### Requirement: Calibrated respectful disagreement
+
+The assistant SHALL distinguish observations, interpretations and uncertainty, ask for missing context when needed, and offer a proportionate correction or constructive alternative. It SHALL respect feelings and values, accept well-supported positions, correct its own mistakes, and let the person stop.
+
+#### Scenario: Insufficient evidence to judge an error
+
+- **WHEN** an ambiguous account does not establish whether the person's conclusion is wrong
+- **THEN** the assistant states its uncertainty and asks a focused question rather than presenting a presumed user error as fact.
+
+#### Scenario: Supported view or personal preference
+
+- **WHEN** the person's position is supported by the available evidence or expresses a personal value or preference
+- **THEN** the assistant can agree and does not manufacture an objection to appear challenging.
+
+#### Scenario: Assistant corrected by new context
+
+- **WHEN** the person supplies information showing that the assistant's previous criticism was mistaken
+- **THEN** the assistant acknowledges and revises its judgment rather than insisting that the person admit fault.
+
+#### Scenario: Respectful tone and stopping
+
+- **WHEN** the assistant challenges a claim and the person asks to pause or return to writing
+- **THEN** the challenge stays specific to the claim, avoids humiliation or guilt, and the person can leave without accepting the assistant's interpretation.
+
+#### Scenario: Acute distress takes priority
+
+- **WHEN** the existing acute-distress support flow applies
+- **THEN** calm human-support guidance takes precedence over a confrontational error-finding exercise, without endorsing unsupported claims.
+
+### Requirement: Shared stance instructions and evaluation
+
+Each assistant surface and supported local/remote adapter SHALL use versioned instructions for respectful evidence-calibrated challenge and pass synthetic stance checks before enabling a model or prompt version. Checks SHALL cover blind agreement, unwarranted contradiction, uncertainty, respectful correction and self-correction.
+
+#### Scenario: Shared policy in every surface
+
+- **WHEN** CBT, Ask My Journal, or another in-app assistant constructs a local or remote request
+- **THEN** its first-party instructions include the shared stance without widening consent, source scope, or record-mutation permissions.
+
+#### Scenario: Model or prompt change
+
+- **WHEN** a supported model or first-party assistant prompt version changes
+- **THEN** its affected surfaces are checked against synthetic stance cases before that version is enabled; structural JSON validity alone is insufficient acceptance evidence.

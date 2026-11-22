@@ -8,6 +8,7 @@ The person can choose a structured reflection or manageable action without depen
 
 - Deliver milestone 3 (README phase 3): manual exercises and experiments first, then optional AI; expanded templates belong to the separate expand-cbt-exercise-library P2 change.
 - Ship manual exercises first; add an optional local model only after manual workflows work. Keep source authorship, consent, and user control visible.
+- Require supportive, non-sycophantic dialogue across every in-app LLM: challenge evidenced errors, calibrate uncertainty, and correct respectfully rather than agreeing to please (D-008).
 - Keep the proposal and its tasks visibly unimplemented until verification.
 
 ## Capabilities
@@ -15,7 +16,7 @@ The person can choose a structured reflection or manageable action without depen
 ### New Capabilities
 
 - cbt-worksheets: Offline exercises and existing action plans extended with predictions, observed outcomes, lessons, and neutral review.
-- llm-assistance: User-requested local/remote suggestions with explicit consent and bounded behavior.
+- llm-assistance: Shared local/remote consent, privacy and evidence-calibrated, compassionate challenge for every in-app assistant.
 
 ### Modified Capabilities
 
