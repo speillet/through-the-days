@@ -34,6 +34,10 @@ The initial three manual exercises and this experiment flow precede optional AI.
 
 A shared AI boundary treats every retrieved passage as data and exposes no unrestricted tools. Later memory/question features reuse this boundary, the existing per-request remote consent, English prompts, and opt-in private-payload retention.
 
+The same boundary owns D-008's non-sycophantic stance for every local/remote assistant surface. First-party versioned instructions distinguish empathy for feelings from endorsement of a claim, identify supported mistakes with short reasons, and ask for context when uncertain. They permit justified agreement and require self-correction, rather than making the model reflexively adversarial. The person retains control of their values, records, and ability to stop; acute-distress support takes precedence over confrontation.
+
+Before enabling a model/prompt version, evaluate affected surfaces on synthetic cases for blind agreement, unsupported certainty, respectful correction, justified agreement, and model self-correction. Record versions and pass/fail evidence without private payloads. Formatting/schema checks alone do not establish this behavioral requirement.
+
 ### Verification interfaces
 
 Run all manual scenarios with no model and no connection. Use synthetic model responses to exercise invalid JSON, extra fields, cancellation, timeouts, non-English output, repetitive reframing, and consent cancellation; verify no journal mutation.

@@ -29,7 +29,7 @@ Ask My Journal SHALL default to journal-only scope and show an English qualified
 
 ### Requirement: Read-only optional inference
 
-Question answering SHALL leave journal text, scores, goals, wins, experiments, and saved history unchanged and reuse llm-assistance consent, English prompts, untrusted-content handling, and default private-payload retention rules.
+Question answering SHALL leave journal text, scores, goals, wins, experiments, and saved history unchanged and reuse llm-assistance consent, English prompts, compassionate evidence-based challenge, calibrated disagreement, untrusted-content handling, and private-payload retention rules.
 
 #### Scenario: Remote request refused
 

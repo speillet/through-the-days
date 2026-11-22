@@ -29,3 +29,5 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Validate proposed specifications
         run: npm run spec:validate
+      - name: Reject incomplete archived changes
+        run: npm run openspec -- validate --archived --no-interactive

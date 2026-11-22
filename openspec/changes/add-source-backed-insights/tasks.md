@@ -11,7 +11,7 @@ Status: P2 draft; all implementation work is pending. Resolve decision gates bef
 ## 2. Read-only questions
 
 - [ ] 2.1 Build Ask My Journal over that verified result set with scope, dated evidence, coverage, limitations, and version metadata; verify no unsupported quote/date/source is accepted and review summaries do not inflate observation counts.
-- [ ] 2.2 Reuse the existing optional model boundary; verify English output, prompt-injection isolation, per-request remote consent, metadata-only default retention, and local fallback on cancellation or provider failure.
+- [ ] 2.2 Reuse the existing optional model boundary; verify English output, prompt-injection isolation, per-request consent, metadata-only default retention, and local fallback. Run the shared stance cases on questions/interpretations to verify respectful correction and qualified disagreement without blind approval or arbitrary contradiction.
 - [ ] 2.3 Invalidate saved answers after source changes and remove excluded/deleted derived excerpts; verify journal text, scores, goals, wins, and authored review notes remain unchanged. Include question slice tests and documentation.
 
 ## 3. Descriptive personal patterns

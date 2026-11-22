@@ -13,6 +13,7 @@ Confirmed choices refine the original README v0.6 and remain in force in the con
 | D-005 | Include encrypted local backup and tested restore before real personal use. | Advance backup/restore from phase 6 into the first usable milestone. See ADR 0002. |
 | D-006 | Encrypt backups with a dedicated portable passphrase, optionally remembered in macOS Keychain. | A clean Mac can restore a backup with that passphrase; the live journal still has no application vault password. |
 | D-007 | Back up daily while the app is open; catch up at the next launch when it was closed. | The MVP needs no background service. Catch-up records the current recoverable state, not invented snapshots for missed days. |
+| D-008 | Every in-app LLM assistant must be supportive without being a yes-man: challenge evidenced errors and unsupported conclusions with kindness, calibrated uncertainty, and self-correction. | One shared policy applies to CBT, journal questions, generated interpretations, and local/remote adapters; acceptance checks must test dialogue stance, not just output structure. |
 
 ## Inherited requirements
 

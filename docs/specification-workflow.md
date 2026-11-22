@@ -57,6 +57,18 @@ flowchart LR
 5. Test through the public behavior of each module. Use tdd for meaningful implementation changes; persistence tests use real temporary SQLite databases and synthetic content.
 6. Verify the implemented scenarios before archiving. Unchecked tasks and unresolved decisions remain visible.
 
+## Pull request completion
+
+Specification reconciliation is part of every PR's definition of done, performed after the final implementation/review edits and before merge. Review the final diff against requirements, scenarios, decisions, and acceptance coverage; include the updates in that PR rather than leaving a separate documentation follow-up.
+
+1. **Match actual scope:** update affected proposal/spec/design/task artifacts, changed acceptance scenarios, and material README/decision text. Describe the resulting behavior and known limits, including choices changed during review.
+2. **Synchronise delivered behavior:** for an implemented change, reconcile only verified delivered deltas into openspec/specs/ using openspec-sync-specs; archive a fully completed change using openspec-archive-change. Mark tasks complete only with actual evidence. Split partially delivered scope into coherent changes when needed so unfinished requirements are neither advertised as delivered nor silently archived.
+3. **Keep planning distinct:** a planning-only PR updates its draft artifacts and relevant brief, leaving unimplemented product tasks unchecked. It does not sync proposed features into delivered main specs or archive them merely because the documents validate.
+4. **Handle unchanged behavior explicitly:** if tooling or editorial changes leave product behavior unchanged, explain in the PR why no product requirement changes; review and keep the applicable workflow/docs current rather than making a cosmetic spec edit.
+5. **Validate and report:** run npm run spec:validate and npm run openspec -- validate --archived --no-interactive, plus the checks appropriate to the delivered work. List affected capabilities/spec paths, sync/archive status or the no-impact reason, commands/results, and remaining scope in the PR's Specifications section.
+
+The PR template prompts this review. CI checks strict OpenSpec structure and rejects archived changes with unfinished tasks; those checks do not establish semantic agreement between code and prose. The author and reviewer must still compare the final behavior to the specs before merging. A GitHub PR merge is not itself an OpenSpec product-change archive.
+
 ## Commands
 
 Install a supported Node.js version, then use the lockfile:
@@ -70,7 +82,7 @@ npm run openspec -- instructions specs --change build-offline-journal --json
 npm run openspec -- new change describe-the-next-change --schema spec-driven
 ~~~
 
-The project pins OpenSpec 2.1.1. Prefer these npm commands over a separately installed global openspec binary. Pull requests and main pushes run the same strict validation in .github/workflows/specs.yml. CLI metadata is scaffolded with openspec new change; generated Codex skills live in .agents/skills/.
+The project pins OpenSpec 2.1.1. Prefer these npm commands over a separately installed global openspec binary. Pull requests and main pushes run strict structure validation and archived-task completion checks in .github/workflows/specs.yml. CLI metadata is scaffolded with openspec new change; generated Codex skills live in .agents/skills/.
 
 ## Skills and external tools
 
