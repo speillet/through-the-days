@@ -6,7 +6,7 @@ Once personal use is reliable, the application can be prepared for wider Mac dis
 
 ## What Changes
 
-- Deliver milestone 6 (README phase 6, excluding backups already advanced into milestone 1).
+- Deliver milestone 6 (product-roadmap phase 6, excluding backups already advanced into milestone 1).
 - Verify a distributable app/disk image and a private-by-default export path with exact preview.
 - Add private-content portability separately from public aggregates and already-required encrypted backups.
 - Keep the proposal and its tasks visibly unimplemented until verification.
@@ -27,7 +27,7 @@ None. The delivered capability inventory is currently empty.
 
 Dependencies: The relevant product milestones and verified personal-use backup/restore.
 
-Sources: README §§3, 10, 13 phase 6, 17.3, 19–20; appendix INT-10 (§12); decisions D-001 and D-005.
+Sources: README_THROUGH_THE_DAYS.md §§3, 10, 13 phase 6, 17.3, 19–20; appendix INT-10 (§12); decisions D-001 and D-005.
 
 Out of scope: Automatic blog publication, exporting private prose by default, claiming all Mac architectures are supported without verification, or redesigning backup policy.
 

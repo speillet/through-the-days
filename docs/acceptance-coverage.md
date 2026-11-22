@@ -1,6 +1,6 @@
 # Acceptance coverage
 
-Every numbered acceptance case in README §20 is assigned below. Milestone 1 is the first usable offline journal; later rows stay deferred until their milestone. These are verification plans, not executed application tests.
+Every numbered case in the [product acceptance tests](acceptance-tests.md), linked from product-reference section 20, is assigned below. Milestone 1 is the first usable offline journal; later rows stay deferred until their milestone. These are verification plans, not executed application tests.
 
 | README case | Observable behavior | Milestone | Capability and requirement |
 |---|---|---|---|

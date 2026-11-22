@@ -29,7 +29,7 @@ Milestone: P2 follow-up after phase 4's manual exploration, before or independen
 
 Dependencies: build-offline-journal, add-journal-reading, and relevant add-personal-exploration metrics. AI answer wording is optional and depends on add-cbt-companion's shared llm-assistance boundary. Additional CBT/import sources become available only when explicitly enabled and delivered.
 
-Sources: appendix INT-04/07/08 (§§6, 9–10, 13.4); existing README §§8, 15–16, 18.5.
+Sources: appendix INT-04/07/08 (§§6, 9–10, 13.4); existing README_THROUGH_THE_DAYS.md §§8, 15–16, 18.5.
 
 Out of scope: automated diagnosis, predictions of relapse or wellbeing, background insight generation, unrestricted model tools, persistent remote permission, and writes to journals, scores, goal events, or approved records from model output.
 

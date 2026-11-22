@@ -6,7 +6,7 @@ The person needs to revisit themes and recognise reported actions without confla
 
 ## What Changes
 
-- Deliver milestone 4 (README phase 4).
+- Deliver milestone 4 (product-roadmap phase 4).
 - Deliver manual tags and exact counts first, then richer matching and independent goals with transparent units.
 - Keep the proposal and its tasks visibly unimplemented until verification.
 
@@ -26,7 +26,7 @@ None. The delivered capability inventory is currently empty.
 
 Dependencies: build-offline-journal and add-journal-reading; preserve existing reading behavior.
 
-Sources: README §§15–17, 8, 19–20.
+Sources: README_THROUGH_THE_DAYS.md §§15–17, 8, 19–20.
 
 Out of scope: Automatic diagnostic labels, inferred lapses, a single psychological score, or treating zero mentions as proof of absence.
 

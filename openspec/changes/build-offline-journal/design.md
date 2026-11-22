@@ -2,7 +2,7 @@
 
 ## Context
 
-See proposal.md for product motivation and scope. Milestone: 1 (README phases 0–1, with backup/restore advanced by D-005). No product dependency; this is the first implementation milestone.
+See proposal.md for product motivation and scope. Milestone: 1 (product-roadmap phases 0–1, with backup/restore advanced by D-005). No product dependency; this is the first implementation milestone.
 
 Status: draft design. Confirmed requirements are distinguished from the engineering proposals below; later milestone choices remain deferred in the decision register. Artifact presence is not implementation approval.
 
@@ -16,7 +16,7 @@ The first journal needs no hosted backend, account model, bundled Python, or mod
 
 ### Confirmed constraints
 
-README §§0–5, 10–14, 19–22; decisions D-001–D-007. Read docs/product-decisions.md and the relevant ADRs before changing these constraints.
+README_THROUGH_THE_DAYS.md §§0–5, 10–14, 19–22; decisions D-001–D-007. Read docs/product-decisions.md and the relevant ADRs before changing these constraints.
 
 ### Proposed implementation approach
 

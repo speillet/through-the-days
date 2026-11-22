@@ -4,7 +4,7 @@
 
 Keep product behavior private, accessible, English-language, and faithful to the person's own words across every milestone.
 
-Sources: README §§0–2, 5.3, 10.3, 18, 20 cases 8, 10, 21–23.
+Sources: README_THROUGH_THE_DAYS.md §§0–2, 5.3, 10.3, 18, 20 cases 8, 10, 21–23.
 
 ## ADDED Requirements
 

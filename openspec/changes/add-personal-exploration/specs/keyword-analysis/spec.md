@@ -4,7 +4,7 @@
 
 Make word and topic exploration auditable with reproducible methods, source passages, and explicit corpus coverage.
 
-Sources: README §16, 19.2, 20 case 16.
+Sources: README_THROUGH_THE_DAYS.md §16, 19.2, 20 case 16.
 
 ## ADDED Requirements
 

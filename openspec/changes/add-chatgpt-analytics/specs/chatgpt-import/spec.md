@@ -4,7 +4,7 @@
 
 Ingest explicitly supplied local exports reproducibly while keeping journal functionality independent of account access or import success.
 
-Sources: README §§9–10, 19, 20 case 11.
+Sources: README_THROUGH_THE_DAYS.md §§9–10, 19, 20 case 11.
 
 ## ADDED Requirements
 

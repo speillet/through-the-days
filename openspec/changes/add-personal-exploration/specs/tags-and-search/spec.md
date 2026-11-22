@@ -4,7 +4,7 @@
 
 Organise journal dates and entries using intentional annotations that remain distinct from automatically detected text or events.
 
-Sources: README §15 and 20 case 15.
+Sources: README_THROUGH_THE_DAYS.md §15 and 20 case 15.
 
 ## ADDED Requirements
 

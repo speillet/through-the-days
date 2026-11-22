@@ -4,7 +4,7 @@
 
 Offer additional bounded offline reflection templates after the original manual workflows, without blocking independent delivery of the core CBT companion.
 
-Sources: appendix INT-09 (§11); README §§13, 18.8. Existing cbt-worksheets owns original sessions and experiments.
+Sources: appendix INT-09 (§11); README_THROUGH_THE_DAYS.md §§13, 18.8. Existing cbt-worksheets owns original sessions and experiments.
 
 ## ADDED Requirements
 

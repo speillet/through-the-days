@@ -6,7 +6,7 @@ The person can choose a structured reflection or manageable action without depen
 
 ## What Changes
 
-- Deliver milestone 3 (README phase 3): manual exercises and experiments first, then optional AI; expanded templates belong to the separate expand-cbt-exercise-library P2 change.
+- Deliver milestone 3 (product-roadmap phase 3): manual exercises and experiments first, then optional AI; expanded templates belong to the separate expand-cbt-exercise-library P2 change.
 - Ship manual exercises first; add an optional local model only after manual workflows work. Keep source authorship, consent, and user control visible.
 - Require supportive, non-sycophantic dialogue across every in-app LLM: challenge evidenced errors, calibrate uncertainty, and correct respectfully rather than agreeing to please (D-008).
 - Keep the proposal and its tasks visibly unimplemented until verification.
@@ -26,7 +26,7 @@ None. The delivered capability inventory is currently empty.
 
 Dependencies: build-offline-journal; add-journal-reading is the preceding product milestone.
 
-Sources: README §§18–20 and 13 phase 3; appendix INT-03/09 (§§5, 11) and §13.4.
+Sources: README_THROUGH_THE_DAYS.md §§18–20 and 13 phase 3; appendix INT-03/09 (§§5, 11) and §13.4.
 
 Out of scope: Diagnosis, treatment promises, hidden reasoning disclosure, automatic journal rewriting, automatic score changes, or automatic goal resets.
 

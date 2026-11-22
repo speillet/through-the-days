@@ -2,7 +2,7 @@
 
 ## Context
 
-See proposal.md for product motivation and scope. Milestone: 2 (README phase 2). build-offline-journal, including stable save and journal-date behavior.
+See proposal.md for product motivation and scope. Milestone: 2 (product-roadmap phase 2). build-offline-journal, including stable save and journal-date behavior.
 
 Status: draft design. Confirmed requirements are distinguished from the engineering proposals below; later milestone choices remain deferred in the decision register. Artifact presence is not implementation approval.
 
@@ -16,7 +16,7 @@ This change reuses preceding capabilities rather than introducing an independent
 
 ### Confirmed constraints
 
-README §§6–8, 14.2–14.3, 16.3, 20–22. Read docs/product-decisions.md and the relevant ADRs before changing these constraints.
+README_THROUGH_THE_DAYS.md §§6–8, 14.2–14.3, 16.3, 20–22. Read docs/product-decisions.md and the relevant ADRs before changing these constraints.
 
 ### Proposed implementation approach
 

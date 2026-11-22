@@ -4,7 +4,7 @@
 
 Revisit chosen journal dates through an accessible month calendar and local search over the saved journal.
 
-Sources: README §§6, 8, 16.3, 20 cases 4–5; requires the offline journal.
+Sources: README_THROUGH_THE_DAYS.md §§6, 8, 16.3, 20 cases 4–5; requires the offline journal.
 
 ## ADDED Requirements
 

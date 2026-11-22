@@ -2,7 +2,7 @@
 
 ## Context
 
-See proposal.md for product motivation and scope. Milestone: 3 (README phase 3). build-offline-journal; add-journal-reading is the preceding product milestone.
+See proposal.md for product motivation and scope. Milestone: 3 (product-roadmap phase 3). build-offline-journal; add-journal-reading is the preceding product milestone.
 
 Status: draft design. Confirmed requirements are distinguished from the engineering proposals below; later milestone choices remain deferred in the decision register. Artifact presence is not implementation approval.
 
@@ -16,7 +16,7 @@ This change reuses preceding capabilities rather than introducing an independent
 
 ### Confirmed constraints
 
-README §§18–20 and 13 phase 3. Read docs/product-decisions.md and the relevant ADRs before changing these constraints.
+README_THROUGH_THE_DAYS.md §§18–20 and 13 phase 3. Read docs/product-decisions.md and the relevant ADRs before changing these constraints.
 
 ### Proposed implementation approach
 

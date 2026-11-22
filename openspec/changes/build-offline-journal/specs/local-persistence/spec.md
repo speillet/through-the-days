@@ -4,7 +4,7 @@
 
 Keep acknowledged journal revisions durable across restarts and failures while preserving coherent entry and reflection data.
 
-Sources: README §§10–12, 19.3, 20 cases 3, 9, 12–13; durability is an engineering clarification.
+Sources: README_THROUGH_THE_DAYS.md §§10–12, 19.3, 20 cases 3, 9, 12–13; durability is an engineering clarification.
 
 ## ADDED Requirements
 

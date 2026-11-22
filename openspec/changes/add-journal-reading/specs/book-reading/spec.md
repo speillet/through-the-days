@@ -4,7 +4,7 @@
 
 Make saved journal writing pleasant to reread chronologically without losing long text or the person's reading position.
 
-Sources: README §7 and 20 case 6.
+Sources: README_THROUGH_THE_DAYS.md §7 and 20 case 6.
 
 ## ADDED Requirements
 

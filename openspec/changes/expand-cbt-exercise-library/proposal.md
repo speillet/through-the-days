@@ -26,7 +26,7 @@ Milestone: P2 follow-up alongside phase 4.1; outside phase 3's completion scope 
 
 Dependencies: the original manual cbt-worksheets and action-plan/experiment behavior. No model installation or remote credential is required for manual template use.
 
-Sources: appendix INT-09 (§11); README §§13, 18.8. This is proposed behavior, not an implemented or clinically validated treatment.
+Sources: appendix INT-09 (§11); README_THROUGH_THE_DAYS.md §§13, 18.8. This is proposed behavior, not an implemented or clinically validated treatment.
 
 Out of scope: diagnoses, clinical effectiveness claims, mandatory reframing, arbitrary model actions, new counter logic, and duplication of the existing experiment store.
 

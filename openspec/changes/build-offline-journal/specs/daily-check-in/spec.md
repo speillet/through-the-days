@@ -4,7 +4,7 @@
 
 Let the person briefly reflect before writing while keeping every optional answer skippable and independently meaningful.
 
-Sources: README §§4.2, 5, 11.2, 14.1; core acceptance 13.
+Sources: README_THROUGH_THE_DAYS.md §§4.2, 5, 11.2, 14.1; core acceptance 13.
 
 ## ADDED Requirements
 
