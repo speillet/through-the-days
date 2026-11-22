@@ -1,43 +1,87 @@
-use crate::{Error, Journal};
+use crate::{Depth, Error, Journal};
 use chrono::{DateTime, Utc};
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 
+/// Display preferences stored in the journal.
+///
+/// Missing fields take their defaults, so preferences stored by an earlier version still load;
+/// unknown fields are rejected rather than silently dropped.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct Preferences {
+    /// IANA time zone used for new-entry defaults and daily backups.
     pub time_zone: String,
+    /// `system`, `light` or `dark`.
     pub theme: String,
+    /// Gentle view: hides optional tracking without deleting data.
     pub gentle: bool,
     pub show_durations: bool,
     pub show_toolbar: bool,
     pub show_scores: bool,
     pub sidebar_open: bool,
+    /// Disables nonessential animation even when the system setting allows it.
+    pub reduce_motion: bool,
+    /// Writing depth offered first for a new entry; presentation only.
+    pub default_depth: Depth,
+    pub show_word_count: bool,
 }
 
 impl Default for Preferences {
     fn default() -> Self {
-        Self { time_zone: "Europe/Paris".into(), theme: "system".into(), gentle: false, show_durations: true, show_toolbar: true, show_scores: true, sidebar_open: true }
+        Self {
+            time_zone: "Europe/Paris".into(),
+            theme: "system".into(),
+            gentle: false,
+            show_durations: true,
+            show_toolbar: true,
+            show_scores: true,
+            sidebar_open: true,
+            reduce_motion: false,
+            default_depth: Depth::Daily,
+            show_word_count: false,
+        }
     }
 }
 
 impl Preferences {
+    /// The civil journal date of `now` in the configured time zone.
     pub fn journal_date(&self, now: DateTime<Utc>) -> Result<String, Error> {
-        let zone = self.time_zone.parse::<chrono_tz::Tz>().map_err(|_| Error::Date)?;
+        let zone = self
+            .time_zone
+            .parse::<chrono_tz::Tz>()
+            .map_err(|_| Error::Date)?;
         Ok(now.with_timezone(&zone).date_naive().to_string())
     }
 }
 
 impl Journal {
     pub fn preferences(&self) -> Result<Preferences, Error> {
-        let data: Option<String> = self.connection.query_row("SELECT value FROM preferences WHERE key='display'", [], |r| r.get(0)).optional()?;
-        data.map(|v| serde_json::from_str(&v).map_err(Error::from)).unwrap_or_else(|| Ok(Preferences::default()))
+        let stored: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT value FROM preferences WHERE key='display'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        match stored {
+            Some(value) => Ok(serde_json::from_str(&value)?),
+            None => Ok(Preferences::default()),
+        }
     }
 
+    /// Validates the time zone and theme, then stores the preferences.
     pub fn set_preferences(&self, preferences: &Preferences) -> Result<(), Error> {
         preferences.journal_date(Utc::now())?;
-        if !matches!(preferences.theme.as_str(), "system" | "light" | "dark") { return Err(Error::Document); }
-        self.connection.execute("INSERT INTO preferences(key,value) VALUES('display',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [serde_json::to_string(preferences)?])?;
+        if !matches!(preferences.theme.as_str(), "system" | "light" | "dark") {
+            return Err(Error::Document);
+        }
+        self.connection.execute(
+            "INSERT INTO preferences(key,value) VALUES('display',?1)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [serde_json::to_string(preferences)?],
+        )?;
         Ok(())
     }
 }

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Original Through the Days icon: a journal page with a restrained iris bookmark.
+       Palette from docs/design-system.md: Ink, Paper, Iris and Slate.
+       Regenerate the bundled icons with: npx tauri icon icons/app-icon.svg -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#25314A"/>
+  <rect x="292" y="222" width="440" height="580" rx="36" fill="#F9FAFC"/>
+  <path d="M600 222 H668 V410 L634 376 L600 410 Z" fill="#5755A4"/>
+  <g stroke-linecap="round">
+    <line x1="352" y1="300" x2="540" y2="300" stroke="#25314A" stroke-width="30"/>
+    <line x1="352" y1="460" x2="672" y2="460" stroke="#657086" stroke-width="20"/>
+    <line x1="352" y1="530" x2="672" y2="530" stroke="#657086" stroke-width="20"/>
+    <line x1="352" y1="600" x2="672" y2="600" stroke="#657086" stroke-width="20"/>
+    <line x1="352" y1="670" x2="560" y2="670" stroke="#657086" stroke-width="20"/>
+  </g>
+</svg>

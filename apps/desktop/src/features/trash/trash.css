@@ -1,0 +1,88 @@
+/* Trash: a calm list of deleted entries, each with its own restore and delete actions. */
+
+.trash {
+  max-width: 820px;
+}
+
+.trash > .notice {
+  margin-bottom: var(--space-4);
+}
+
+.trash__intro {
+  max-width: var(--measure);
+  margin-bottom: var(--space-5);
+  color: var(--color-text-muted);
+}
+
+.trash__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  list-style: none;
+}
+
+.trash-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.trash-item__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-family: var(--font-writing);
+  font-size: var(--text-lg);
+}
+
+.trash-item__slot {
+  color: var(--color-text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.trash-item__preview {
+  max-width: var(--measure);
+  font-family: var(--font-writing);
+  font-size: var(--text-md);
+  line-height: var(--leading-writing);
+  overflow-wrap: break-word;
+}
+
+.trash-item__preview--empty {
+  color: var(--color-text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  font-style: italic;
+}
+
+.trash-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-5);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.trash-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.trash__empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: var(--measure);
+}
+
+.trash__empty-title {
+  font-family: var(--font-writing);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}

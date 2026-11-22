@@ -1,0 +1,255 @@
+/* Today: date header, slot switcher and the entry workspace around the journal page. */
+
+.view.today {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.today-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+}
+
+.today-header__date {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+/* "Today": a word in a pill, not a colour. */
+.today-marker {
+  padding: 1px var(--space-2);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-pill);
+  color: var(--color-accent-strong);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.today-header__nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.date-picker {
+  position: relative;
+}
+
+.date-picker__panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 20;
+  padding: var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-page);
+  box-shadow: var(--shadow-dialog);
+}
+
+/* Morning / Evening ------------------------------------------------------------- */
+
+.slot-tabs {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.slot-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.slot-tab__icon {
+  align-self: center;
+}
+
+.slot-tab__label {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.slot-tab__status {
+  font-size: var(--text-sm);
+}
+
+.slot-tab:hover .slot-tab__label {
+  color: var(--color-accent-strong);
+}
+
+/* The selected slot: an iris underline plus aria-selected, matching the rail bookmark. */
+.slot-tab--selected::after {
+  position: absolute;
+  right: var(--space-2);
+  bottom: -1px;
+  left: var(--space-2);
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--color-accent);
+  content: '';
+}
+
+.slot-tab--selected .slot-tab__label {
+  color: var(--color-accent-strong);
+}
+
+.today__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.today__panel:focus-visible {
+  outline-offset: 4px;
+}
+
+.today__loading {
+  color: var(--color-text-muted);
+}
+
+/* Entry workspace --------------------------------------------------------------------- */
+
+.entry-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.radio-group.depth-selector .radio-group__options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.radio-group.depth-selector .radio-option {
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.radio-group.depth-selector .radio-option__label {
+  font-size: var(--text-sm);
+}
+
+.radio-group.depth-selector .radio-option__description {
+  font-size: var(--text-xs);
+}
+
+.today-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* No check-in panel (Quick Check-in without scores, or focus mode): the page alone. */
+.workspace.workspace--single {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'page';
+}
+
+.journal-page__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  /* Leave room for the bookmark ribbon. */
+  padding-right: var(--space-6);
+}
+
+.save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 1.4em;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.save-status--saved .save-status__icon {
+  color: var(--color-success);
+}
+
+.save-status--failed {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.save-failure {
+  margin-bottom: var(--space-3);
+}
+
+.save-failure .notice__body > * + * {
+  margin-top: var(--space-1);
+}
+
+.journal-page__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+.journal-page__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.completion {
+  display: flex;
+  flex: 1 1 18rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.completion__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.completion__message {
+  flex-basis: 100%;
+}
+
+.entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dialog.move-dialog {
+  width: min(420px, 100%);
+}
+
+.move-dialog .calendar {
+  align-self: center;
+}
+
+/* Focus mode: the page fills the view; the date stays as a quiet heading. */
+.app-shell--focus .view.today {
+  max-width: 900px;
+}

@@ -1,0 +1,98 @@
+/* The journal editor: a calm writing surface inside the journal page. */
+
+.journal-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  width: fit-content;
+  padding: 3px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-background);
+}
+
+.editor-toolbar__button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.editor-toolbar__button:hover {
+  background: var(--color-sunken);
+  color: var(--color-text);
+}
+
+/* Pressed: a filled tile with a visible border, not colour alone. */
+.editor-toolbar__button--pressed,
+.editor-toolbar__button--pressed:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
+.journal-editor__surface {
+  min-width: 0;
+}
+
+.journal-editor__content {
+  min-height: 42vh;
+  padding: var(--space-2) 0 var(--space-5);
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  caret-color: var(--color-accent);
+}
+
+.journal-editor__content:focus-visible {
+  /* Keyboard focus stays visible, with room around the words. */
+  outline: 2px solid var(--color-focus);
+  outline-offset: 10px;
+  border-radius: 2px;
+}
+
+.journal-editor__content p.is-editor-empty:first-child::before {
+  float: left;
+  height: 0;
+  color: var(--color-text-muted);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.journal-editor__count {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.dialog.markdown-dialog {
+  width: min(640px, 100%);
+}
+
+.markdown-dialog__text {
+  max-height: 50vh;
+  padding: var(--space-3) var(--space-4);
+  overflow: auto;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-ui);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.markdown-dialog__empty {
+  color: var(--color-text-muted);
+}

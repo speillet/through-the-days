@@ -4632,14 +4632,15 @@ name = "through-the-days"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "chrono-tz",
  "journal-core",
+ "rusqlite",
  "security-framework",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
+ "tempfile",
  "zeroize",
 ]
 

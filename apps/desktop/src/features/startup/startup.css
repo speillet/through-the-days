@@ -1,0 +1,39 @@
+/* Startup gate: one quiet card in the middle of the window. */
+
+.startup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(600px, 100%);
+}
+
+.startup__title {
+  font-family: var(--font-writing);
+  font-size: var(--text-xl);
+}
+
+.startup__form,
+.startup__step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.startup__form {
+  gap: var(--space-5);
+}
+
+.startup__step + .startup__step {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+.startup__step-title {
+  font-size: var(--text-md);
+}
+
+.startup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

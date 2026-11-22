@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Local journal window; filesystem and dialogs are owned by native commands.",
+  "description": "Local journal window; filesystem and dialogs are owned by native commands. The window may destroy itself after flushing pending saves on close.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-destroy"]
 }

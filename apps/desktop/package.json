@@ -8,11 +8,15 @@
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
     "test": "vitest run",
-    "tauri": "tauri"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "tauri": "tauri",
+    "smoke:native": "bash native-smoke/run.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.5",
     "@tiptap/core": "3.35.0",
+    "@tiptap/extensions": "3.35.0",
     "@tiptap/markdown": "3.35.0",
     "@tiptap/pm": "3.35.0",
     "@tiptap/react": "3.35.0",
@@ -22,6 +26,7 @@
     "react-dom": "19.3.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.65.1",
     "@tauri-apps/cli": "2.12.6",
     "@testing-library/jest-dom": "8.0.0",
