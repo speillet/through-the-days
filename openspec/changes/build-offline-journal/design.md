@@ -24,6 +24,16 @@ Keep persistence behind Rust/Tauri commands, with SQLite as the only journal aut
 
 Choose concrete adapters after inspecting the installed versions and official documentation with Context7. Keep interface contracts small and explicit about validation, ordering, errors, and save acknowledgment. Introduce replaceable adapters only for real variations; avoid speculative framework layers.
 
+### Appendix refinements
+
+Writing depth changes presentation, never entry identity. Quick/Daily remain usable before Deep Reflection's manual worksheet exists in milestone 3. A mode choice and suggested durations are skippable.
+
+Add nullable progress_score with a 1–10 constraint alongside existing scores. Fresh schemas include it once; upgrades use a versioned migration with existing rows set to NULL. Expand the existing check-in contract and entry_reflections for optional learning/helped answers; do not create a competing reflection store.
+
+Use personal_wins for explicitly approved multiple items, with stable IDs, date, optional entry link, origin, visibility, and timestamps. Existing proud_of remains the person's reflection; explicit promotion creates one linked win and is idempotent. Reports count canonical win IDs only. Do not copy every pride answer automatically or retain source-linked copies beyond source-deletion permissions.
+
+Gentle view composes existing visibility and prompt controls as one preference. It does not erase values or suppress persistence failures and backup prompts. Expanded templates, timelines, and AI remain in their own milestones.
+
 ### Verification interfaces
 
 Exercise journal save/load/lifecycle through its command-facing interface using real temporary SQLite databases and synthetic entries. Verify renderer behavior with component/browser tests, and Mac window/keyboard/VoiceOver behavior in a native launch. Inject persistence failures and crash after an acknowledged revision. Verify backup/restore in a clean destination.

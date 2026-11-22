@@ -62,3 +62,22 @@ Development and automated verification SHALL use explicitly synthetic records an
 
 - **WHEN** a test requires an entry or conversation
 - **THEN** its fixture is fictional and does not include personal records or credentials.
+
+### Requirement: Gentle view
+
+The system SHALL provide an optional global Gentle view that hides optional numeric panels, distress interpretations, counters/streak prompts, unsolicited insights, and automatic follow-up prompts while preserving stored data and core navigation.
+
+#### Scenario: Simpler journal view
+
+- **WHEN** the person enables Gentle view
+- **THEN** writing, calendar navigation when delivered, user-authored wins, and manual worksheets remain accessible while optional tracking panels are hidden.
+
+#### Scenario: Restore display preferences
+
+- **WHEN** the person leaves Gentle view
+- **THEN** previous per-surface display choices can be restored without changing scores, goal events, reminders' opt-in state, or journal content.
+
+#### Scenario: Data protection continues
+
+- **WHEN** Gentle view suppresses optional follow-up prompts
+- **THEN** save failures and required backup-passphrase requests remain visible and daily backups are not disabled.

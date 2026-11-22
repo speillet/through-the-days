@@ -8,6 +8,7 @@ A person needs to write, record a skippable check-in, and recover exactly what w
 
 - Deliver milestone 1 (README phases 0–1, with backup/restore advanced by D-005).
 - Launch a personal Mac app, complete or skip reflection, write in either slot, and recover data after restart. Make backup/restore usable before real-data use.
+- Add optional perceived progress, data-preserving writing depths, and multiple user-owned wins without changing the two-slot or completion rules (appendix INT-01/02/10).
 - Keep the proposal and its tasks visibly unimplemented until verification.
 
 ## Capabilities
@@ -16,11 +17,11 @@ A person needs to write, record a skippable check-in, and recover exactly what w
 
 - desktop-shell: Mac navigation, themes, settings, and keyboard access.
 - journal-entries: Dates, slots, draft/completion lifecycle, and conflict handling.
-- daily-check-in: Independent mood/energy, optional pride, emotions, and actions.
+- daily-check-in: Writing depths, four independent dimensions, optional reflections, and user-approved small wins.
 - journal-editor: Comfortable writing and portable document content.
 - local-persistence: Atomic saves, migration, autosave, and restart recovery.
 - local-data-protection: Thirty-day trash, accurate protection claims, encrypted backup and restore.
-- product-guardrails: English copy, multilingual user text, accessibility, and private defaults.
+- product-guardrails: English copy, multilingual user text, accessibility, private defaults, and Gentle view.
 
 ### Modified Capabilities
 

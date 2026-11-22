@@ -34,12 +34,22 @@ Self-reported activation or energy at a moment, on a scale from 0 to 10.
 An optional self-reported sense of pride, on a scale from 1 to 10.
 _Avoid_: Performance grade, mood.
 
+**Perceived progress**:
+An optional self-report of how much the person feels they moved forward, independent of mood, energy, and pride.
+_Avoid_: Mental-health grade, objective improvement.
+
+**Writing depth**:
+A Quick Check-in, Daily Journal, or Deep Reflection presentation of the same journal entry.
+
+**Gentle view**:
+A simpler presentation that hides optional tracking and prompts while preserving the person's data and access to writing.
+
 **Reported action**:
 Something the person explicitly says they did.
 _Avoid_: Intention, inferred achievement.
 
 **Small win**:
-Something the person recognises as an achievement, including useful rest or a modest effort.
+A dated item the person explicitly recognises as meaningful, whether entered directly or approved from a suggestion. Rest is a win only when the person identifies it that way.
 
 **Intention**:
 A possible future action; it becomes reported follow-through only when the person confirms an outcome.

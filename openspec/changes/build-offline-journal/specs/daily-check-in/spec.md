@@ -72,3 +72,70 @@ The system SHALL present an original, versioned English emotion vocabulary with 
 
 - **WHEN** either numeric axis equals 5
 - **THEN** the interface identifies the neutral value without assigning a strong quadrant implication.
+
+### Requirement: Writing depth preserves entry identity
+
+The system SHALL offer Quick Check-in, Daily Journal, and progressively available Deep Reflection as optional presentation depths of the same entry, preserving all content and values when switching.
+
+#### Scenario: Switch a partial draft
+
+- **WHEN** the person switches a partial Morning draft between writing depths
+- **THEN** the entry ID, chosen date/slot, writing, and recorded values are unchanged and no second entry is created.
+
+#### Scenario: Suggested duration hidden
+
+- **WHEN** the person disables suggested durations or skips mode selection
+- **THEN** writing remains immediately available without a timer or mandatory questionnaire.
+
+#### Scenario: Deeper worksheets not yet available
+
+- **WHEN** Deep Reflection is selected before the CBT milestone is delivered
+- **THEN** writing remains usable, unavailable worksheets are identified accurately, and no AI call starts.
+
+#### Scenario: Low energy is not a preference
+
+- **WHEN** energy is low or missing
+- **THEN** the app does not infer consent to a deeper exercise or an extended flow.
+
+### Requirement: Optional perceived progress
+
+The system SHALL store optional perceived progress as a separate integer from 1 to 10 per entry, preserving missing values and leaving completion dependent only on writing, mood, and energy.
+
+#### Scenario: Progress skipped
+
+- **WHEN** the person saves valid writing, mood, and energy without a progress score
+- **THEN** progress remains missing and the original completion rule is unchanged.
+
+#### Scenario: Independent assessments
+
+- **WHEN** the person reports low mood and high pride/progress on the same date
+- **THEN** all four dimensions retain their independent values without a composite mental-health grade.
+
+#### Scenario: Invalid progress value
+
+- **WHEN** progress 0, 11, or a fraction is submitted
+- **THEN** validation rejects it without changing other saved values.
+
+### Requirement: User-owned small wins
+
+The system SHALL support multiple dated, editable small-win items entered by the person or explicitly confirmed from a suggestion, with source links and an option to exclude them from insights.
+
+#### Scenario: Promote an existing reflection
+
+- **WHEN** the person explicitly promotes existing pride text into a small-win item
+- **THEN** one linked item is counted; the source reflection is not independently counted as another win.
+
+#### Scenario: Rest without reinterpretation
+
+- **WHEN** the person records rest without calling it meaningful
+- **THEN** the app does not automatically classify it as a win.
+
+#### Scenario: Suggestion declined
+
+- **WHEN** the person declines an AI-proposed win in a later optional feature
+- **THEN** no approved win is stored or counted.
+
+#### Scenario: Optional reflective prompts
+
+- **WHEN** the person skips What helped or What did you learn
+- **THEN** no answer is invented and writing and completion remain available.
