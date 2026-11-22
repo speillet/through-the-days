@@ -24,6 +24,14 @@ Select the minimum OS, architecture matrix, signing, and channel explicitly. Ver
 
 Choose concrete adapters after inspecting the installed versions and official documentation with Context7. Keep interface contracts small and explicit about validation, ordering, errors, and save acknowledgment. Introduce replaceable adapters only for real variations; avoid speculative framework layers.
 
+### Private portability is a separate boundary
+
+Keep three flows distinct: encrypted recovery backup in milestone 1, user-selected private document export/import here, and public aggregate export governed by approved-exports. Reuse canonical records and document projections, never serialize a database file as a public export.
+
+Define a versioned JSON envelope with selected core entities, stable IDs, timestamps, provenance, and explicit confirmed outcomes. Validate into a staging area before an atomic merge. Repeated imports are idempotent; conflicting active/trash IDs, content revisions, or slots need explicit resolution and never silently resurrect a deleted entry or add goal events.
+
+Markdown derives from the canonical editor document. CSV exports only selected quantitative check-ins and preserves NULL; PDF renders only approved dates/content types. Describe plaintext protection accurately and preview the destination. Credentials and hidden/unselected fields stay excluded.
+
 ### Verification interfaces
 
 Install and launch release artifacts on the selected supported matrix. Compare preview and produced export payload, test small sample disclosure and excluded fields, and check counters require explicit permission.

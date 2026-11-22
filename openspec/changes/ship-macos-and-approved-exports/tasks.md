@@ -17,6 +17,12 @@ Status: draft implementation sequence; no tasks have been completed. Resolve thi
 - [ ] 3.1 Verify no private prose, hidden counters, credentials, or unselected fields appear in export artifacts. Verify with release/export resource inspection using synthetic data; include the slice's tests and relevant documentation.
 - [ ] 3.2 Record release verification evidence and remaining support limits. Verify with documented supported-matrix results and limitations; include the slice's tests and relevant documentation.
 
+## 4. Private portability
+
+- [ ] 4.1 Define versioned selected-content JSON and stage imports before an atomic merge; verify export/import/import preserves IDs, timestamps, provenance, and confirmed outcomes without duplicate or invented goal events.
+- [ ] 4.2 Implement explicit active/trash/slot conflict handling and malformed/version errors; verify the current journal is unchanged on failure or unresolved conflict.
+- [ ] 4.3 Deliver selected Markdown, PDF, and quantitative CSV with actual-protection/destination previews; verify ranges, Unicode, missing values, excluded private fields, and no automatic publication. Document each format with synthetic round-trip fixtures.
+
 ## Workflow follow-up
 
 - Archive only after all tracked work is delivered and its verification evidence is recorded.

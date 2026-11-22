@@ -34,6 +34,11 @@ Status: draft implementation sequence; no tasks have been completed. User decisi
 - [ ] 6.3 Add explicitly approved multiple small wins and optional learning/helped prompts; verify promotion does not double-count pride text, declined suggestions create no items, and user-defined rest stays neutral.
 - [ ] 6.4 Add Gentle view using shared visibility controls; verify optional tracking is hidden without data loss or suppression of save/backup errors. Document each slice with its behavioral tests.
 
+## 7. Shared derivative privacy
+
+- [ ] 7.1 Verify that source removal/visibility changes immediately exclude its excerpts from every delivered derivative surface, and clearing generated information preserves original/user-authored records; document erasure and separately retained backup/export scope.
+- [ ] 7.2 Verify metadata-only diagnostics exclude scores, embeddings, screenshots, and private source/model content, and an existing-data migration pauses if its encrypted recovery backup cannot be made.
+
 ## Workflow follow-up
 
 - Archive only after all tracked work is delivered and its verification evidence is recorded.

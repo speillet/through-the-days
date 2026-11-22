@@ -81,3 +81,31 @@ The system SHALL provide an optional global Gentle view that hides optional nume
 
 - **WHEN** Gentle view suppresses optional follow-up prompts
 - **THEN** save failures and required backup-passphrase requests remain visible and daily backups are not disabled.
+
+### Requirement: Independent derived-data control
+
+The system SHALL allow clearing derived indexes, embeddings, generated summaries, and pinned-memory excerpts without deleting original user records, and SHALL invalidate their content when referenced sources are deleted or excluded.
+
+#### Scenario: Clear derived information
+
+- **WHEN** the person clears generated summaries, pins, and semantic indexes
+- **THEN** the selected derived records disappear while original writing and explicitly authored review notes remain unchanged.
+
+#### Scenario: Source removed during indexing
+
+- **WHEN** a source is trashed, deleted, or excluded while a rebuild is pending
+- **THEN** retrieval and generated views stop exposing its text immediately rather than waiting for the rebuild.
+
+#### Scenario: Data erasure requested
+
+- **WHEN** the person explicitly requests full application-managed local data deletion
+- **THEN** the confirmed scope includes derivatives and application credentials, and any separately retained backup/export copies and limits are explained.
+
+### Requirement: Sensitive diagnostics excluded
+
+Default diagnostics and telemetry SHALL exclude private prompts, responses, entries, mood/progress data, embeddings, screenshots, and source excerpts, including CI and issue-template artifacts.
+
+#### Scenario: Analysis error
+
+- **WHEN** retrieval, inference, or export fails on a private source
+- **THEN** only necessary non-sensitive operational metadata reaches diagnostics, not the private payload or its embedding.

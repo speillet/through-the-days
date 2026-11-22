@@ -110,3 +110,17 @@ The system SHALL perform a daily encrypted local backup while active and catch u
 
 - **WHEN** a due backup needs a passphrase that is not available
 - **THEN** the app requests it and reports backup as pending while keeping journal writing usable.
+
+### Requirement: Recoverable pre-migration backup
+
+Before migrating an existing journal, the system SHALL create a consistent encrypted recoverable backup or pause migration with a clear recovery action; creating a fresh empty database SHALL not require a nonexistent prior snapshot.
+
+#### Scenario: Upgrade needs a passphrase
+
+- **WHEN** an existing journal needs migration and the backup credential is unavailable
+- **THEN** migration waits for backup/recovery input without altering the prior database.
+
+#### Scenario: Backup fails before migration
+
+- **WHEN** the pre-migration backup cannot be completed or validated
+- **THEN** the existing journal remains intact and no unprotected schema upgrade proceeds.

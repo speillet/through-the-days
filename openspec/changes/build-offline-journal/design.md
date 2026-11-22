@@ -34,6 +34,12 @@ Use personal_wins for explicitly approved multiple items, with stable IDs, date,
 
 Gentle view composes existing visibility and prompt controls as one preference. It does not erase values or suppress persistence failures and backup prompts. Expanded templates, timelines, and AI remain in their own milestones.
 
+### Derivative data and recovery policy
+
+All later indexes, embeddings, cached summaries, and pinned excerpts follow the source's active/visibility state; exclude them at query time immediately when a source is removed, even before background rebuilding. Clearing generated data preserves original writing and authored notes. Full application-data erasure includes managed derivatives/credentials and accurately describes independently held backup/export copies.
+
+An existing journal must have a consistent encrypted pre-migration recovery snapshot before upgrading. If a passphrase or valid snapshot is unavailable, pause the upgrade safely. Fresh database creation is not an existing-data migration. These rules refine recovery rather than changing the confirmed daily/catch-up backup schedule.
+
 ### Verification interfaces
 
 Exercise journal save/load/lifecycle through its command-facing interface using real temporary SQLite databases and synthetic entries. Verify renderer behavior with component/browser tests, and Mac window/keyboard/VoiceOver behavior in a native launch. Inject persistence failures and crash after an acknowledged revision. Verify backup/restore in a clean destination.
