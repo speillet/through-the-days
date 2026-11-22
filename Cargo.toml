@@ -1,0 +1,12 @@
+[workspace]
+members = ["crates/journal-core", "apps/desktop/src-tauri"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"

@@ -1,0 +1,22 @@
+[package]
+name = "journal-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rusqlite = { version = "0.40", features = ["bundled", "backup", "serialize"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+uuid = { version = "1", features = ["v4", "serde"] }
+age = { version = "0.12", default-features = false }
+tempfile = "3"
+zeroize = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+
+[lints]
+workspace = true

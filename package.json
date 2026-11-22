@@ -2,11 +2,19 @@
   "name": "through-the-days",
   "version": "0.0.0",
   "private": true,
-  "description": "Specification tooling for the Through the Days macOS journal",
+  "description": "A private, offline-first macOS journal",
+  "workspaces": ["apps/desktop"],
   "engines": {
     "node": ">=22.20.0"
   },
   "scripts": {
+    "dev": "npm run tauri --workspace @through-the-days/desktop -- dev",
+    "dev:web": "npm run dev --workspace @through-the-days/desktop",
+    "build": "npm run build --workspace @through-the-days/desktop",
+    "build:mac": "npm run tauri --workspace @through-the-days/desktop -- build --bundles app",
+    "test": "npm run test --workspace @through-the-days/desktop",
+    "test:rust": "cargo test -p journal-core --locked",
+    "check": "npm run check --workspace @through-the-days/desktop",
     "openspec": "OPENSPEC_TELEMETRY=0 openspec",
     "spec:list": "OPENSPEC_TELEMETRY=0 openspec list",
     "spec:validate": "OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive"
