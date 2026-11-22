@@ -24,6 +24,10 @@ Keep source annotations, matches, and interpreted events separate. Index version
 
 Choose concrete adapters after inspecting the installed versions and official documentation with Context7. Keep interface contracts small and explicit about validation, ordering, errors, and save acknowledgment. Introduce replaceable adapters only for real variations; avoid speculative framework layers.
 
+### Versioned analytics reuse
+
+Appendix INT-08 refines the existing counting methods: vocabulary/model changes create new analysis-run metadata rather than relabelling historical results. Shared calculations are consumed by personal-patterns in the separate add-source-backed-insights P2 proposal. Keyword mentions, uncertain semantic topics, and any later explicitly reported event type remain separate; no new clinical episode tracker is implied.
+
 ### Verification interfaces
 
 Use known-count Unicode fixtures, repeated edits, tag merges, source filters, DST boundaries, two goals, accidental lapse corrections, and hidden-counter exports.

@@ -92,3 +92,12 @@ The long-range view of journal dates, selected evidence layers, and personal mil
 
 **Behavioural experiment**:
 A person-approved action plan that records a prediction, what the person tried or observed, and an optional lesson. An unreviewed outcome is unknown, not a failure.
+
+**Source excerpt**:
+A dated passage linked to an authorised saved source and its particular revision.
+
+**Pinned memory**:
+A local card the person explicitly pins to a source excerpt; it does not become memory held by an external model.
+
+**Derived insight**:
+A count, summary, or interpretation calculated from selected source records, distinct from the person's own original words.

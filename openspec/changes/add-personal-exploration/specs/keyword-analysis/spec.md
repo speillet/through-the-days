@@ -48,3 +48,17 @@ The system SHALL allow Journal, ChatGPT, or Both source selection, preserve orig
 
 - **WHEN** the person selects Both over a multilingual corpus
 - **THEN** the result identifies sources, preserves excerpts, and reports the documented counting method and coverage.
+
+### Requirement: Versioned rescanning
+
+A vocabulary or model change SHALL produce a separately versioned analysis run with its stated coverage, keeping earlier method metadata distinct without retaining source text that the person has deleted or excluded.
+
+#### Scenario: New lexical dictionary
+
+- **WHEN** the same authorised corpus is rescanned with an updated lexical dictionary
+- **THEN** the new run identifies the new version and does not silently present its recalculated counts as the original run.
+
+#### Scenario: Sensitive metric hidden
+
+- **WHEN** the person hides a sensitive keyword metric
+- **THEN** its optional interpretation stays hidden in derived comparisons as well as its original view.
