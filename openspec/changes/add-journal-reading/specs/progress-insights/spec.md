@@ -24,7 +24,7 @@ The timeline SHALL offer 7/14/30-day ranges ending at the viewed journal date, d
 
 ### Requirement: Explicit observations and missing data
 
-Progress views SHALL preserve Morning/Evening observations, label any explicitly selected aggregation, show sample sizes and coverage, and treat missing values as gaps rather than zero.
+Progress views SHALL include nullable perceived progress when selected, preserve Morning/Evening observations, label any explicitly selected aggregation, show sample sizes and coverage, and treat missing values as gaps rather than zero.
 
 #### Scenario: One recorded value
 

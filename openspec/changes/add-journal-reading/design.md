@@ -26,6 +26,16 @@ Use SQLite FTS5 for local journal text search as required by the brief. A rebuil
 
 Choose concrete adapters after inspecting the installed versions and official documentation with Context7. Keep interface contracts small and explicit about validation, ordering, errors, and save acknowledgment. Introduce replaceable adapters only for real variations; avoid speculative framework layers.
 
+### Weekly reviews and The Path So Far
+
+These are views over shared journal queries and provenance, not another editable journal or another metric engine. Reuse progress-insights aggregation rules and extend selectable measures with nullable perceived progress. Calendar/Book links carry the current range/filter context.
+
+Store one weekly_reviews record per ISO week in the current single-user context, with exact boundaries, snapshot fingerprint/version metadata, deterministic statistics, separate user_notes, and an optionally retained labelled summary. Count distinct in-scope journal dates, canonical win IDs, and started/completed exercises separately. A generated review never becomes an extra original entry in its own denominators.
+
+Invalidate derived material on source edits, trash/deletion, or insight-visibility changes. Old excerpts must not remain visible as current evidence. Recalculation preserves authored notes. Snapshot metadata supports freshness checks; it does not authorise retaining copies of deleted text.
+
+The long-range personal-timeline composes available layers and timeline_milestones with the existing mini timeline and date navigation. Add later CBT/goal/import layers only when those capabilities exist. New range controls do not duplicate the 7/14/30-day mini timeline or introduce interpolation by default.
+
 ### Verification interfaces
 
 Use synthetic empty days, two-slot days, Unicode text, long documents, neutral scores, score-bearing drafts, and DST transitions. Compare all views after an edit and verify exact source links.

@@ -80,3 +80,12 @@ Model-authored content offered for review, separate from the person's own words.
 
 **Approved export**:
 A specific selection of aggregate information that the person has previewed and authorised to leave the private journal.
+
+**Weekly review**:
+A reflection on one Monday–Sunday week, combining documented counts and source links with the person's own notes.
+
+**Personal milestone**:
+A private, dated moment explicitly added by the person, separate from an automatically calculated goal milestone.
+
+**The Path So Far**:
+The long-range view of journal dates, selected evidence layers, and personal milestones; it reuses the journal's saved observations.

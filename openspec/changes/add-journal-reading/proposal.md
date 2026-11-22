@@ -6,7 +6,7 @@ Saved writing becomes useful to revisit through calendar dates, comfortable long
 
 ## What Changes
 
-- Deliver milestone 2 (README phase 2).
+- Deliver milestone 2 (README phase 2), extending the existing timeline and optional weekly-review ideas using appendix INT-05/06.
 - Present the same saved records through Today, Calendar, Book View, search, and a 7/14/30-day timeline.
 - Keep the proposal and its tasks visibly unimplemented until verification.
 
@@ -16,7 +16,9 @@ Saved writing becomes useful to revisit through calendar dates, comfortable long
 
 - calendar-reading: Month navigation, per-slot markers, previews, and local search.
 - book-reading: Chronological, complete, accessible reading of long entries.
-- progress-insights: Timeline and descriptive, source-linked progress statistics.
+- progress-insights: Shared timeline and descriptive, source-linked progress statistics.
+- weekly-reviews: Offline weekly counts, authored notes, optional labelled summaries, and freshness.
+- personal-timeline: The Path So Far, a long-range filtered view of existing saved sources and private milestones.
 
 ### Modified Capabilities
 
@@ -30,6 +32,6 @@ Sources: README §§6–8, 14.2–14.3, 16.3, 20–22.
 
 Out of scope: AI interpretations, inferred mental-health scores, ChatGPT data, and public sharing.
 
-Open decisions: Resolve O-002, O-003, and O-004 before their dependent visual or aggregation work. Chart library choice is an engineering proposal, not a product requirement.
+Open decisions: Weekly draft inclusion follows O-002; summaries are optional and model adapters remain in their own milestone. Resolve O-002, O-003, and O-004 before their dependent visual or aggregation work. Chart library choice is an engineering proposal, not a product requirement.
 
 Status: draft planning baseline derived from the README and recorded user decisions; no application implementation is claimed.
