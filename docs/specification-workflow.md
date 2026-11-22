@@ -4,7 +4,7 @@ OpenSpec turns the product brief into reviewable changes containing behavior, de
 
 ## Current state
 
-The application is not implemented. Seven draft changes capture the README roadmap. Their requirements use SHALL statements and concrete scenarios. The first change includes additional decisions confirmed on 22 November 2026.
+The application is not implemented. Eight draft changes capture the README roadmap. Their requirements use SHALL statements and concrete scenarios. The first change includes additional decisions confirmed on 22 November 2026.
 
 The empty openspec/specs/ directory is intentional: no product behavior has been delivered yet. Proposed requirements live in openspec/changes/. Syntax validation checks document structure; it does not approve product choices or prove application correctness.
 
@@ -29,7 +29,8 @@ Explicit later user decisions refine the original brief. Update the affected req
 | 2 | [add-journal-reading](../openspec/changes/add-journal-reading/proposal.md) | Phase 2: calendar, book, timeline, local search, Weekly Review and The Path So Far |
 | 3 | [add-cbt-companion](../openspec/changes/add-cbt-companion/proposal.md) | Phase 3: manual worksheets and experiments, then optional AI; extended templates are P2 |
 | 4 | [add-personal-exploration](../openspec/changes/add-personal-exploration/proposal.md) | Phase 4: tags, keyword statistics, independent goals |
-| 4.1 | [add-source-backed-insights](../openspec/changes/add-source-backed-insights/proposal.md) | P2: Looking Back, Ask My Journal, descriptive Personal Patterns |
+| 4.1a | [add-source-backed-insights](../openspec/changes/add-source-backed-insights/proposal.md) | P2: Looking Back, Ask My Journal, descriptive Personal Patterns |
+| 4.1b | [expand-cbt-exercise-library](../openspec/changes/expand-cbt-exercise-library/proposal.md) | P2: additional offline templates, independently archived from phase 3 |
 | 5 | [add-chatgpt-analytics](../openspec/changes/add-chatgpt-analytics/proposal.md) | Phase 5: manual import and auditable analytics |
 | 6 | [ship-macos-and-approved-exports](../openspec/changes/ship-macos-and-approved-exports/proposal.md) | Phase 6: wider distribution, private portability and separately approved Hugo aggregates |
 

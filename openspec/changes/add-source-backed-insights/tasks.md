@@ -6,7 +6,7 @@ Status: P2 draft; all implementation work is pending. Resolve decision gates bef
 
 - [ ] 1.1 Specify offset/normalisation, source-revision checks, query bounds, and minimum-evidence behavior; verify the documented contract against synthetic exact, multilingual, and unsupported-source examples.
 - [ ] 1.2 Extend the existing local search interface with dated verified snippets and coverage, not a separate index authority; verify correct source navigation, absent-evidence fallback, and no hidden or trashed source retrieval.
-- [ ] 1.3 Add explicitly pinned local memories; verify title editing/removal, source-change invalidation, and deletion of a card without changing its original journal. Include retrieval slice tests and documentation.
+- [ ] 1.3 Add explicitly pinned local memories; verify title editing/removal, source-change invalidation, individual interpretation rejection/hiding, and deletion of a card without changing its original journal. Include retrieval slice tests and documentation.
 
 ## 2. Read-only questions
 

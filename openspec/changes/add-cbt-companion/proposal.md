@@ -6,7 +6,7 @@ The person can choose a structured reflection or manageable action without depen
 
 ## What Changes
 
-- Deliver milestone 3 (README phase 3): manual exercises and experiments first, then optional AI; expanded templates remain a P2 follow-up.
+- Deliver milestone 3 (README phase 3): manual exercises and experiments first, then optional AI; expanded templates belong to the separate expand-cbt-exercise-library P2 change.
 - Ship manual exercises first; add an optional local model only after manual workflows work. Keep source authorship, consent, and user control visible.
 - Keep the proposal and its tasks visibly unimplemented until verification.
 
@@ -29,6 +29,6 @@ Sources: README §§18–20 and 13 phase 3; appendix INT-03/09 (§§5, 11) and �
 
 Out of scope: Diagnosis, treatment promises, hidden reasoning disclosure, automatic journal rewriting, automatic score changes, or automatic goal resets.
 
-Open decisions: Confirm reviewed template wording and experiment revision/deletion policy when implementing that slice. Resolve O-005 and the exact provider/output limits before enabling an adapter. Confirm reminder and follow-up behavior during the exercise prototype.
+Open decisions: Confirm original-exercise wording and experiment revision/deletion policy when implementing that slice. Resolve O-005 and the exact provider/output limits before enabling an adapter. Confirm reminder and follow-up behavior during the exercise prototype.
 
 Status: draft planning baseline derived from the README and recorded user decisions; no application implementation is claimed.

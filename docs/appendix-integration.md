@@ -14,8 +14,10 @@ Appendix v0.1 is a proposal source for README v0.7 and the OpenSpec changes. The
 | INT-06 — The Path So Far | New long-range view and private milestones, distinct from the existing mini timeline. Reuse its queries and date navigation. | add-journal-reading / personal-timeline; later layers added when their features exist |
 | INT-07 — Ask My Journal | New read-only question interface; retrieval, citation checks, and existing consent boundaries precede optional model wording. | add-source-backed-insights / journal-questions, P2 |
 | INT-08 — Personal Patterns | Refines existing descriptive metrics; adds explicit association/coverage presentation without inventing another counting engine. | personal-patterns plus existing keyword-analysis/versioned runs |
-| INT-09 — Exercise library | Existing three exercises remain first. Additional bounded offline templates are a P2 follow-up, with experiments sharing action plans. | cbt-worksheets |
+| INT-09 — Exercise library | Existing three exercises remain first. Additional bounded offline templates are a separately archived P2 change, with manual experiments remaining in phase 3. | expand-cbt-exercise-library / cbt-exercise-library; cbt-worksheets retains manual experiments |
 | INT-10 — Privacy and portability | Existing privacy/backup rules remain; new Gentle view, derivative clearing, and selected private export/import fill genuine gaps. | product-guardrails, local-data-protection, private-data-portability; approved-exports still owns public aggregates |
+
+Looking Back also preserves the appendix’s individual “That's not how I see it” / “Hide this interpretation” control independently of pins and Gentle view.
 
 ## Conflicts and duplication resolved
 

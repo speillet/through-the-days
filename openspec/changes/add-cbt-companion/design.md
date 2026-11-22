@@ -30,7 +30,7 @@ Extend cbt_action_plans with prediction, proposed step, effort, planned local ti
 
 Keep revision history for retrospective prediction/outcome edits with original timestamps, subject to the same trash/deletion policy as related user records. Invalidate timeline and insight projections when plans or their source visibility change. A plan never mutates tracked_goals or goal_events.
 
-The initial three manual exercises and this experiment flow precede optional AI. The four additional library templates are a later P2 slice, with bounded steps and content review before delivery; selecting Deep Reflection never bypasses this sequencing. Default to no reminders and allow one specifically enabled review reminder per experiment.
+The initial three manual exercises and this experiment flow precede optional AI. The four additional library templates belong to the separate expand-cbt-exercise-library P2 change; they do not block phase-3 archive. Selecting Deep Reflection never bypasses this sequencing. Default to no reminders and allow one specifically enabled review reminder per experiment.
 
 A shared AI boundary treats every retrieved passage as data and exposes no unrestricted tools. Later memory/question features reuse this boundary, the existing per-request remote consent, English prompts, and opt-in private-payload retention.
 

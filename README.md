@@ -13,7 +13,7 @@
 > **Differentiators:** A short guided reflection before writing, recognition of daily actions and small wins, optional LLM-assisted cognitive behavioural therapy (CBT) exercises, a progress timeline, thematic exploration, calendar and book-style reading, and optional local ChatGPT analytics.
 > **Privacy:** Local-first; no automatic uploads of private data and no automatic publication.
 
-Detailed development planning now lives in [the OpenSpec workflow](docs/specification-workflow.md), with [recorded product decisions](docs/product-decisions.md), a [domain glossary](GLOSSARY.md), and [acceptance coverage](docs/acceptance-coverage.md). The seven changes under `openspec/changes/` are proposed specifications, not implemented features. Explicit decisions from the specification interview refine this brief, including 30-day trash and daily encrypted backups with next-launch catch-up before real personal use; the live database initially relies on macOS protections. [Appendix v0.1](appendix.md) is a proposal source; its useful additions are consolidated here and in OpenSpec, with duplicates, deferrals, and conflict resolutions recorded in [the integration assessment](docs/appendix-integration.md). This README and recorded user decisions govern development.
+Detailed development planning now lives in [the OpenSpec workflow](docs/specification-workflow.md), with [recorded product decisions](docs/product-decisions.md), a [domain glossary](GLOSSARY.md), and [acceptance coverage](docs/acceptance-coverage.md). The eight changes under `openspec/changes/` are proposed specifications, not implemented features. Explicit decisions from the specification interview refine this brief, including 30-day trash and daily encrypted backups with next-launch catch-up before real personal use; the live database initially relies on macOS protections. [Appendix v0.1](appendix.md) is a proposal source; its useful additions are consolidated here and in OpenSpec, with duplicates, deferrals, and conflict resolutions recorded in [the integration assessment](docs/appendix-integration.md). This README and recorded user decisions govern development.
 
 ---
 
@@ -956,7 +956,7 @@ Refine the existing action-plan flow rather than adding a second plan store. The
 
 Reminders are off by default, with at most one specifically enabled review reminder per plan unless configured otherwise. Retrospective corrections preserve original timestamps and revision history. Deletion invalidates timeline/insight copies. AI can offer at most two ideas; declined suggestions create no approved action. Avoid unsafe/medically consequential assignments, forced positive reframing, and repeated checking of others' activity.
 
-After the original manual workflows work, add bounded offline templates for **Behavioural Experiment**, **Coping Estimate**, **Positive Evidence Journal**, and **Values-to-Action Reflection**. They are optional P2 follow-ups, not an expansion of the first journal MVP or evidence of clinical effectiveness.
+After the original manual workflows work, add bounded offline templates for **Behavioural Experiment**, **Coping Estimate**, **Positive Evidence Journal**, and **Values-to-Action Reflection**. They belong to the separate expand-cbt-exercise-library OpenSpec change so phase 3 can be archived independently. They are optional P2 follow-ups, not an expansion of the first journal MVP or evidence of clinical effectiveness.
 
 ---
 ## 19. Data contracts and implementation interfaces
@@ -1171,7 +1171,7 @@ The visual experience should take inspiration from How We Feel's emotional clari
 
 ## 23. Evidence-backed personal exploration (P2)
 
-**Looking Back** retrieves relevant local authorised passages, initially using the existing full-text index; optional local embeddings are derivative and removable. Show dated excerpts, source links, actual coverage and a modest distinction between “You wrote…” and interpretation. An optional “Moment worth remembering” card is local, editable/removable and follows source visibility. No external persistent model memory is created.
+**Looking Back** retrieves relevant local authorised passages, initially using the existing full-text index; optional local embeddings are derivative and removable. Show dated excerpts, source links, actual coverage and a modest distinction between “You wrote…” and interpretation. Each interpretation offers “That's not how I see it” or “Hide this interpretation” independently of pins or Gentle view. An optional “Moment worth remembering” card is local, editable/removable and follows source visibility. No external persistent model memory is created.
 
 **Ask My Journal** defaults to journal-only scope, with other delivered source types selected explicitly. Answers identify question, qualified English answer, source type/ID/date and exact or traceably normalised excerpt, coverage dates, recorded days, source count, limitations and descriptive/exploratory inference level. A weekly summary is not independent primary evidence; follow claims back to original records. Reject unsupported dates, IDs and quotations. When evidence is absent, say “I couldn't find enough relevant entries to answer.”
 
@@ -1197,7 +1197,7 @@ JSON round trips preserve the selected core records, IDs, timestamps, provenance
 
 The [integration assessment](docs/appendix-integration.md) maps all INT-01–INT-10 ideas and TEST-01–TEST-22 cases to their canonical owners. Existing check-in, timeline, counters, consent, manual CBT and metrics were enriched rather than copied into competing features or tables. The original [appendix](appendix.md) remains a historical proposal, including alternatives not adopted.
 
-The seven [OpenSpec changes](docs/specification-workflow.md) separate the core journal, reading/review views, CBT, exploration, later source-backed insights, ChatGPT analysis, and distribution/portability. Their tasks remain unchecked; document validation is not evidence of an implemented application.
+The eight [OpenSpec changes](docs/specification-workflow.md) separate the core journal, reading/review views, manual CBT and optional AI, exploration, later source-backed insights, the extended CBT library, ChatGPT analysis, and distribution/portability. Their tasks remain unchecked; document validation is not evidence of an implemented application.
 
 ## Functional and methodological references
 
