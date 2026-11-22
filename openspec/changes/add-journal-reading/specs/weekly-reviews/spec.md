@@ -4,7 +4,7 @@
 
 Review a recorded week using transparent counts and source links, retaining the person's notes separately from optional generated summaries.
 
-Sources: README §§8.4, 18.6; appendix INT-05 (§7), TEST-04/07/18.
+Sources: README_THROUGH_THE_DAYS.md §§8.4, 18.6; appendix INT-05 (§7), TEST-04/07/18.
 
 ## ADDED Requirements
 

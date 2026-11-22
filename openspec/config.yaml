@@ -2,7 +2,9 @@ schema: spec-driven
 
 context: |
   Through the Days is a personal, offline-first macOS journal; no application features are implemented yet.
-  Product brief: README.md. Later explicit user decisions: docs/product-decisions.md.
+  User overview: README.md. Product requirements: README_THROUGH_THE_DAYS.md and linked thematic documents.
+  Technical design: docs/technical-design.md; roadmap: docs/roadmap.md; acceptance cases: docs/acceptance-tests.md.
+  Later explicit user decisions: docs/product-decisions.md.
   Stack: Tauri 2, React, TypeScript, Vite, Rust, SQLite. Python analytics is an independent later CLI.
   All artifacts and first-party product copy are English. Preserve the language of user-authored text.
   In-app LLMs share llm-assistance's compassionate evidence-calibrated disagreement and self-correction policy (D-008).

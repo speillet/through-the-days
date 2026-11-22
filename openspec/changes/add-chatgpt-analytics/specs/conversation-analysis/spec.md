@@ -4,7 +4,7 @@
 
 Produce reviewable, versioned conversation metrics with explicit provenance and descriptive source-separated interpretation.
 
-Sources: README §§8.2–8.4, 9, 16, 19–20.
+Sources: README_THROUGH_THE_DAYS.md §§8.2–8.4, 9, 16, 19–20.
 
 ## ADDED Requirements
 

@@ -4,7 +4,7 @@
 
 Support comfortable, faithful journal writing with one authoritative document and portable readable exports.
 
-Sources: README §§4.4, 7, 11.1, 20 cases 3 and 22.
+Sources: README_THROUGH_THE_DAYS.md §§4.4, 7, 11.1, 20 cases 3 and 22.
 
 ## ADDED Requirements
 

@@ -6,7 +6,7 @@ A person needs to write, record a skippable check-in, and recover exactly what w
 
 ## What Changes
 
-- Deliver milestone 1 (README phases 0–1, with backup/restore advanced by D-005).
+- Deliver milestone 1 (product-roadmap phases 0–1, with backup/restore advanced by D-005).
 - Launch a personal Mac app, complete or skip reflection, write in either slot, and recover data after restart. Make backup/restore usable before real-data use.
 - Add optional perceived progress, data-preserving writing depths, and multiple user-owned wins without changing the two-slot or completion rules (appendix INT-01/02/10).
 - Keep the proposal and its tasks visibly unimplemented until verification.
@@ -31,7 +31,7 @@ None. The delivered capability inventory is currently empty.
 
 Dependencies: No product dependency; this is the first implementation milestone.
 
-Sources: README §§0–5, 10–14, 19–22; decisions D-001–D-007.
+Sources: README_THROUGH_THE_DAYS.md §§0–5, 10–14, 19–22; decisions D-001–D-007.
 
 Out of scope: Calendar, Book View, trends, tags, counters, CBT, AI, ChatGPT import, cloud accounts, and public release packaging.
 

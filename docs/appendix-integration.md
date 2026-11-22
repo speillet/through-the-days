@@ -1,6 +1,6 @@
 # Appendix integration assessment
 
-Appendix v0.1 is a proposal source for README v0.7 and the OpenSpec changes. The retained ideas support optional reflection, trustworthy rereading, or data control without changing the first journal's identity/completion rules. This records product relevance and ownership, not clinical efficacy or implemented behavior.
+Appendix v0.1 is a proposal source for the [detailed product requirements v0.7](../README_THROUGH_THE_DAYS.md) and the OpenSpec changes. The retained ideas support optional reflection, trustworthy rereading, or data control without changing the first journal's identity/completion rules. This records product relevance and ownership, not clinical efficacy or implemented behavior.
 
 ## Ideas and canonical owners
 
@@ -35,7 +35,7 @@ Looking Back also preserves the appendix’s individual “That's not how I see 
 
 ## Appendix acceptance coverage
 
-The original TEST IDs are preserved here; README §20 adds consolidated cases 24–35. Requirement names below identify the owning OpenSpec spec rather than duplicating the same requirement in several places.
+The original TEST IDs are preserved here; README_THROUGH_THE_DAYS.md §20 adds consolidated cases 24–35. Requirement names below identify the owning OpenSpec spec rather than duplicating the same requirement in several places.
 
 | Appendix test | Canonical behavior and spec |
 |---|---|

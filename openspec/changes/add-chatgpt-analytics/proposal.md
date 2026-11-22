@@ -6,7 +6,7 @@ The person can optionally inspect their own exported conversations with provenan
 
 ## What Changes
 
-- Deliver milestone 5 (README phase 5).
+- Deliver milestone 5 (product-roadmap phase 5).
 - Build an independent local Python CLI for manual imports and auditable reports. Keep original text and journal/ChatGPT observations distinct.
 - Keep the proposal and its tasks visibly unimplemented until verification.
 
@@ -25,7 +25,7 @@ None. The delivered capability inventory is currently empty.
 
 Dependencies: Stable journal and source-aware exploration; analytics remains optional and independent.
 
-Sources: README §§8.2–9, 10, 16, 19–20.
+Sources: README_THROUGH_THE_DAYS.md §§8.2–9, 10, 16, 19–20.
 
 Out of scope: Consumer-account scraping, bypassing authentication, promising access to every conversation, bundled Python as an MVP dependency, or automatic cloud uploads.
 

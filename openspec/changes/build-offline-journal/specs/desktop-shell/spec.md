@@ -4,7 +4,7 @@
 
 Let a person write and navigate comfortably in a native macOS window with accessible controls and predictable appearance.
 
-Sources: README §§3, 10, 13 phases 0–1; D-001.
+Sources: README_THROUGH_THE_DAYS.md §§3, 10, 13 phases 0–1; D-001.
 
 ## ADDED Requirements
 

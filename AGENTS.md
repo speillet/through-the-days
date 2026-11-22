@@ -12,7 +12,7 @@ For any in-app LLM assistant, follow the shared [llm-assistance policy](openspec
 
 ## Specifications
 
-[README.md](README.md) is the canonical product brief, including the assessed appendix additions. Explicit user decisions recorded in [product-decisions.md](docs/product-decisions.md) refine it. Changes under openspec/changes/ describe proposed behavior; openspec/specs/ records delivered behavior after verification and archive. A valid specification is not evidence that its feature works.
+[README.md](README.md) is the concise user-facing overview. [README_THROUGH_THE_DAYS.md](README_THROUGH_THE_DAYS.md) and its linked technical design, roadmap, and acceptance documents are the detailed product requirements, including the assessed appendix additions. Explicit user decisions recorded in [product-decisions.md](docs/product-decisions.md) refine it. Changes under openspec/changes/ describe proposed behavior; openspec/specs/ records delivered behavior after verification and archive. A valid specification is not evidence that its feature works.
 
 Use OpenSpec's spec-driven schema. Each requirement needs a SHALL statement and observable WHEN/THEN scenarios. Use the CLI to scaffold changes. Resolve relevant open product decisions with the user before implementing them; record engineering proposals as proposals until checked.
 

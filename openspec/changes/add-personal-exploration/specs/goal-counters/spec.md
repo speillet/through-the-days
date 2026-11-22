@@ -4,7 +4,7 @@
 
 Track independent personal goals with explicit units and preserved history, while leaving all behavior judgments to the person.
 
-Sources: README §17, 19, 20 case 17.
+Sources: README_THROUGH_THE_DAYS.md §17, 19, 20 case 17.
 
 ## ADDED Requirements
 

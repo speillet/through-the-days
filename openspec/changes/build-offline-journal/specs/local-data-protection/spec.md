@@ -4,7 +4,7 @@
 
 Give the person deliberate deletion and recoverable local backups with accurate explanations of how private records are protected.
 
-Sources: README §§10.3, 12, 13 phase 6, 19.3, 20 case 12; D-003–D-007.
+Sources: README_THROUGH_THE_DAYS.md §§10.3, 12, 13 phase 6, 19.3, 20 case 12; D-003–D-007.
 
 ## ADDED Requirements
 

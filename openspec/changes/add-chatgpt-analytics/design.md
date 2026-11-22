@@ -2,7 +2,7 @@
 
 ## Context
 
-See proposal.md for product motivation and scope. Milestone: 5 (README phase 5). Stable journal and source-aware exploration; analytics remains optional and independent.
+See proposal.md for product motivation and scope. Milestone: 5 (product-roadmap phase 5). Stable journal and source-aware exploration; analytics remains optional and independent.
 
 Status: draft design. Confirmed requirements are distinguished from the engineering proposals below; later milestone choices remain deferred in the decision register. Artifact presence is not implementation approval.
 
@@ -16,7 +16,7 @@ This change reuses preceding capabilities rather than introducing an independent
 
 ### Confirmed constraints
 
-README §§8.2–9, 10, 16, 19–20. Read docs/product-decisions.md and the relevant ADRs before changing these constraints.
+README_THROUGH_THE_DAYS.md §§8.2–9, 10, 16, 19–20. Read docs/product-decisions.md and the relevant ADRs before changing these constraints.
 
 ### Proposed implementation approach
 

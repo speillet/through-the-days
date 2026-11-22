@@ -4,7 +4,7 @@
 
 Share only specifically selected and previewed aggregate information while keeping private journal material under the person's control.
 
-Sources: README §§1, 10, 13 phase 6, 17.3, 20 cases 10 and 20.
+Sources: README_THROUGH_THE_DAYS.md §§1, 10, 13 phase 6, 17.3, 20 cases 10 and 20.
 
 ## ADDED Requirements
 

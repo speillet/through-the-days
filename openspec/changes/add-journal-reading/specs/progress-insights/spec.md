@@ -4,7 +4,7 @@
 
 Show descriptive, source-linked progress without converting missing observations or difficult feelings into performance judgments.
 
-Sources: README §§8, 14.2–14.3, 16.3, 20 case 14.
+Sources: README_THROUGH_THE_DAYS.md §§8, 14.2–14.3, 16.3, 20 case 14.
 
 ## ADDED Requirements
 

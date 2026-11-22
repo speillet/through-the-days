@@ -4,7 +4,7 @@
 
 Preserve each chosen journal date and slot while allowing partial writing, later completion, and conflict-safe editing.
 
-Sources: README §§4, 11.1, 14.1, 20 cases 1–3 and 7; D-002.
+Sources: README_THROUGH_THE_DAYS.md §§4, 11.1, 14.1, 20 cases 1–3 and 7; D-002.
 
 ## ADDED Requirements
 

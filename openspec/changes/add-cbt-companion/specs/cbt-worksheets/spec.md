@@ -4,7 +4,7 @@
 
 Offer optional structured thought records and small-action reflection that remain fully usable without AI or connectivity.
 
-Sources: README §§18.1–18.4, 18.6–18.7, 20 case 18.
+Sources: README_THROUGH_THE_DAYS.md §§18.1–18.4, 18.6–18.7, 20 case 18.
 
 ## ADDED Requirements
 

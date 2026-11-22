@@ -2,14 +2,14 @@
 
 > **Document:** `appendix.md`
 > **Version:** 0.1 (product specification)
-> **Companion document:** [`README.md`](README.md), product requirements v0.6
+> **Companion document:** [`README_THROUGH_THE_DAYS.md`](README_THROUGH_THE_DAYS.md), product requirements v0.6
 > **Platform:** macOS, local-first
 > **Product language:** English (`en-GB`) for all application-owned UI, notifications, generated reports, CBT guidance, and AI output. Never translate personal writing without consent.
 > **Status:** Proposed enhancements; not implemented.
 
 ---
 
-> **Integration status:** Historical proposal incorporated selectively into [README v0.7](README.md) and OpenSpec. See [the integration assessment](docs/appendix-integration.md) for canonical ownership, deferrals, and rejected alternatives. In particular, per-request remote consent and the previously confirmed backup/trash policies remain authoritative.
+> **Integration status:** Historical proposal incorporated selectively into [product requirements v0.7](README_THROUGH_THE_DAYS.md) and OpenSpec. See [the integration assessment](docs/appendix-integration.md) for canonical ownership, deferrals, and rejected alternatives. In particular, per-request remote consent and the previously confirmed backup/trash policies remain authoritative.
 
 ## 1. Purpose and relationship to the README
 

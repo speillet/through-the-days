@@ -4,7 +4,7 @@
 
 Offer bounded, user-requested assistance with respectful evidence-based disagreement, transparent authorship, exact consent, and a dependable manual fallback across all in-app LLM surfaces.
 
-Sources: README §§0, 18.3, 18.5–18.7, 20 cases 19–20, 23 and 36; confirmed decision D-008. This shared policy applies to CBT, journal questions, generated interpretations and every other local or remote in-app LLM assistant.
+Sources: README_THROUGH_THE_DAYS.md §§0, 18.3, 18.5–18.7, 20 cases 19–20, 23 and 36; confirmed decision D-008. This shared policy applies to CBT, journal questions, generated interpretations and every other local or remote in-app LLM assistant.
 
 ## ADDED Requirements
 
