@@ -2,7 +2,7 @@
   "schema_version": 1,
   "project": "Through the Days",
   "selected_on": "2026-11-22",
-  "basis": "README_THROUGH_THE_DAYS.md, sections 10, 12, 13, 19, and 20",
+  "basis": "README.md, sections 10, 12, 13, 19, and 20",
   "installation": {
     "scope": "Current user; skills are installed outside this repository",
     "destination": "~/.codex/skills",

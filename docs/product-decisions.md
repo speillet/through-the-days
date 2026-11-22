@@ -1,6 +1,6 @@
 # Product decisions and open questions
 
-Confirmed choices refine README v0.6. Draft recommendations remain distinct from confirmed decisions. All entries below originate in the specification interview on 22 November 2026.
+Confirmed choices refine the original README v0.6 and remain in force in the consolidated v0.7. Draft recommendations remain distinct from confirmed decisions. All entries below originate in the specification interview on 22 November 2026.
 
 ## Confirmed decisions
 
@@ -46,5 +46,19 @@ If the backup credential is unavailable, request it and show that backup is pend
 | O-007 | Which operating systems, architectures, signing identity, and distribution channel must the public release support? | Before milestone 6 distribution work. |
 | O-008 | Which ChatGPT export versions and bounded import sizes are supported? | Before implementing import. |
 | O-009 | Specify backup destination defaults, retention, and safe credential-change behavior. Daily frequency and next-launch catch-up are already decided. | Backup design, before using real data. |
+| O-010 | Specify retrieval offsets/normalisation, bounded context, and minimum evidence for descriptive patterns. | Before P2 source-backed insights. |
+| O-011 | Specify private JSON schema versions, conflict-resolution UX, selected-content boundaries, and destination/protection defaults. | Before private portability. |
+| O-012 | Review wording and bounded steps for the extended offline exercise library. | After the original manual exercises work, before P2 templates ship. |
 
 Decisions about backup retention must explain its interaction with trash and permanent deletion. Thirty-day trash retention does not imply erasing older encrypted backups, and ordinary deletion does not guarantee forensic erasure.
+
+## Appendix incorporation
+
+The user requested incorporation of useful appendix ideas on 22 November 2026. The [assessment](appendix-integration.md) identifies retained refinements and deferred P2 work. This authorises updating the plans, not claiming features or clinical benefit are delivered. D-001–D-007 and per-request remote consent remain unchanged.
+
+- Perceived progress is optional and independent; depth changes preserve the same entry.
+- Experiments extend existing action plans; small-win promotion is explicit and counted once.
+- Weekly reviews and long-range views reuse source queries and metric definitions.
+- Looking Back, Ask My Journal, Personal Patterns, extended templates and private portability remain in their specified later milestones.
+- Design the retrieval offset/normalisation and minimum-evidence rules before P2 insights; review extended template wording before delivery.
+- Specify private JSON version/conflict handling before portability. Source fingerprints do not authorise retaining deleted text.

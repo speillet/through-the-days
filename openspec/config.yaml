@@ -2,11 +2,12 @@ schema: spec-driven
 
 context: |
   Through the Days is a personal, offline-first macOS journal; no application features are implemented yet.
-  Product brief: README_THROUGH_THE_DAYS.md. Later explicit user decisions: docs/product-decisions.md.
+  Product brief: README.md. Later explicit user decisions: docs/product-decisions.md.
   Stack: Tauri 2, React, TypeScript, Vite, Rust, SQLite. Python analytics is an independent later CLI.
   All artifacts and first-party product copy are English. Preserve the language of user-authored text.
   First milestone: two-slot journal, skippable check-in, editor, durable persistence, trash, encrypted backups and tested restore.
   Current changes are proposed behavior; main specs represent delivered behavior after verification and archive.
+  Appendix choices and exclusions: docs/appendix-integration.md. Writing depths/progress/Gentle view preserve the original completion rule.
   Read GLOSSARY.md for domain terms and relevant docs/adr/ for durable decisions.
   Keep real journal content and secrets outside the repository. Use synthetic fixtures.
 

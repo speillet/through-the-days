@@ -27,6 +27,18 @@ Every numbered acceptance case in README §20 is assigned below. Milestone 1 is 
 | 21 | English UI even on a French Mac | 1, then each added surface | [product-guardrails](../openspec/changes/build-offline-journal/specs/product-guardrails/spec.md) — English first-party content |
 | 22 | Multilingual original text and Unicode search | 1; search in 2; import in 5 | [product-guardrails](../openspec/changes/build-offline-journal/specs/product-guardrails/spec.md) — Faithful user text |
 | 23 | English AI prompts, output validation, and fallbacks | 3; original copy in 1 | [llm-assistance](../openspec/changes/add-cbt-companion/specs/llm-assistance/spec.md) — Validated English suggestions |
+| 24 | Depth switching retains one entry | 1; worksheets in 3 | [daily-check-in](../openspec/changes/build-offline-journal/specs/daily-check-in/spec.md) — Writing depth preserves entry identity |
+| 25 | Independent nullable progress and unchanged completion | 1 | [daily-check-in](../openspec/changes/build-offline-journal/specs/daily-check-in/spec.md) — Optional perceived progress |
+| 26 | Explicit multiple wins and no double counting | 1 | [daily-check-in](../openspec/changes/build-offline-journal/specs/daily-check-in/spec.md) — User-owned small wins |
+| 27 | ISO-week counts, staleness, and preserved notes | 2 | [weekly-reviews](../openspec/changes/add-journal-reading/specs/weekly-reviews/spec.md) — Local weekly reflection; Authorship and source freshness |
+| 28 | Long-range layers, gaps, and reading context | 2; later layers as delivered | [personal-timeline](../openspec/changes/add-journal-reading/specs/personal-timeline/spec.md) — Long-range source navigation; Optional available layers |
+| 29 | Manual experiment prediction, review, and learning | 3 | [cbt-worksheets](../openspec/changes/add-cbt-companion/specs/cbt-worksheets/spec.md) — Prediction-to-learning experiments |
+| 30 | Verified personal evidence and read-only questions | 4.1 (P2) | [journal-questions](../openspec/changes/add-source-backed-insights/specs/journal-questions/spec.md) — Explicit source scope and answer evidence |
+| 31 | Qualified descriptive patterns with coverage | 4.1 (P2) | [personal-patterns](../openspec/changes/add-source-backed-insights/specs/personal-patterns/spec.md) — Qualified associations |
+| 32 | Gentle view preserves data and integrity warnings | 1, then every delivered surface | [product-guardrails](../openspec/changes/build-offline-journal/specs/product-guardrails/spec.md) — Gentle view |
+| 33 | Independent clearing and source-deletion propagation | 1, then each derivative feature | [product-guardrails](../openspec/changes/build-offline-journal/specs/product-guardrails/spec.md) — Independent derived-data control |
+| 34 | Selected private formats and idempotent round trip | 6 | [private-data-portability](../openspec/changes/ship-macos-and-approved-exports/specs/private-data-portability/spec.md) — Versioned identity-preserving round trip |
+| 35 | Untrusted source instructions and opt-in payload retention | 3; questions in 4.1 | [llm-assistance](../openspec/changes/add-cbt-companion/specs/llm-assistance/spec.md) — Untrusted source content |
 
 ## Coverage requiring more than one capability
 
@@ -37,6 +49,11 @@ Every numbered acceptance case in README §20 is assigned below. Milestone 1 is 
 - Case 20 combines llm-assistance consent, chatgpt-import source identity, conversation-analysis provenance, and approved-exports preview/approval.
 - Case 22 also uses calendar-reading — Local search and filtering and chatgpt-import — Separate original-language store.
 - Case 23 additionally uses llm-assistance — English adapter instructions; source-copy originality is covered by product-guardrails — Accessible original interface.
+
+- Cases 24–35 consolidate the new/refined appendix behavior. The [appendix assessment](appendix-integration.md) maps all 22 original appendix TEST IDs without copying them into competing requirements.
+- Case 30 additionally uses personal-memory — Verified dated evidence for Looking Back and pinned source cards.
+- Case 34 also covers private-data-portability — Explicit private export selection and Portability does not widen sharing.
+- Case 35 also uses llm-assistance — Explicit private-payload retention and English adapter instructions.
 
 ## Additional interview acceptance cases
 
