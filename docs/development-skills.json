@@ -1,0 +1,472 @@
+{
+  "schema_version": 1,
+  "project": "Through the Days",
+  "selected_on": "2026-11-22",
+  "basis": "README_THROUGH_THE_DAYS.md, sections 10, 12, 13, 19, and 20",
+  "installation": {
+    "scope": "Current user; skills are installed outside this repository",
+    "destination": "~/.codex/skills",
+    "installer": "~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py",
+    "new_skills_count": 36,
+    "activation": "New skills are available on the next turn",
+    "reinstall": "Use the installer with --repo <repository> --ref <ref> --path <skill.path> for each source below; existing destinations are preserved by the installer."
+  },
+  "usage_constraints": [
+    "The project specification and user instructions take precedence over generic skill recommendations.",
+    "Keep all product copy and repository documentation in English, as required by the specification.",
+    "Apply React and Vite guidance to the Tauri frontend; Next.js server and hosting patterns are outside the selected architecture.",
+    "Adapt generic SQL examples to SQLite and keep persistence and migrations behind Rust/Tauri commands.",
+    "Playwright verifies browser-rendered frontend flows; native macOS application behavior requires separate validation.",
+    "Python skills support the later independent analytics CLI; the first journal MVP must work without Python.",
+    "Installing skills does not install application dependencies or authorize publishing, pushing, or uploading journal data."
+  ],
+  "already_available": [
+    {
+      "name": "context7-mcp",
+      "location": "~/.agents/skills/context7-mcp",
+      "purpose": "Retrieve current library documentation through Context7 MCP"
+    },
+    {
+      "name": "git-commit",
+      "location": "~/.agents/skills/git-commit",
+      "purpose": "Atomic commits and Conventional Commits messages"
+    },
+    {
+      "name": "code-review",
+      "location": "~/.agents/skills/code-review",
+      "purpose": "Review changes against repository standards and specifications"
+    },
+    {
+      "name": "gh-address-comments",
+      "location": "~/.agents/skills/gh-address-comments",
+      "purpose": "Address GitHub review comments"
+    },
+    {
+      "name": "gh-fix-ci",
+      "location": "~/.agents/skills/gh-fix-ci",
+      "purpose": "Investigate and fix GitHub Actions failures"
+    },
+    {
+      "name": "pr",
+      "location": "~/.agents/skills/pr",
+      "purpose": "Write pull request descriptions"
+    },
+    {
+      "name": "grill-me",
+      "location": "~/.agents/skills/grill-me",
+      "purpose": "User-invoked entry point for the grilling interview"
+    },
+    {
+      "name": "grilling",
+      "location": "~/.agents/skills/grilling",
+      "purpose": "Inspect facts and resolve product decisions in dependency order"
+    }
+  ],
+  "context7_verification": {
+    "result": "Successful MCP library lookup",
+    "library_id": "/tauri-apps/tauri-docs",
+    "checked_on": "2026-11-22"
+  },
+  "requested_name_resolution": {
+    "requested": "git-rituals",
+    "result": "No identifiable public source found under this exact name during selection",
+    "coverage": [
+      "git-advanced-workflows",
+      "git-commit"
+    ]
+  },
+  "sources": [
+    {
+      "repository": "openai/skills",
+      "ref": "49f948faa9258a0c61caceaf225e179651397431",
+      "skills": [
+        {
+          "directory": "playwright",
+          "path": "skills/.curated/playwright",
+          "purpose": "Browser interaction and frontend end-to-end checks",
+          "name": "playwright",
+          "skill_md_sha256": "0ffaabcc8e0990627c4725f18bf1c7955534a796c1c199e872909de2013ce6a8",
+          "file_count": 9,
+          "total_bytes": 22850
+        },
+        {
+          "directory": "screenshot",
+          "path": "skills/.curated/screenshot",
+          "purpose": "Capture macOS windows for visual verification",
+          "name": "screenshot",
+          "skill_md_sha256": "081935a6a163277537d46365f49d6b4a3cb40b4748347e7e88759c5927fa8cf5",
+          "file_count": 11,
+          "total_bytes": 51996
+        },
+        {
+          "directory": "security-best-practices",
+          "path": "skills/.curated/security-best-practices",
+          "purpose": "Secure React/TypeScript and Python development",
+          "name": "security-best-practices",
+          "skill_md_sha256": "7b3dae1ffc5434d890f3c65c8f552af52d0307fab3b35dec13013c9ca3844c4f",
+          "file_count": 13,
+          "total_bytes": 411749
+        },
+        {
+          "directory": "security-threat-model",
+          "path": "skills/.curated/security-threat-model",
+          "purpose": "Model local data, imports, IPC, and optional LLM boundaries",
+          "name": "security-threat-model",
+          "skill_md_sha256": "1283c0dd62a8104d9edda4583569b5d8510b4ddaa45120687c999250fd96bad2",
+          "file_count": 5,
+          "total_bytes": 30913
+        }
+      ]
+    },
+    {
+      "repository": "vercel-labs/agent-skills",
+      "ref": "5a37a6329fbad3666c3207392a6a7c0110e92efb",
+      "skills": [
+        {
+          "directory": "react-best-practices",
+          "path": "skills/react-best-practices",
+          "purpose": "React rendering, bundle size, and responsiveness",
+          "name": "vercel-react-best-practices",
+          "skill_md_sha256": "71ed7794962fa6e803ee83030517b5b93a9f70fbfeb431ec4535c5480a8d8355",
+          "file_count": 76,
+          "total_bytes": 230383
+        },
+        {
+          "directory": "composition-patterns",
+          "path": "skills/composition-patterns",
+          "purpose": "Reusable React component APIs",
+          "name": "vercel-composition-patterns",
+          "skill_md_sha256": "e38e0eaa609316b10423a9a138ed95e35099accd3f735585295c8a8f165c28a3",
+          "file_count": 14,
+          "total_bytes": 50339
+        },
+        {
+          "directory": "web-design-guidelines",
+          "path": "skills/web-design-guidelines",
+          "purpose": "Interface and accessibility review",
+          "name": "web-design-guidelines",
+          "skill_md_sha256": "360b1240acfffa95e76373db9f837a1f28aba8f6d4c361e3d588be0eaefaa070",
+          "file_count": 2,
+          "total_bytes": 10132
+        }
+      ]
+    },
+    {
+      "repository": "anthropics/skills",
+      "ref": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "skills": [
+        {
+          "directory": "frontend-design",
+          "path": "skills/frontend-design",
+          "purpose": "Original journal interface, typography, and visual identity",
+          "name": "frontend-design",
+          "skill_md_sha256": "d91970639e9f5c37682ac7ab60094d35f1c7c1f38d731bd56396563aee10c1d3",
+          "file_count": 2,
+          "total_bytes": 19564
+        }
+      ]
+    },
+    {
+      "repository": "antfu/skills",
+      "ref": "4a6bb39e7b45e26402eb215393c51ccf5df1ca4c",
+      "skills": [
+        {
+          "directory": "vite",
+          "path": "skills/vite",
+          "purpose": "Vite configuration and frontend development",
+          "name": "vite",
+          "skill_md_sha256": "311367ff6b95605d668bd6eb6a2914356d048fd66bd02699e5fedb4332e2a191",
+          "file_count": 8,
+          "total_bytes": 31981
+        },
+        {
+          "directory": "vitest",
+          "path": "skills/vitest",
+          "purpose": "Frontend unit and component tests",
+          "name": "vitest",
+          "skill_md_sha256": "01c2da913702dcc3f944b93fe92cdc67d594c9126a6c919653d3fb353a5b8e48",
+          "file_count": 21,
+          "total_bytes": 110594
+        }
+      ]
+    },
+    {
+      "repository": "apollographql/skills",
+      "ref": "9dda1397730370aeb8df4ff8f2015c34c86b5003",
+      "skills": [
+        {
+          "directory": "rust-best-practices",
+          "path": "skills/rust-best-practices",
+          "purpose": "Rust ownership, errors, linting, and tests",
+          "name": "rust-best-practices",
+          "skill_md_sha256": "b1651a95a2c36a8350c033449f52d07eebfdbf08e3bd1d5b22c4b7f55f7aa17c",
+          "file_count": 10,
+          "total_bytes": 103288
+        }
+      ]
+    },
+    {
+      "repository": "nodnarbnitram/claude-code-extensions",
+      "ref": "35e7f7deae689e12b94f9c242b8f59efe0f66476",
+      "skills": [
+        {
+          "directory": "tauri-v2",
+          "path": "plugins/cce-tauri/skills/tauri-v2",
+          "purpose": "Tauri 2 commands, permissions, plugins, and distribution",
+          "name": "tauri-v2",
+          "skill_md_sha256": "86b21fe8d43992247891f28249c615cd2284307b0ca539f7a2a3b82698974bb9",
+          "file_count": 8,
+          "total_bytes": 65308
+        }
+      ]
+    },
+    {
+      "repository": "ueberdosis/tiptap",
+      "ref": "643792f65e8ea5506fc2591cfd140fc3aec6d29b",
+      "skills": [
+        {
+          "directory": "tiptap",
+          "path": ".agents/skills/tiptap",
+          "purpose": "Official Tiptap editor integration and local document handling",
+          "name": "tiptap",
+          "skill_md_sha256": "075de80e65012f9ad6ae4fba4c99df3c297f583b10fb5aedf381a0e1a3c02a5a",
+          "file_count": 5,
+          "total_bytes": 7298
+        }
+      ]
+    },
+    {
+      "repository": "wshobson/agents",
+      "ref": "12bcec79ec7f24868bc75fe8cd21428ebf5e96d0",
+      "skills": [
+        {
+          "directory": "git-advanced-workflows",
+          "path": "plugins/developer-essentials/skills/git-advanced-workflows",
+          "purpose": "Git branches, worktrees, history, and recovery",
+          "name": "git-advanced-workflows",
+          "skill_md_sha256": "8b912fe7d2ff010fd4f8947a61ecdb8058628dc8e4a7ff20b7675cde11c4e7dd",
+          "file_count": 2,
+          "total_bytes": 9570
+        },
+        {
+          "directory": "github-actions-templates",
+          "path": "plugins/cicd-automation/skills/github-actions-templates",
+          "purpose": "GitHub Actions validation workflows",
+          "name": "github-actions-templates",
+          "skill_md_sha256": "fc3c06ddb2423804be275defbb8a2c35f1564ba28aaeb07dcf01ec9c4cc8f023",
+          "file_count": 1,
+          "total_bytes": 7076
+        },
+        {
+          "directory": "sql-optimization-patterns",
+          "path": "plugins/developer-essentials/skills/sql-optimization-patterns",
+          "purpose": "SQL query plans, indexes, and performance",
+          "name": "sql-optimization-patterns",
+          "skill_md_sha256": "cfe8234323daaeb47577261c96933f519004fad2f45f1460f340b883af5d7354",
+          "file_count": 2,
+          "total_bytes": 12911
+        },
+        {
+          "directory": "database-migration",
+          "path": "plugins/framework-migration/skills/database-migration",
+          "purpose": "Schema migrations, data integrity, and rollback planning",
+          "name": "database-migration",
+          "skill_md_sha256": "d388db68c9f86beba823247f910b6a91c2fe8e12ef9b30b6e49f4b1bf19f1ab1",
+          "file_count": 2,
+          "total_bytes": 9876
+        },
+        {
+          "directory": "typescript-advanced-types",
+          "path": "plugins/javascript-typescript/skills/typescript-advanced-types",
+          "purpose": "Type-safe frontend and IPC contracts",
+          "name": "typescript-advanced-types",
+          "skill_md_sha256": "c32101c65134d94ef1a3305ef486020b57be6408f97ed952c9c560e3fe04188d",
+          "file_count": 2,
+          "total_bytes": 17062
+        },
+        {
+          "directory": "javascript-testing-patterns",
+          "path": "plugins/javascript-typescript/skills/javascript-testing-patterns",
+          "purpose": "Frontend testing, fixtures, and mocking",
+          "name": "javascript-testing-patterns",
+          "skill_md_sha256": "d99e1d7344ca7b87395c7e49f6c635ea67fe16d57f4698d72c78d405020f5782",
+          "file_count": 2,
+          "total_bytes": 27466
+        },
+        {
+          "directory": "react-state-management",
+          "path": "plugins/frontend-mobile-development/skills/react-state-management",
+          "purpose": "React state and derived state design",
+          "name": "react-state-management",
+          "skill_md_sha256": "71abf349b19fe5cef64f4e4f2dd4a89011a5e947d8ce278d53a489292f508032",
+          "file_count": 2,
+          "total_bytes": 11755
+        },
+        {
+          "directory": "accessibility-compliance",
+          "path": "plugins/ui-design/skills/accessibility-compliance",
+          "purpose": "Keyboard, screen readers, contrast, and reduced motion",
+          "name": "accessibility-compliance",
+          "skill_md_sha256": "3ad0fbcb0a69b69e70652641a8eeb59f168cceb4bc9d9b9c8b47154072b9e1a2",
+          "file_count": 5,
+          "total_bytes": 52557
+        },
+        {
+          "directory": "design-system-patterns",
+          "path": "plugins/ui-design/skills/design-system-patterns",
+          "purpose": "Design tokens, reusable components, and light/dark themes",
+          "name": "design-system-patterns",
+          "skill_md_sha256": "618355f0e6c6ba8ca5d231035c9da18302fe6894aedce565743e9181b6c928ee",
+          "file_count": 5,
+          "total_bytes": 48496
+        },
+        {
+          "directory": "python-testing-patterns",
+          "path": "plugins/python-development/skills/python-testing-patterns",
+          "purpose": "pytest tests for imports and analytics",
+          "name": "python-testing-patterns",
+          "skill_md_sha256": "a1020718f31629c2a5b20731cad1804dbb81b18800495c5cebdf16e6cac9c175",
+          "file_count": 3,
+          "total_bytes": 26065
+        },
+        {
+          "directory": "python-packaging",
+          "path": "plugins/python-development/skills/python-packaging",
+          "purpose": "Package the standalone analytics CLI",
+          "name": "python-packaging",
+          "skill_md_sha256": "744653d7bca3b0cfcb50155a3bb9ef56c7aba7eb4923091d07e75171261e5b49",
+          "file_count": 3,
+          "total_bytes": 18509
+        },
+        {
+          "directory": "python-type-safety",
+          "path": "plugins/python-development/skills/python-type-safety",
+          "purpose": "Python typing and validated data boundaries",
+          "name": "python-type-safety",
+          "skill_md_sha256": "7798dd109350b73c80bb4642f6e5a0ebaa2ae392484a213d4b44b35e9b4dad66",
+          "file_count": 2,
+          "total_bytes": 11625
+        },
+        {
+          "directory": "python-project-structure",
+          "path": "plugins/python-development/skills/python-project-structure",
+          "purpose": "Maintainable Python package layout",
+          "name": "python-project-structure",
+          "skill_md_sha256": "c53696fb8d9014abc280fc0e64220cae0d087766a16380e211a6745e481dae65",
+          "file_count": 1,
+          "total_bytes": 6727
+        },
+        {
+          "directory": "uv-package-manager",
+          "path": "plugins/python-development/skills/uv-package-manager",
+          "purpose": "uv environments, dependency locking, and execution",
+          "name": "uv-package-manager",
+          "skill_md_sha256": "14df843d2d7958257e47933961914ff6598adb8422e4759000586c43ce80ab2c",
+          "file_count": 2,
+          "total_bytes": 15742
+        },
+        {
+          "directory": "python-error-handling",
+          "path": "plugins/python-development/skills/python-error-handling",
+          "purpose": "Import validation and reliable CLI errors",
+          "name": "python-error-handling",
+          "skill_md_sha256": "796346a50615010c4fea52ecb93784ebf232c5d4c9f0691bfc668529d9592543",
+          "file_count": 2,
+          "total_bytes": 10955
+        },
+        {
+          "directory": "python-design-patterns",
+          "path": "plugins/python-development/skills/python-design-patterns",
+          "purpose": "Maintainable analytics services and composition",
+          "name": "python-design-patterns",
+          "skill_md_sha256": "42c99b3bc55a56a65cd3f16aa24ea50672ce0fa4893eb0f34bba0cdb8a0e3319",
+          "file_count": 2,
+          "total_bytes": 15725
+        },
+        {
+          "directory": "rust-async-patterns",
+          "path": "plugins/systems-programming/skills/rust-async-patterns",
+          "purpose": "Async Rust without blocking the desktop UI",
+          "name": "rust-async-patterns",
+          "skill_md_sha256": "8e9a951c21bb1ee671dd2e7391b193e8e3d362b95ef29c470915837d73bf87df",
+          "file_count": 2,
+          "total_bytes": 12583
+        }
+      ]
+    },
+    {
+      "repository": "mattpocock/skills",
+      "ref": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "skills": [
+        {
+          "directory": "grill-with-docs",
+          "path": "skills/engineering/grill-with-docs",
+          "purpose": "Interview product decisions while maintaining domain documentation",
+          "name": "grill-with-docs",
+          "skill_md_sha256": "7de372c13488f1ee96cc11cd8907b56b6809cc93eef776eeddd37de6b6cbe3fe",
+          "file_count": 2,
+          "total_bytes": 392
+        },
+        {
+          "directory": "domain-modeling",
+          "path": "skills/engineering/domain-modeling",
+          "purpose": "Maintain precise glossary terms and durable architecture decisions",
+          "name": "domain-modeling",
+          "skill_md_sha256": "7b925d7b1e341a2eeae33ad68a8a8c0ab889a38ddd22a7598e4c240e5a7556a3",
+          "file_count": 4,
+          "total_bytes": 8480
+        },
+        {
+          "directory": "writing-for-agents",
+          "path": "skills/productivity/writing-for-agents",
+          "purpose": "Write concise instructions and useful context pointers for future agents",
+          "name": "writing-for-agents",
+          "skill_md_sha256": "551adca942227b44192edba88acd4e8db911f0121ce58ad16944ccf6a896a74a",
+          "file_count": 3,
+          "total_bytes": 13617
+        },
+        {
+          "directory": "codebase-design",
+          "path": "skills/engineering/codebase-design",
+          "purpose": "Design cohesive modules with small, testable interfaces",
+          "name": "codebase-design",
+          "skill_md_sha256": "2c20617f87ec8af6a434859f381b2f061a69b530444e74eb39e78bb016a6d1e2",
+          "file_count": 4,
+          "total_bytes": 11800
+        },
+        {
+          "directory": "tdd",
+          "path": "skills/engineering/tdd",
+          "purpose": "Implement verified behavior through observable interfaces",
+          "name": "tdd",
+          "skill_md_sha256": "5505d25bbaa8fc14a79e4d20163936958992a2995b7f1dd1d6197edc9ed722e0",
+          "file_count": 4,
+          "total_bytes": 7411
+        },
+        {
+          "directory": "to-tickets",
+          "path": "skills/engineering/to-tickets",
+          "purpose": "Refine specifications into independently deliverable implementation slices",
+          "name": "to-tickets",
+          "skill_md_sha256": "56ec23c5b2782785d4e65bff9e315b6d3aeb4ef977c174a219e99489fada1995",
+          "file_count": 2,
+          "total_bytes": 5958
+        }
+      ]
+    }
+  ],
+  "project_generated": {
+    "tool": "@fission-ai/openspec",
+    "version": "2.1.1",
+    "location": ".agents/skills",
+    "scope": "Project-local generated Codex integration; refreshed with the pinned OpenSpec CLI",
+    "skills": [
+      "openspec-apply-change",
+      "openspec-archive-change",
+      "openspec-explore",
+      "openspec-propose",
+      "openspec-sync-specs",
+      "openspec-update-change"
+    ]
+  }
+}

@@ -13,6 +13,8 @@
 > **Differentiators:** A short guided reflection before writing, recognition of daily actions and small wins, optional LLM-assisted cognitive behavioural therapy (CBT) exercises, a progress timeline, thematic exploration, calendar and book-style reading, and optional local ChatGPT analytics.  
 > **Privacy:** Local-first; no automatic uploads of private data and no automatic publication.
 
+Detailed development planning now lives in [the OpenSpec workflow](docs/specification-workflow.md), with [recorded product decisions](docs/product-decisions.md), a [domain glossary](GLOSSARY.md), and [acceptance coverage](docs/acceptance-coverage.md). The six changes under `openspec/changes/` are proposed specifications, not implemented features. Explicit decisions from the specification interview refine this brief, including 30-day trash and daily encrypted backups with next-launch catch-up before real personal use; the live database initially relies on macOS protections.
+
 ---
 
 ## 0. English-only product and implementation policy

@@ -1,0 +1,37 @@
+schema: spec-driven
+
+context: |
+  Through the Days is a personal, offline-first macOS journal; no application features are implemented yet.
+  Product brief: README_THROUGH_THE_DAYS.md. Later explicit user decisions: docs/product-decisions.md.
+  Stack: Tauri 2, React, TypeScript, Vite, Rust, SQLite. Python analytics is an independent later CLI.
+  All artifacts and first-party product copy are English. Preserve the language of user-authored text.
+  First milestone: two-slot journal, skippable check-in, editor, durable persistence, trash, encrypted backups and tested restore.
+  Current changes are proposed behavior; main specs represent delivered behavior after verification and archive.
+  Read GLOSSARY.md for domain terms and relevant docs/adr/ for durable decisions.
+  Keep real journal content and secrets outside the repository. Use synthetic fixtures.
+
+rules:
+  proposal:
+    - State the roadmap milestone, dependencies, non-goals, and unresolved decisions.
+    - Distinguish README requirements, confirmed user decisions, and engineering proposals.
+  specs:
+    - Give each requirement a SHALL statement and concrete WHEN/THEN scenarios with observable results.
+    - Keep each requirement description within 500 characters; place examples and edge cases in scenarios.
+    - Identify relevant README sections and decision IDs. Keep one owner per capability.
+    - Cover missing values, multilingual text, privacy, and failure cases where applicable.
+  design:
+    - Separate confirmed constraints, proposed implementation choices, and open questions.
+    - Describe data ownership, transaction boundaries, testing interfaces, and migration or rollback behavior.
+  tasks:
+    - Use unchecked numbered tasks grouped into observable vertical slices.
+    - Include acceptance evidence and relevant decision-resolution work before dependent implementation.
+    - Keep later milestones separate and mark unfinished behavior explicitly.
+
+operations:
+  apply:
+    guidance:
+      - Resolve relevant open decisions before implementing their dependent behavior.
+      - Verify observable behavior with synthetic data and report checks actually run.
+  archive:
+    guidance:
+      - Confirm that delivered behavior and completed tasks match the change before merging main specs.
