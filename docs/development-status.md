@@ -9,7 +9,7 @@ These directories are Git worktrees of the same repository, sharing committed hi
 | Directory | Branch | Observed state |
 |---|---|---|
 | `through-the-days` | `feat/offline-journal` | Original journal/reading working files retained unchanged. |
-| `through-the-days-milestone-1` | `feat/milestone-1` | Isolated journal scope published in [PR #4](https://github.com/speillet/through-the-days/pull/4), native implementation `c4c0343`. |
+| `through-the-days-milestone-1` | `feat/milestone-1` | Isolated journal scope merged into main through [PR #4](https://github.com/speillet/through-the-days/pull/4), native implementation `c4c0343`. |
 | `through-the-days-reading` | `feat/reading-and-reviews` | Active milestone-2 implementation based on PR #4, including its native recovery, managed erasure and quit-safety corrections. |
 
 Milestone 1 has separate native-fix, browser-isolation, specification and quit-regression commits. Reading changes follow that base; the original worktree is not overwritten. A local Git stash preserves the pre-integration reading snapshot as an additional recovery point.
@@ -54,6 +54,6 @@ Local command logs are kept in the ignored `.reference/verification/` directory.
 - Complete the original milestones' unchecked acceptance tasks. The [native checklist](../openspec/changes/confirm-native-macos-checks/tasks.md) tracks VoiceOver, real-key navigation, full screen, dialogs/Keychain, networking disabled, and an actual exFAT backup drive. These checks have not been performed by this audit.
 - Review native termination behaviour: window close and the app's quit flow flush pending work; macOS termination paths outside that flow remain a documented platform limitation in [technical design](technical-design.md).
 - Reconcile the final implementation with requirements and acceptance evidence before a PR merge. The journal and reading changes remain active. Four verified milestone-1 capabilities are in `openspec/specs/`; reading deltas are not yet synchronised, and archives remain empty.
-- The milestone-1 branch is pushed and PR #4 is open, with native/manual limits explicit. Reading is a separate implementation branch; finish its remaining acceptance before finalising a reading PR. Follow the [PR specification checklist](specification-workflow.md#pull-request-completion).
+- PR #4 is merged into main after all four GitHub checks passed, with native/manual limits still explicit. The reading branch includes that main merge. Reading is a separate implementation branch; finish its remaining acceptance before finalising a reading PR. Follow the [PR specification checklist](specification-workflow.md#pull-request-completion).
 
 Use the [roadmap](roadmap.md) for intended order and the [acceptance map](acceptance-coverage.md) for requirement ownership. Source code, passing tests, and remaining checks are deliberately recorded separately.
