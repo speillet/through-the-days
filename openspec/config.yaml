@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  Through the Days is a personal, offline-first macOS journal; milestone 1 has application code and automated checks. Native acceptance remains open; see docs/milestone-1-status.md.
+  Through the Days is a personal, offline-first macOS journal; milestones 1–2 have application code and passing automated checks, with acceptance and specification closure still in progress. See docs/development-status.md.
   User overview: README.md. Product requirements: README_THROUGH_THE_DAYS.md and linked thematic documents.
   Technical design: docs/technical-design.md; roadmap: docs/roadmap.md; acceptance cases: docs/acceptance-tests.md.
   Later explicit user decisions: docs/product-decisions.md.
@@ -9,7 +9,7 @@ context: |
   All artifacts and first-party product copy are English. Preserve the language of user-authored text.
   In-app LLMs share llm-assistance's compassionate evidence-calibrated disagreement and self-correction policy (D-008).
   First milestone: two-slot journal, skippable check-in, editor, durable persistence, trash, encrypted backups and tested restore.
-  Current changes are proposed behavior; main specs represent delivered behavior after verification and archive.
+  Active changes retain intended behaviour and unfinished acceptance; main specs contain the four verified milestone-1 capabilities. The reading change is not archived.
   Appendix choices and exclusions: docs/appendix-integration.md. Writing depths/progress/Gentle view preserve the original completion rule.
   Read GLOSSARY.md for domain terms and relevant docs/adr/ for durable decisions.
   Keep real journal content and secrets outside the repository. Use synthetic fixtures.

@@ -87,3 +87,16 @@ The isolated milestone-1 branch was checked on November 23, 2026 with synthetic 
 | 33 | Trash removes active source access; native erasure covers the journal, its companions, managed set-aside journals, device settings and credentials. Independent encrypted backups remain separate. | Full derivative-surface acceptance remains unchecked; future derivatives are not present here. |
 
 The milestone-1 task file retains unfinished acceptance. Later-milestone rows in the ownership table remain plans. Verified main-spec sync is limited to entries, check-in, editor and persistence; the active change is not archived.
+
+### November 23, 2026 audit
+
+The active `through-the-days-reading` worktree passed 422 interface tests, 151 Rust tests, and 62 WebKit/Chromium end-to-end tests. TypeScript, Clippy, the frontend build, and the native debug bundle build pass. The native smoke check passed writing/save, exact recovery after restart, and French-system-language launches with English interface copy. See [commands and limits](development-status.md#verification-performed).
+
+| Cases | Evidence available | Remaining scope |
+|---|---|---|
+| 1–3, 7, 9, 12–13, 24–26 | Core journal/persistence/migration/recovery suites; frontend state/check-in/writing-depth suites; writing/editor/protection browser suites; native writing/restart smoke. | Native disabled-network run and broader original milestone integration review. |
+| 4–6, 14, 22 | Rust reading queries verify Unicode search invalidation, separate slots, scored drafts and metric denominators. Reading component/browser suites verify Calendar sources and complete Book text, selection, resize, keyboard navigation and return position. | Historical 7/14/30-day ranges, empty gaps, hidden-series persistence and Enter source navigation now pass in both engines. Cross-view edit combinations and native reading interactions remain. |
+| 27–28, 32–33 | Weekly notes survive save retry/navigation/restart; source changes hide stale summaries; milestones support editing/deletion; notes/milestones survive encrypted backup/restore. Insight exclusions preserve original Calendar reading. | The explicit three-entry/two-date example now passes with separate metric denominators, canonical wins and authored notes outside entry counts. Full layer/context navigation, Gentle-view combinations and complete source-removal audit remain. |
+| 8, 10, 21 | Automated keyboard, privacy/language guards and accessibility suites; six reading views have no serious/critical axe violations in either appearance; native smoke preserves multilingual text with English UI on French locale. | VoiceOver, real-key navigation, full screen, native dialogs/Keychain, networking disabled, and physical exFAT backup/restore. |
+
+Later-milestone acceptance cases remain unimplemented. Passing tests above do not establish every scenario in a mapped case. The original changes remain active and their incomplete tasks stay unchecked; the [native checklist](../openspec/changes/confirm-native-macos-checks/tasks.md) records manual checks without transferring those obligations.

@@ -19,11 +19,11 @@ Book View SHALL order entries chronologically by journal date and slot, skip emp
 
 ### Requirement: Complete pagination
 
-Book View SHALL render the complete saved document without clipped, omitted, or duplicated passages across single-page and optional wide two-page layouts.
+Book View SHALL show one entry per page with its complete saved document rendered once, scrolling for long content, selectable text, adjustable text size and a preserved reading position (D-012).
 
 #### Scenario: Long formatted entry
 
-- **WHEN** a long entry containing headings, Unicode text, and lists spans pages
+- **WHEN** a long entry containing headings, Unicode text, and lists exceeds the reading viewport
 - **THEN** the full text appears once in reading order, with no lost passages.
 
 #### Scenario: Window resize

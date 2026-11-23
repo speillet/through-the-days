@@ -1,6 +1,6 @@
 # Development roadmap
 
-Milestone 1 (phases 0–1, the offline journal) has application code and passing automated checks; native acceptance remains open. See [milestone 1 status](milestone-1-status.md) and [acceptance evidence](acceptance-coverage.md#milestone-1-evidence). Later milestones describe future work; dates are not implied. See the [user overview](../README.md), [detailed product requirements](../README_THROUGH_THE_DAYS.md), and [OpenSpec workflow](specification-workflow.md).
+Milestones 1–2 have code in the development branch, with passing automated checks and incomplete acceptance work. Neither change is archived. See [development status](development-status.md) for actual evidence and remaining work; the unchecked original tasks still gate milestone completion. Later milestones describe future work; dates are not implied.
 
 Original section numbering is retained for source references.
 
@@ -11,7 +11,7 @@ Original section numbering is retained for source references.
 - [x] Initialise **Tauri 2 + React + TypeScript + Vite**.
 - [x] Build the original design system inspired by How We Feel principles, with sidebar, themes and accessible navigation.
 - [x] Prototype **Today** and the **short pre-writing check-in**: mood/energy, actions, pride `1..10`, editor and synthetic test records.
-- [ ] Complete native keyboard entry, macOS reading, dark mode, small-window and **Skip** acceptance. Automated checks pass. A VoiceOver pass and real-key keyboard checks in the native window are tracked in the confirm-native-macos-checks change.
+- [ ] Complete native keyboard entry, macOS reading, dark mode, small-window and **Skip** acceptance. Automated checks pass; VoiceOver and real-key native checks remain in the confirm-native-macos-checks checklist.
 - [x] Verify **all UI strings and emotion labels are English**, including accessibility and empty states.
 
 **Acceptance:** A macOS app opens with a complete clickable flow using fictional data.
@@ -29,10 +29,10 @@ Original section numbering is retained for source references.
 
 ### Phase 2 — Calendar, book reader and progress timeline
 
-- [ ] Calendar markers for both entries and optional pride/achievement markers.
-- [ ] Book view with pagination, light/dark themes and keyboard navigation.
+- [x] Calendar markers for both entries and optional pride/achievement markers.
+- [x] Book view with one complete scrolling entry per page, light/dark themes and keyboard navigation (D-012).
 - [ ] **7/14/30-day timeline below each entry**, navigable by date with explicit missing-data gaps.
-- [ ] Local full-text search and filters.
+- [x] Local full-text search and filters.
 - [ ] Deterministic Weekly Review and The Path So Far with available layers, private milestones, source links and freshness; later-layer capabilities remain deferred.
 
 **Acceptance:** Today, Calendar and Book View show the same saved data; selecting a timeline date opens the correct day.
@@ -91,7 +91,7 @@ Original section numbering is retained for source references.
 |---|---|---|
 | 1 | [build-offline-journal](../openspec/changes/build-offline-journal/proposal.md) (implemented; acceptance open) | Phases 0–1: writing, check-in, durable storage, trash, backup and restore before real use |
 | 1a | [confirm-native-macos-checks](../openspec/changes/confirm-native-macos-checks/proposal.md) | Manual native checks of milestone 1: VoiceOver, real-key keyboard navigation, full screen, native dialogs and Keychain, offline launch, exFAT drive |
-| 2 | [add-journal-reading](../openspec/changes/add-journal-reading/proposal.md) | Phase 2: calendar, book, timeline, local search, Weekly Review and The Path So Far |
+| 2 | [add-journal-reading](../openspec/changes/add-journal-reading/proposal.md) (implemented; acceptance open) | Phase 2: calendar, book, timeline, local search, Weekly Review and The Path So Far |
 | 3 | [add-cbt-companion](../openspec/changes/add-cbt-companion/proposal.md) | Phase 3: manual worksheets and experiments, then optional AI; extended templates are P2 |
 | 4 | [add-personal-exploration](../openspec/changes/add-personal-exploration/proposal.md) | Phase 4: tags, keyword statistics, independent goals |
 | 4.1a | [add-source-backed-insights](../openspec/changes/add-source-backed-insights/proposal.md) | P2: Looking Back, Ask My Journal, descriptive Personal Patterns |

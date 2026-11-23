@@ -4,9 +4,9 @@ OpenSpec turns the product brief into reviewable changes containing behavior, de
 
 ## Current state
 
-Milestone 1 has application code and automated verification in this branch. Verified entry, check-in, editor and persistence requirements are synchronised into openspec/specs/. The change remains active, with incomplete acceptance tasks unchecked; it is not archived. See [milestone 1 status](milestone-1-status.md) and [acceptance evidence](acceptance-coverage.md#milestone-1-evidence).
+The offline journal (milestone 1) and reading/review features (milestone 2) have application code and passing automated checks in the development branch. Both OpenSpec changes remain active: incomplete acceptance work is unchecked and neither is archived. The milestone-1 PR synchronises four verified entry/check-in/editor/persistence capabilities; the reading deltas remain active. See [development status](development-status.md) for the current worktree, results and remaining work. Milestone 1 is published in [PR #4](https://github.com/speillet/through-the-days/pull/4).
 
-Checks that need a person at a Mac are tracked in the confirm-native-macos-checks change: a VoiceOver pass, keyboard navigation with real keys, full screen, the native dialogs and Keychain prompts, a launch with networking off, and an exFAT backup drive. This checklist does not discharge the original milestone tasks. Seven further product changes capture the rest of the [product roadmap](roadmap.md). Their requirements use SHALL statements and concrete scenarios.
+Checks that need a person at a Mac are tracked in the confirm-native-macos-checks verification checklist: a VoiceOver pass, keyboard navigation with real keys, full screen, native dialogs and Keychain prompts, a launch with networking off, and an exFAT backup drive. This checklist does not discharge the original milestones' acceptance tasks. Six further product changes capture later work in the [product roadmap](roadmap.md).
 
 openspec/specs/ describes only delivered, verified behavior; proposed requirements live in openspec/changes/. Syntax validation checks document structure; it does not approve product choices or prove application correctness.
 

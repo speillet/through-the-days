@@ -8,7 +8,7 @@ Saved writing becomes useful to revisit through calendar dates, comfortable long
 
 - Deliver milestone 2 (product-roadmap phase 2), extending the existing timeline and optional weekly-review ideas using appendix INT-05/06.
 - Present the same saved records through Today, Calendar, Book View, search, and a 7/14/30-day timeline.
-- Keep the proposal and its tasks visibly unimplemented until verification.
+- Track implemented slices and their verification evidence while keeping unfinished acceptance work visible.
 
 ## Capabilities
 
@@ -22,7 +22,7 @@ Saved writing becomes useful to revisit through calendar dates, comfortable long
 
 ### Modified Capabilities
 
-None. The delivered capability inventory is currently empty.
+The existing journal remains the authority; its protection and recovery contracts apply to the added reading data.
 
 ## Impact
 
@@ -32,6 +32,6 @@ Sources: README_THROUGH_THE_DAYS.md §§6–8, 14.2–14.3, 16.3, 20–22.
 
 Out of scope: AI interpretations, inferred mental-health scores, ChatGPT data, and public sharing.
 
-Open decisions: Weekly draft inclusion follows O-002; summaries are optional and model adapters remain in their own milestone. Resolve O-002, O-003, and O-004 before their dependent visual or aggregation work. Chart library choice is an engineering proposal, not a product requirement.
+Decisions D-010–D-012 resolve O-002–O-004: scored saved drafts contribute with explicit denominators; slot markers remain separate and numerically neutral at 5; Book View displays one entire entry per page with scrolling and preserved position. Summaries are optional local deterministic text; model adapters remain in their own milestone. Chart rendering is an engineering choice.
 
-Status: draft planning baseline derived from the README and recorded user decisions; no application implementation is claimed.
+Status: implemented in the development worktree, with automated evidence recorded in `docs/development-status.md` and `tasks.md`. Remaining acceptance tasks are unchecked. This change has not been archived or synchronised into main specifications.

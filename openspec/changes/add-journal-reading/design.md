@@ -4,7 +4,7 @@
 
 See proposal.md for product motivation and scope. Milestone: 2 (product-roadmap phase 2). build-offline-journal, including stable save and journal-date behavior.
 
-Status: draft design. Confirmed requirements are distinguished from the engineering proposals below; later milestone choices remain deferred in the decision register. Artifact presence is not implementation approval.
+Status: implemented development design; see `tasks.md` and `docs/development-status.md` for verified slices and outstanding acceptance. Later capabilities remain deferred. This change is not archived.
 
 ## Goals / Non-Goals
 
@@ -18,13 +18,13 @@ This change reuses preceding capabilities rather than introducing an independent
 
 README_THROUGH_THE_DAYS.md §§6–8, 14.2–14.3, 16.3, 20–22. Read docs/product-decisions.md and the relevant ADRs before changing these constraints.
 
-### Proposed implementation approach
+### Implementation approach
 
 Query the existing journal authority; reading views do not create editable copies. Cache or index derived content with invalidation after edits. Preserve slot distinctions and selected journal dates. Keep timeline and statistical calculation behavior testable through a small query interface.
 
-Use SQLite FTS5 for local journal text search as required by the brief. A rebuildable search index is derived from saved document revisions; it is not an alternative journal authority.
+Use SQLite FTS5 for local journal text search as required by the brief. The current Rust query rebuilds a transient in-memory index from active saved document revisions with Unicode accent/case folding and literal tokens. Edits and trash cannot leave a stale persistent search index. This is not an alternative journal authority; larger-journal performance remains a future measurement.
 
-Choose concrete adapters after inspecting the installed versions and official documentation with Context7. Keep interface contracts small and explicit about validation, ordering, errors, and save acknowledgment. Introduce replaceable adapters only for real variations; avoid speculative framework layers.
+The native Tauri adapter delegates search, reports, notes and milestone operations to the Rust journal authority. Browser tests use the explicit synthetic memory adapter. React reading state retains filters, selected sources and per-entry scroll positions; source mutations invalidate dependent queries. Weekly authored-note autosave survives navigation and retries failures independently of summary generation.
 
 ### Weekly reviews and The Path So Far
 
@@ -44,14 +44,14 @@ Relevant acceptance cases are mapped in docs/acceptance-coverage.md. Each implem
 
 ## Risks / Trade-offs
 
-Pagination can hide or duplicate text; rendered coverage and selection need a prototype. Draft inclusion and neutral marker rules remain open and must be explicit before charts ship.
+Pagination can hide or duplicate text; rendered coverage and selection need a prototype. D-010–D-012 fix inclusion and neutral markers. Morning mood 2 and Evening mood 7 yield two observations, mean 4.5 and one recorded date. Missing pride adds no observation. A 5 on either numeric axis has a neutral marker even when the chosen emotion is Anxious.
 
 ## Migration Plan
 
-Work first with synthetic data. Version persistent formats and derived indexes. Validate migrations against prior supported fixtures and recoverable snapshots. A failed migration or restore must preserve the prior usable journal; derived indexes can be rebuilt. New views and optional adapters can be disabled independently of writing.
+Schema 3 adds authoritative weekly-review and timeline-milestone tables. Protected migrations support schema-1/2 images, and encrypted backups validate and restore the authored reading records. Reading-source exclusion defaults to enabled for older entries. Search indexes are transient and rebuilt. Migration, clean restore and reading-data round trips are covered by the Rust suites; manual native acceptance remains outstanding.
 
 ## Decision gates
 
-Resolve O-002, O-003, and O-004 before their dependent visual or aggregation work. Chart library choice is an engineering proposal, not a product requirement.
+D-010–D-012 resolve this milestone's product gates. Book navigation pages by entry, renders all text once and scrolls long content; resizing preserves its position. The canonical JSON document is shared with the editor. SQLite FTS5 provides rebuildable literal-token search; weekly notes and private milestones are authoritative authored records included in encrypted snapshots. Optional local summaries are labelled and invalidated by source-revision fingerprints; generated content can be cleared independently of notes.
 
-These are explicit gates before dependent implementation, not assumptions settled by this draft. Reopen the relevant interview branch when this milestone is requested. Technical details that do not change behavior can be selected during the prototype and recorded with evidence.
+These product gates were resolved before their dependent implementation. Reopen them only if the proposed behaviour changes. Keep acceptance combinations that have not been verified unchecked, including native reading interactions and the outstanding tasks in `tasks.md`.

@@ -38,7 +38,7 @@ Progress views SHALL include nullable perceived progress when selected, preserve
 
 ### Requirement: Transparent inclusion
 
-The system SHALL document which drafts and completed records contribute to each statistic and SHALL display the denominator needed to interpret it.
+The system SHALL include saved scored drafts and completed entries (D-010), omit missing values and excluded sources, and display each metric's observation count, distinct recorded days and civil-date coverage.
 
 #### Scenario: Mixed entry statuses
 

@@ -59,3 +59,8 @@ Weekly Review SHALL separate user notes from generated text, label AI summaries,
 
 - **WHEN** the person regenerates a review after editing their own notes
 - **THEN** generated sections can change while those notes remain unchanged.
+
+#### Scenario: Restore authored weekly notes
+
+- **WHEN** a validated encrypted journal backup is restored into a clean destination
+- **THEN** authored weekly notes retain their week, text and revision independently of disposable generated summaries.

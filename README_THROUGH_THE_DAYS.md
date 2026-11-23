@@ -1,6 +1,6 @@
 # Through the Days — A Personal Journal, Progress Tracker, and CBT Companion for macOS
 
-> **Status:** Consolidated product requirements v0.7 — implementation specification. The offline journal is implemented in this branch, with native acceptance still open. Reading and later runtime features are outside this milestone-1 PR.
+> **Status:** Consolidated product requirements v0.7 — implementation specification. Milestones 1–2 have code in the development branch; acceptance and specification closure remain in progress. See [development status](docs/development-status.md).
 > **Updated:** November 23, 2026
 > **Product name:** Through the Days
 > **GitHub repository:** `through-the-days`
@@ -13,7 +13,7 @@
 > **Differentiators:** A short guided reflection before writing, recognition of daily actions and small wins, optional LLM-assisted cognitive behavioural therapy (CBT) exercises, a progress timeline, thematic exploration, calendar and book-style reading, and optional local ChatGPT analytics.
 > **Privacy:** Local-first; no automatic uploads of private data and no automatic publication.
 
-Detailed development planning now lives in [the OpenSpec workflow](docs/specification-workflow.md), with [recorded product decisions](docs/product-decisions.md), a [domain glossary](GLOSSARY.md), and [acceptance coverage](docs/acceptance-coverage.md). Verified entry, check-in, editor and persistence requirements are synchronised to `openspec/specs/`. The milestone-1 change remains active for outstanding native acceptance; it has not been archived. Later runtime milestones are outside this branch. See [milestone 1 status](docs/milestone-1-status.md). Explicit decisions from the specification interview refine this brief, including 30-day trash and daily encrypted backups with next-launch catch-up before real personal use; the live database initially relies on macOS protections. [Appendix v0.1](appendix.md) is a proposal source; its useful additions are consolidated here and in OpenSpec, with duplicates, deferrals, and conflict resolutions recorded in [the integration assessment](docs/appendix-integration.md). This product reference, its linked thematic documents, and recorded user decisions govern development. The [main README](README.md) is the short user-facing overview.
+Detailed development planning lives in [the OpenSpec workflow](docs/specification-workflow.md), with [recorded product decisions](docs/product-decisions.md), a [domain glossary](GLOSSARY.md), and [acceptance coverage](docs/acceptance-coverage.md). The journal and reading changes have application code but remain active pending acceptance; four verified milestone-1 capabilities are synchronised to main specs, and archives remain empty. The other product changes remain plans. See [development status](docs/development-status.md) for actual evidence. Explicit decisions refine this brief, including 30-day trash and daily encrypted backups with next-launch catch-up before real personal use; the live database initially relies on macOS protections. [Appendix v0.1](appendix.md) is a proposal source; its useful additions are consolidated here and in OpenSpec, with duplicates, deferrals, and conflict resolutions recorded in [the integration assessment](docs/appendix-integration.md). This reference, its thematic documents, and recorded decisions govern development. The [main README](README.md) is the short user-facing overview.
 
 ---
 
@@ -315,12 +315,12 @@ Provide a **quick day preview** without navigating away from the calendar and an
 - Optional, subtle page-turn animation; disable it for reduced motion. No heavy 3D dependency.
 - Page heading: full English date, Morning/Evening label, emotion marker, score(s), optional pride, tags and permitted pinned counters.
 - Optional footer timeline and selected-term frequency exploration over previous weeks/months.
-- Show the **full text**, using continuation pages for long entries and stable pagination during each reading session.
+- Show the **full text once**, with one entry per page and scrolling for long entries. Keep text selectable and preserve the reading position when returning or resizing (D-012).
 - Direct date picker or progress scrubber to jump across months.
 
 ### Pagination model
 
-By default, the book traverses **existing entries in chronological order**; for a date with two entries, Morning comes before Evening. Empty dates do not force blank pages unless **“Show empty dates”** is enabled. Pagination should be deterministic for the current window size and font settings.
+By default, the book traverses **existing entries in chronological order**; for a date with two entries, Morning comes before Evening. Each entry occupies one reading page regardless of text length; window size and font changes adjust its layout without dividing it into continuation pages (D-012). Empty dates are skipped by default. An optional **“Show empty dates”** mode remains a later reading enhancement.
 
 ```text
 ┌──────────────────────────────┬──────────────────────────────┐
