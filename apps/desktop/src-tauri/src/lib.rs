@@ -3,9 +3,10 @@
 //! The renderer reaches the journal only through the commands in `commands.rs`: it never sends
 //! filesystem paths or SQL. The journal itself is `journal-core`; this crate adds the
 //! application data folder, startup and migration, the backup folder and passphrase (native
-//! dialogs and Keychain), restore, erasure, metadata-only diagnostics and a quit that waits for
-//! pending saves.
+//! dialogs and Keychain), restore, erasure, the native appearance, metadata-only diagnostics and
+//! a quit that waits for pending saves.
 
+mod appearance;
 mod commands;
 mod diagnostics;
 mod error;
@@ -71,9 +72,11 @@ pub fn run() {
 
 /// Manages the application state and launches the journal on a background thread.
 ///
-/// Launching can wait for a Keychain prompt or publish a pre-migration backup, so it never
-/// runs on the main thread. The launch thread takes the state's lock before `setup` returns,
-/// which makes every command wait for the launch outcome instead of seeing a half-open journal.
+/// The launch thread takes the state's lock before `setup` returns and opens the journal, so
+/// every command waits for the journal instead of seeing it half-open. Only then is a remembered
+/// passphrase read from Keychain, without holding the journal: a Keychain prompt never keeps
+/// the journal from opening or writing from continuing. Publishing a pre-migration backup can
+/// also take a while, so the launch never runs on the main thread.
 fn setup(app: &mut App) -> Result<(), Box<dyn Error>> {
     let platform_dir = app.path().app_data_dir().ok();
     let Some(data_dir) =
@@ -92,10 +95,36 @@ fn setup(app: &mut App) -> Result<(), Box<dyn Error>> {
         .name("journal-launch".into())
         .spawn(move || {
             let state = handle.state::<state::AppState>();
-            let mut core = state.lock();
-            let _ = locked.send(());
-            core.launch(chrono::Utc::now());
+            let pending = state.open_at_launch(chrono::Utc::now(), || {
+                let _ = locked.send(());
+            });
+            appearance::apply_stored(&handle, &state);
+            state.finish_launch(pending, chrono::Utc::now());
+            // A remembered passphrase may have upgraded an older journal, opening its preferences.
+            appearance::apply_stored(&handle, &state);
         })?;
     let _ = wait_until_locked.recv();
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "a failed unwrap is a failed test")]
+mod tests {
+    use serde_json::{Value, json};
+
+    /// The renderer listens for events (the quit request and the window's close request) and
+    /// destroys its window after flushing; it needs no other Tauri permission. Everything else
+    /// goes through the app's own commands.
+    #[test]
+    fn the_window_may_only_listen_for_events_and_destroy_itself() {
+        let capability: Value =
+            serde_json::from_str(include_str!("../capabilities/main.json")).unwrap();
+        assert_eq!(
+            capability["permissions"],
+            json!(["core:event:default", "core:window:allow-destroy"])
+        );
+        assert_eq!(capability["windows"], json!(["main"]));
+        let config: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(config["app"]["security"]["capabilities"], json!(["main"]));
+    }
 }

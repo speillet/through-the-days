@@ -20,8 +20,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
 zeroize = "1"
-uuid = { version = "1", features = ["v4"] }
-tempfile = "3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
@@ -29,6 +27,7 @@ security-framework = "3"
 [dev-dependencies]
 # Real temporary journals and crafted older or foreign databases for the shell's flow tests.
 rusqlite = { version = "0.40", features = ["bundled"] }
+tempfile = "3"
 
 [lints]
 workspace = true

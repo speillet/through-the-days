@@ -4641,7 +4641,6 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tempfile",
- "uuid",
  "zeroize",
 ]
 

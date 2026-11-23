@@ -1,59 +1,104 @@
 //! Quitting without losing pending input.
 //!
-//! When the person asks the app to quit while a window is open, the renderer receives
-//! [`FLUSH_REQUEST_EVENT`], flushes its pending saves and calls the `confirm_exit` command.
-//! A failed flush cancels the request and leaves writing available for retry. Closing the
-//! window is handled by the renderer itself before it destroys the window.
+//! When the person quits with the app's Quit menu item or its ⌘Q shortcut while a window is
+//! open, the renderer receives [`FLUSH_REQUEST_EVENT`] and flushes its pending saves. It then
+//! calls `confirm_exit`, or `cancel_exit` when a save still fails: the app stays open with the
+//! unsaved writing on screen, and a later quit asks again. If the renderer answers neither
+//! within [`FLUSH_TIMEOUT`], the app quits anyway: acknowledged revisions are already durable,
+//! so only unacknowledged input could be lost. Closing the window is handled by the renderer
+//! itself before it destroys the window.
+//!
+//! Known limit: a quit that macOS starts itself skips this gate. Quit from the Dock or from the
+//! app switcher, logging out, restarting or shutting down, and an AppleScript `quit` send
+//! `terminate:`. The windowing library (tao) implements `applicationWillTerminate:` but not
+//! `applicationShouldTerminate:`, so the process exits at once: no [`RunEvent::ExitRequested`]
+//! is emitted and the renderer is never asked to flush. Input still waiting for its autosave
+//! can then be lost. The renderer narrows that window by saving pending input as soon as the
+//! window loses focus or the page is hidden. Answering `applicationShouldTerminate:` natively
+//! is deferred.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    sync::{Mutex, MutexGuard, PoisonError},
+    thread,
+    time::Duration,
+};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime};
 
 /// Event asking the renderer to flush pending saves before the app quits.
 pub const FLUSH_REQUEST_EVENT: &str = "app://flush-request";
+/// How long a quit waits for the renderer before it proceeds without confirmation.
+pub const FLUSH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// What to do with a request to quit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExitDecision {
     /// Let the app quit now.
     Proceed,
-    /// Keep running, ask the renderer to flush and start the fallback timer.
-    FlushFirst,
-    /// Keep running: a flush request is already waiting for confirmation.
+    /// Keep running, ask the renderer to flush and start the fallback timer of this request.
+    FlushFirst(u64),
+    /// Keep running: a flush request is already waiting for an answer.
     AwaitFlush,
 }
 
-/// Whether a quit was confirmed and whether a flush request is outstanding.
+/// Whether a quit was confirmed and which flush request, if any, waits for an answer.
 #[derive(Debug, Default)]
 pub struct ExitGate {
-    confirmed: AtomicBool,
-    flush_requested: AtomicBool,
+    state: Mutex<GateState>,
+}
+
+#[derive(Debug, Default)]
+struct GateState {
+    confirmed: bool,
+    /// The flush request waiting for the renderer's answer.
+    outstanding: Option<u64>,
+    /// Flush requests sent so far; each one is identified by its number.
+    requests: u64,
 }
 
 impl ExitGate {
+    fn state(&self) -> MutexGuard<'_, GateState> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// Decides how to answer a quit request. `explicit` is a programmatic exit with a code,
     /// including the one made after confirmation, which always proceeds.
     pub fn on_quit_requested(&self, explicit: bool, open_windows: usize) -> ExitDecision {
-        if explicit || open_windows == 0 || self.confirmed.load(Ordering::SeqCst) {
+        let mut state = self.state();
+        if explicit || open_windows == 0 || state.confirmed {
             return ExitDecision::Proceed;
         }
-        if self.flush_requested.swap(true, Ordering::SeqCst) {
-            ExitDecision::AwaitFlush
-        } else {
-            ExitDecision::FlushFirst
+        if state.outstanding.is_some() {
+            return ExitDecision::AwaitFlush;
         }
+        state.requests += 1;
+        state.outstanding = Some(state.requests);
+        ExitDecision::FlushFirst(state.requests)
     }
 
     /// Records the confirmation; `true` only for the first one.
     pub fn confirm(&self) -> bool {
-        !self.confirmed.swap(true, Ordering::SeqCst)
+        !std::mem::replace(&mut self.state().confirmed, true)
     }
 
+    /// The renderer could not flush: the app keeps running, and the next quit asks again.
     pub fn cancel(&self) {
-        self.flush_requested.store(false, Ordering::SeqCst);
+        self.state().outstanding = None;
+    }
+
+    /// Confirms on behalf of a renderer that never answered `request`. `false` when it answered,
+    /// by confirming or by cancelling.
+    pub fn confirm_unanswered(&self, request: u64) -> bool {
+        let mut state = self.state();
+        if state.confirmed || state.outstanding != Some(request) {
+            return false;
+        }
+        state.confirmed = true;
+        true
     }
 }
 
-/// Answers [`RunEvent::ExitRequested`] for quits that come from the system or the runtime.
+/// Answers [`RunEvent::ExitRequested`] for quits that come from the runtime, such as an exit
+/// requested in code.
 fn on_exit_requested<R: Runtime>(
     app: &AppHandle<R>,
     code: Option<i32>,
@@ -64,9 +109,9 @@ fn on_exit_requested<R: Runtime>(
         .on_quit_requested(code.is_some(), app.webview_windows().len());
     match decision {
         ExitDecision::Proceed => {}
-        ExitDecision::FlushFirst => {
+        ExitDecision::FlushFirst(request) => {
             prevent_exit();
-            request_flush(app);
+            request_flush(app, request);
         }
         ExitDecision::AwaitFlush => prevent_exit(),
     }
@@ -80,16 +125,21 @@ pub fn request_quit<R: Runtime>(app: &AppHandle<R>) {
             gate.confirm();
             app.exit(0);
         }
-        ExitDecision::FlushFirst => request_flush(app),
+        ExitDecision::FlushFirst(request) => request_flush(app, request),
         ExitDecision::AwaitFlush => {}
     }
 }
 
-/// Quits only after the renderer flushed. Only the first call exits.
+/// Quits after the renderer flushed. Only the first call exits.
 pub fn confirm_and_exit<R: Runtime>(app: &AppHandle<R>) {
     if app.state::<ExitGate>().confirm() {
         app.exit(0);
     }
+}
+
+/// Keeps the app open after the renderer could not flush its pending saves.
+pub fn cancel<R: Runtime>(app: &AppHandle<R>) {
+    app.state::<ExitGate>().cancel();
 }
 
 /// Handles the application's run events: a quit request waits for pending saves while a window
@@ -108,9 +158,23 @@ pub fn on_run_event<R: Runtime>(app: &AppHandle<R>, event: RunEvent) {
     }
 }
 
-fn request_flush<R: Runtime>(app: &AppHandle<R>) {
+fn request_flush<R: Runtime>(app: &AppHandle<R>, request: u64) {
     if app.emit(FLUSH_REQUEST_EVENT, ()).is_err() {
-        app.state::<ExitGate>().cancel();
+        confirm_and_exit(app);
+        return;
+    }
+    let handle = app.clone();
+    let fallback = thread::Builder::new()
+        .name("exit-fallback".into())
+        .spawn(move || {
+            thread::sleep(FLUSH_TIMEOUT);
+            if handle.state::<ExitGate>().confirm_unanswered(request) {
+                handle.exit(0);
+            }
+        });
+    if fallback.is_err() {
+        // Never leave a quit waiting on a renderer that may not answer.
+        confirm_and_exit(app);
     }
 }
 
@@ -121,11 +185,16 @@ mod tests {
     #[test]
     fn a_quit_with_an_open_window_waits_for_one_flush() {
         let gate = ExitGate::default();
-        assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::FlushFirst);
+        assert_eq!(
+            gate.on_quit_requested(false, 1),
+            ExitDecision::FlushFirst(1)
+        );
         // Asking again while the renderer flushes does not send a second request.
         assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::AwaitFlush);
         assert!(gate.confirm());
         assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::Proceed);
+        // The fallback of an answered request does nothing.
+        assert!(!gate.confirm_unanswered(1));
     }
 
     #[test]
@@ -134,7 +203,10 @@ mod tests {
         assert_eq!(gate.on_quit_requested(true, 1), ExitDecision::Proceed);
         assert_eq!(gate.on_quit_requested(false, 0), ExitDecision::Proceed);
         // Neither of them started a flush request.
-        assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::FlushFirst);
+        assert_eq!(
+            gate.on_quit_requested(false, 1),
+            ExitDecision::FlushFirst(1)
+        );
     }
 
     #[test]
@@ -145,10 +217,23 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_flush_can_cancel_and_retry_a_quit() {
+    fn a_failed_flush_keeps_the_app_open_until_a_later_quit_succeeds() {
         let gate = ExitGate::default();
-        assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::FlushFirst);
+        assert_eq!(
+            gate.on_quit_requested(false, 1),
+            ExitDecision::FlushFirst(1)
+        );
         gate.cancel();
-        assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::FlushFirst);
+        // The fallback timer of the cancelled request no longer quits.
+        assert!(!gate.confirm_unanswered(1));
+        // The next quit asks the renderer again, with its own fallback.
+        assert_eq!(
+            gate.on_quit_requested(false, 1),
+            ExitDecision::FlushFirst(2)
+        );
+        assert!(!gate.confirm_unanswered(1));
+        assert!(gate.confirm_unanswered(2));
+        assert!(!gate.confirm());
+        assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::Proceed);
     }
 }

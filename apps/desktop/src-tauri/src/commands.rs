@@ -1,13 +1,20 @@
 //! Tauri commands: thin adapters from the renderer's `invoke` calls to [`Core`].
 //!
 //! Names and camelCase arguments follow the command table of the integration contract and
-//! `apps/desktop/src/api/tauri.ts`. Every command except `confirm_exit` runs on the blocking
-//! thread pool, never on the main thread: journal work can wait for a backup that holds the
-//! journal, scrypt takes about a second, and native dialogs block until they are answered.
-//! A rejected command is recorded in diagnostics by name and error code only.
+//! `apps/desktop/src/api/tauri.ts`. Every command except `confirm_exit` and `cancel_exit` runs on
+//! the blocking thread pool, never on the main thread: journal work can wait for a backup that
+//! holds the journal, scrypt takes about a second, and native dialogs and Keychain prompts block
+//! until they are answered. A rejected command is recorded in diagnostics by name and error code
+//! only.
+//!
+//! Passphrases arrive as `String` arguments and are moved into `Zeroizing` at once, which wipes
+//! the shell's own copy when it is dropped. Known limit: the passphrase also passes through the
+//! webview, the IPC request body and the JSON value Tauri parses it from; those copies are freed
+//! without being wiped. Reading them requires access to the app's memory, which also exposes the
+//! unencrypted live journal (D-004).
 
 use crate::{
-    diagnostics,
+    appearance, diagnostics,
     error::CommandError,
     exit,
     state::{
@@ -57,21 +64,25 @@ where
 /// A native file dialog attached to the journal window when it is open.
 fn file_dialog(app: &AppHandle, title: &str) -> FileDialogBuilder<tauri::Wry> {
     let dialog = app.dialog().file().set_title(title);
-    match app.get_webview_window("main") {
+    match app.get_webview_window(appearance::MAIN_WINDOW) {
         Some(window) => dialog.set_parent(&window),
         None => dialog,
     }
 }
 
+/// The startup outcome, once the launch has decided it.
 #[tauri::command]
 pub async fn startup_status(app: AppHandle) -> Result<StartupStatus, CommandError> {
-    with_core(app, "startup_status", |core| Ok(core.startup_status())).await
+    blocking(app, "startup_status", |_, state| Ok(state.startup_status())).await
 }
 
+/// Opens the journal again after a failed or unsupported start.
 #[tauri::command]
 pub async fn retry_startup(app: AppHandle) -> Result<StartupStatus, CommandError> {
-    with_core(app, "retry_startup", |core| {
-        Ok(core.retry_startup(Utc::now()))
+    blocking(app, "retry_startup", |app, state| {
+        let status = state.retry_startup(Utc::now());
+        appearance::apply_stored(app, state);
+        Ok(status)
     })
     .await
 }
@@ -86,13 +97,16 @@ pub async fn get_preferences(app: AppHandle) -> Result<Preferences, CommandError
     with_core(app, "get_preferences", |core| core.preferences()).await
 }
 
+/// Stores the preferences, then gives the native window the chosen theme.
 #[tauri::command]
 pub async fn set_preferences(
     app: AppHandle,
     preferences: Value,
 ) -> Result<Preferences, CommandError> {
-    with_core(app, "set_preferences", move |core| {
-        core.set_preferences(preferences)
+    blocking(app, "set_preferences", move |app, state| {
+        let stored = state.lock().set_preferences(preferences)?;
+        appearance::apply(app, &stored.theme);
+        Ok(stored)
     })
     .await
 }
@@ -162,7 +176,8 @@ pub async fn backup_status(app: AppHandle) -> Result<BackupStatus, CommandError>
     .await
 }
 
-/// Opens the native folder dialog; cancelling leaves the status unchanged.
+/// Opens the native folder dialog; cancelling leaves the status unchanged. The chosen folder is
+/// refused when it is the data folder or inside it, or when a test file cannot be published.
 #[tauri::command]
 pub async fn choose_backup_folder(app: AppHandle) -> Result<BackupStatus, CommandError> {
     blocking(app, "choose_backup_folder", |app, state| {
@@ -171,11 +186,10 @@ pub async fn choose_backup_folder(app: AppHandle) -> Result<BackupStatus, Comman
         let folder = picked
             .map(|path| path.into_path())
             .transpose()
-            .map_err(|_| Error::Backup)?;
-        let mut core = state.lock();
+            .map_err(|_| Error::BackupFolder)?;
         match folder {
-            Some(folder) => core.set_backup_folder(folder, Utc::now()),
-            None => Ok(core.backup_status(Utc::now())),
+            Some(folder) => state.choose_backup_folder(folder, Utc::now()),
+            None => Ok(state.lock().backup_status(Utc::now())),
         }
     })
     .await
@@ -188,16 +202,16 @@ pub async fn set_backup_passphrase(
     remember: bool,
 ) -> Result<BackupStatus, CommandError> {
     let passphrase = Zeroizing::new(passphrase);
-    with_core(app, "set_backup_passphrase", move |core| {
-        core.set_backup_passphrase(passphrase, remember, Utc::now())
+    blocking(app, "set_backup_passphrase", move |_, state| {
+        state.set_backup_passphrase(passphrase, remember, Utc::now())
     })
     .await
 }
 
 #[tauri::command]
 pub async fn forget_backup_passphrase(app: AppHandle) -> Result<BackupStatus, CommandError> {
-    with_core(app, "forget_backup_passphrase", |core| {
-        core.forget_backup_passphrase(Utc::now())
+    blocking(app, "forget_backup_passphrase", |_, state| {
+        state.forget_backup_passphrase(Utc::now())
     })
     .await
 }
@@ -238,6 +252,8 @@ pub async fn choose_restore_file(app: AppHandle) -> Result<Option<PickedBackup>,
     .await
 }
 
+/// Replaces the journal with a verified backup. `without_safety_backup` is the person's
+/// confirmation that a journal which cannot be backed up first may be replaced anyway.
 #[tauri::command]
 pub async fn restore_backup(
     app: AppHandle,
@@ -246,12 +262,19 @@ pub async fn restore_backup(
     without_safety_backup: bool,
 ) -> Result<RestoreOutcome, CommandError> {
     let passphrase = Zeroizing::new(passphrase);
-    with_core(app, "restore_backup", move |core| {
-        core.restore_backup(source, passphrase, without_safety_backup, Utc::now())
+    blocking(app, "restore_backup", move |app, state| {
+        let outcome =
+            state
+                .lock()
+                .restore_backup(source, &passphrase, without_safety_backup, Utc::now())?;
+        // The restored journal brings its own preferences.
+        appearance::apply_stored(app, state);
+        Ok(outcome)
     })
     .await
 }
 
+/// Upgrades an older journal; a `null` passphrase uses the one already in this session.
 #[tauri::command]
 pub async fn migrate_journal(
     app: AppHandle,
@@ -259,11 +282,10 @@ pub async fn migrate_journal(
     remember: bool,
 ) -> Result<StartupStatus, CommandError> {
     let passphrase = passphrase.map(Zeroizing::new);
-    with_core(app, "migrate_journal", move |core| {
-        let passphrase = passphrase
-            .or_else(|| core.session_passphrase())
-            .ok_or_else(CommandError::needs_passphrase)?;
-        core.migrate_journal(passphrase, remember, Utc::now())
+    blocking(app, "migrate_journal", move |app, state| {
+        let status = state.migrate_journal(passphrase, remember, Utc::now())?;
+        appearance::apply_stored(app, state);
+        Ok(status)
     })
     .await
 }
@@ -273,8 +295,11 @@ pub async fn erase_app_data(
     app: AppHandle,
     confirmation: String,
 ) -> Result<StartupStatus, CommandError> {
-    with_core(app, "erase_app_data", move |core| {
-        core.erase_app_data(&confirmation, Utc::now())
+    blocking(app, "erase_app_data", move |app, state| {
+        let erased = state.erase_app_data(&confirmation, Utc::now());
+        // A fresh journal has the default, system appearance.
+        appearance::apply_stored(app, state);
+        erased
     })
     .await
 }
@@ -286,9 +311,11 @@ pub fn confirm_exit(app: AppHandle) -> Result<(), CommandError> {
     Ok(())
 }
 
+/// Called by the renderer when a save still failed after `app://flush-request`: the app stays
+/// open with the unsaved writing, and a later quit asks again.
 #[tauri::command]
 pub fn cancel_exit(app: AppHandle) -> Result<(), CommandError> {
-    app.state::<exit::ExitGate>().cancel();
+    exit::cancel(&app);
     Ok(())
 }
 
@@ -397,6 +424,6 @@ mod tests {
     #[test]
     fn parameters_map_to_camel_case_keys() {
         assert_eq!(camel_case("passphrase"), "passphrase");
-        assert_eq!(camel_case("backup_folder_name"), "backupFolderName");
+        assert_eq!(camel_case("without_safety_backup"), "withoutSafetyBackup");
     }
 }

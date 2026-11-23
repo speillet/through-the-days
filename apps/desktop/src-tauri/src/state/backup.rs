@@ -3,13 +3,19 @@
 //! The chosen folder, the Keychain choice and the last success live in the device-local backup
 //! plan. The passphrase lives in memory for the session and, when remembered, in Keychain.
 
-use super::Core;
-use crate::{diagnostics, error::CommandError, keychain::KeychainError};
-use chrono::{DateTime, Utc};
-use journal_core::{BackupRecord, DailyBackup, list_backups, validate_passphrase};
+use super::{AppState, Core};
+use crate::{diagnostics, error::CommandError, keychain::KeychainError, paths};
+use chrono::{DateTime, TimeDelta, Utc};
+use journal_core::{
+    BackupRecord, DailyBackup, list_backups, probe_backup_folder, validate_passphrase,
+};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
+
+/// How long automatic daily backups pause after one fails, unless the folder or the passphrase
+/// changes. "Back up now" always tries.
+const AUTOMATIC_RETRY_DELAY: TimeDelta = TimeDelta::minutes(60);
 
 /// What the backup routine needs or reports, as `BackupState` in `api/types.ts`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -23,16 +29,20 @@ pub enum BackupState {
     Failed,
 }
 
-/// Derives the backup state, checking in this order: a folder is chosen, today's backup
-/// succeeded, the passphrase is available, the last attempt failed.
+/// Derives the backup state, checking in this order: the stored backup settings could be read,
+/// a folder is chosen, today's backup succeeded, the passphrase is available, the last attempt
+/// failed.
 pub fn backup_state(
+    settings_unreadable: bool,
     has_folder: bool,
     last_success_date: Option<&str>,
     today: Option<&str>,
     passphrase_available: bool,
     has_error: bool,
 ) -> BackupState {
-    if !has_folder {
+    if settings_unreadable {
+        BackupState::SettingsUnreadable
+    } else if !has_folder {
         BackupState::NeedsFolder
     } else if last_success_date.is_some() && last_success_date == today {
         BackupState::UpToDate
@@ -62,22 +72,79 @@ pub struct BackupStatus {
     pub backup_count: usize,
 }
 
+impl AppState {
+    /// Uses `folder` for future backups once it is known to be outside the application data
+    /// folder and able to receive backups.
+    ///
+    /// The check writes, publishes and removes a small file, as a backup would, without holding
+    /// the journal. A refused folder leaves the backup settings unchanged.
+    pub fn choose_backup_folder(
+        &self,
+        folder: PathBuf,
+        now: DateTime<Utc>,
+    ) -> Result<BackupStatus, CommandError> {
+        let data_dir = self.lock().paths.data_dir.clone();
+        if paths::is_within(&folder, &data_dir) {
+            return Err(CommandError::data_folder_chosen());
+        }
+        if let Err(error) = probe_backup_folder(&folder) {
+            diagnostics::record("check backup folder", error.code());
+            return Err(error.into());
+        }
+        self.lock().set_backup_folder(folder, now)
+    }
+
+    /// Keeps a new passphrase for this session and remembers it in Keychain only when asked.
+    /// Existing backups keep the passphrase they were created with.
+    ///
+    /// Keychain is used without holding the journal. When it fails, the passphrase still works
+    /// for this session, is recorded as not remembered, and the Keychain error is returned.
+    pub fn set_backup_passphrase(
+        &self,
+        passphrase: Zeroizing<String>,
+        remember: bool,
+        now: DateTime<Utc>,
+    ) -> Result<BackupStatus, CommandError> {
+        validate_passphrase(&passphrase)?;
+        let secrets = self.secrets();
+        let keychain = if remember {
+            secrets.store(&passphrase)
+        } else {
+            secrets.delete()
+        };
+        let mut core = self.lock();
+        core.adopt_passphrase(passphrase, remember, keychain)?;
+        keychain.map_err(|_| CommandError::keychain())?;
+        Ok(core.backup_status(now))
+    }
+
+    /// Forgets the session passphrase and removes the Keychain item.
+    pub fn forget_backup_passphrase(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<BackupStatus, CommandError> {
+        let secrets = self.secrets();
+        let deleted = secrets.delete();
+        let mut core = self.lock();
+        core.forget_passphrase(deleted)?;
+        deleted.map_err(|_| CommandError::keychain())?;
+        Ok(core.backup_status(now))
+    }
+}
+
 impl Core {
     pub fn backup_status(&self, now: DateTime<Utc>) -> BackupStatus {
         let folder = self.plan.folder.as_deref();
         let today = self.journal_today(now);
         BackupStatus {
-            state: if self.plan_unreadable {
-                BackupState::SettingsUnreadable
-            } else {
-                backup_state(
-                    folder.is_some(),
-                    self.plan.last_success_date.as_deref(),
-                    today.as_deref(),
-                    self.passphrase.is_some(),
-                    self.last_error.is_some(),
-                )
-            },
+            state: backup_state(
+                self.plan_unreadable,
+                folder.is_some(),
+                self.plan.last_success_date.as_deref(),
+                today.as_deref(),
+                self.passphrase.is_some(),
+                self.last_error.is_some(),
+            ),
             folder_name: folder.map(display_name),
             folder_path: folder.map(|folder| folder.display().to_string()),
             passphrase_available: self.passphrase.is_some(),
@@ -97,52 +164,28 @@ impl Core {
     }
 
     /// Uses `folder` for future backups. Choosing another folder forgets the results that
-    /// described the previous one, so the new folder receives its own backup today.
-    pub fn set_backup_folder(
+    /// described the previous one, so the new folder receives its own backup today. Choosing a
+    /// folder also replaces stored backup settings that could not be read.
+    pub(super) fn set_backup_folder(
         &mut self,
         folder: PathBuf,
         now: DateTime<Utc>,
     ) -> Result<BackupStatus, CommandError> {
-        journal_core::probe_backup_folder(&folder)?;
-        if self.plan.folder.as_ref() != Some(&folder) {
+        if self.plan_unreadable || self.plan.folder.as_ref() != Some(&folder) {
+            let previous = self.plan.clone();
             self.plan.folder = Some(folder);
             self.plan.last_success_date = None;
             self.plan.last_success_at = None;
             self.plan.retention_warning = false;
+            let unreadable = std::mem::replace(&mut self.plan_unreadable, false);
+            if let Err(error) = self.persist_plan() {
+                self.plan = previous;
+                self.plan_unreadable = unreadable;
+                return Err(error);
+            }
             self.last_error = None;
-            self.persist_plan()?;
-            self.plan_unreadable = false;
             self.automatic_failure_at = None;
         }
-        Ok(self.backup_status(now))
-    }
-
-    /// Keeps a new passphrase for this session and remembers it in Keychain only when asked.
-    /// Existing backups keep the passphrase they were created with.
-    pub fn set_backup_passphrase(
-        &mut self,
-        passphrase: Zeroizing<String>,
-        remember: bool,
-        now: DateTime<Utc>,
-    ) -> Result<BackupStatus, CommandError> {
-        validate_passphrase(&passphrase)?;
-        self.adopt_passphrase(passphrase, remember)?
-            .map_err(|_| CommandError::keychain())?;
-        Ok(self.backup_status(now))
-    }
-
-    pub fn forget_backup_passphrase(
-        &mut self,
-        now: DateTime<Utc>,
-    ) -> Result<BackupStatus, CommandError> {
-        self.passphrase = None;
-        let deleted = self.secrets.delete();
-        if deleted.is_err() {
-            diagnostics::record("forget passphrase", "keychain");
-        }
-        self.plan.remember = false;
-        self.persist_plan()?;
-        deleted.map_err(|_| CommandError::keychain())?;
         Ok(self.backup_status(now))
     }
 
@@ -174,16 +217,17 @@ impl Core {
 
     /// Runs the daily backup when none succeeded today (D-007). A missing folder or passphrase
     /// and a failed attempt are reported in the status, not as errors.
+    ///
+    /// After a failed attempt, the next automatic attempts wait [`AUTOMATIC_RETRY_DELAY`]
+    /// unless the folder or the passphrase changes, so a folder that keeps failing does not cost
+    /// a snapshot and two key derivations each time the app is focused. The status stays
+    /// `failed` with the last error meanwhile.
     pub fn run_daily_backup(&mut self, now: DateTime<Utc>) -> Result<BackupStatus, CommandError> {
-        if self.plan_unreadable
-            || self
-                .automatic_failure_at
-                .is_some_and(|last| now.signed_duration_since(last).num_seconds() < 3600)
-        {
-            return Ok(self.backup_status(now));
-        }
         let journal = self.journal()?;
         let preferences = journal.preferences()?;
+        if self.automatic_retry_paused(now) {
+            return Ok(self.backup_status(now));
+        }
         let mut plan = self.plan.clone();
         let passphrase = self.passphrase.as_deref().map(String::as_str);
         match journal.backup_if_due(&mut plan, passphrase, now, &preferences) {
@@ -212,21 +256,18 @@ impl Core {
         }
     }
 
-    /// Keeps `passphrase` for the session and stores or deletes the Keychain item.
+    /// Keeps `passphrase` for the session after Keychain stored or deleted the item with the
+    /// outcome `keychain`.
     ///
-    /// The outer error is a backup plan that could not be stored. The inner result is the
-    /// Keychain outcome: after a failure the passphrase still works for this session and is
-    /// recorded as not remembered, so the next launch never reads an outdated item.
+    /// After a Keychain failure the passphrase still works for this session and is recorded as
+    /// not remembered, so the next launch never reads an outdated item. The error is a backup
+    /// plan that could not be stored.
     pub(super) fn adopt_passphrase(
         &mut self,
         passphrase: Zeroizing<String>,
         remember: bool,
-    ) -> Result<Result<(), KeychainError>, CommandError> {
-        let keychain = if remember {
-            self.secrets.store(&passphrase)
-        } else {
-            self.secrets.delete()
-        };
+        keychain: Result<(), KeychainError>,
+    ) -> Result<(), CommandError> {
         if keychain.is_err() {
             diagnostics::record(
                 if remember {
@@ -239,10 +280,56 @@ impl Core {
         }
         self.passphrase = Some(passphrase);
         self.last_error = None;
-        self.automatic_failure_at = None;
         self.plan.remember = remember && keychain.is_ok();
-        self.persist_plan()?;
-        Ok(keychain)
+        self.secrets_changed();
+        self.persist_plan()
+    }
+
+    /// Records that Keychain now remembers the session passphrase, when `stored` succeeded.
+    pub(super) fn remember_session_passphrase(
+        &mut self,
+        stored: Result<(), KeychainError>,
+    ) -> Result<(), CommandError> {
+        if stored.is_err() {
+            diagnostics::record("remember passphrase", "keychain");
+            return Ok(());
+        }
+        self.plan.remember = true;
+        self.secrets_changed();
+        self.persist_plan()
+    }
+
+    /// Forgets the session passphrase after Keychain deleted the item with the outcome `deleted`.
+    fn forget_passphrase(
+        &mut self,
+        deleted: Result<(), KeychainError>,
+    ) -> Result<(), CommandError> {
+        self.passphrase = None;
+        if deleted.is_err() {
+            diagnostics::record("forget passphrase", "keychain");
+        }
+        self.plan.remember = false;
+        self.secrets_changed();
+        self.persist_plan()
+    }
+
+    /// The passphrase or the Keychain choice changed: an earlier Keychain read is outdated, and
+    /// automatic backups may try again at once.
+    fn secrets_changed(&mut self) {
+        self.secret_generation = self.secret_generation.wrapping_add(1);
+        self.automatic_failure_at = None;
+    }
+
+    /// Whether automatic attempts still wait after the last failed daily backup. A clock set
+    /// back before that failure does not extend the wait.
+    fn automatic_retry_paused(&self, now: DateTime<Utc>) -> bool {
+        self.last_error.is_some()
+            && self.automatic_failure_at.is_some_and(|failed| {
+                failed <= now
+                    && failed
+                        .checked_add_signed(AUTOMATIC_RETRY_DELAY)
+                        .is_some_and(|until| now < until)
+            })
     }
 
     fn record_success(&mut self, date: String, created_at: i64, retention_warning: bool) {
@@ -250,6 +337,7 @@ impl Core {
         self.plan.last_success_at = Some(created_at);
         self.plan.retention_warning = retention_warning;
         self.last_error = None;
+        self.automatic_failure_at = None;
         // The backup is complete; if the plan cannot be stored, the next launch backs up again.
         let _ = self.persist_plan();
     }
@@ -280,9 +368,21 @@ mod tests {
     const YESTERDAY: Option<&str> = Some("2026-11-21");
 
     #[test]
-    fn a_missing_folder_comes_first() {
+    fn unreadable_settings_come_first() {
         assert_eq!(
-            backup_state(false, TODAY, TODAY, true, true),
+            backup_state(true, true, TODAY, TODAY, true, true),
+            BackupState::SettingsUnreadable
+        );
+        assert_eq!(
+            backup_state(true, false, None, TODAY, false, false),
+            BackupState::SettingsUnreadable
+        );
+    }
+
+    #[test]
+    fn a_missing_folder_comes_next() {
+        assert_eq!(
+            backup_state(false, false, TODAY, TODAY, true, true),
             BackupState::NeedsFolder
         );
     }
@@ -290,7 +390,7 @@ mod tests {
     #[test]
     fn todays_success_outranks_a_missing_passphrase_or_an_old_error() {
         assert_eq!(
-            backup_state(true, TODAY, TODAY, false, true),
+            backup_state(false, true, TODAY, TODAY, false, true),
             BackupState::UpToDate
         );
     }
@@ -298,15 +398,15 @@ mod tests {
     #[test]
     fn a_due_backup_asks_for_the_passphrase_before_reporting_a_failure() {
         assert_eq!(
-            backup_state(true, YESTERDAY, TODAY, false, true),
+            backup_state(false, true, YESTERDAY, TODAY, false, true),
             BackupState::NeedsPassphrase
         );
         assert_eq!(
-            backup_state(true, YESTERDAY, TODAY, true, true),
+            backup_state(false, true, YESTERDAY, TODAY, true, true),
             BackupState::Failed
         );
         assert_eq!(
-            backup_state(true, None, TODAY, true, false),
+            backup_state(false, true, None, TODAY, true, false),
             BackupState::Due
         );
     }
@@ -314,11 +414,11 @@ mod tests {
     #[test]
     fn an_unknown_today_is_never_up_to_date() {
         assert_eq!(
-            backup_state(true, None, None, true, false),
+            backup_state(false, true, None, None, true, false),
             BackupState::Due
         );
         assert_eq!(
-            backup_state(true, TODAY, None, true, false),
+            backup_state(false, true, TODAY, None, true, false),
             BackupState::Due
         );
     }
@@ -326,6 +426,7 @@ mod tests {
     #[test]
     fn states_serialise_with_the_renderer_names() {
         let names: Vec<_> = [
+            BackupState::SettingsUnreadable,
             BackupState::NeedsFolder,
             BackupState::NeedsPassphrase,
             BackupState::Due,
@@ -336,6 +437,7 @@ mod tests {
         .map(|state| serde_json::to_value(state).ok())
         .collect();
         let expected: Vec<_> = [
+            "settingsUnreadable",
             "needsFolder",
             "needsPassphrase",
             "due",
@@ -346,5 +448,10 @@ mod tests {
         .map(|name| Some(serde_json::Value::from(*name)))
         .collect();
         assert_eq!(names, expected);
+        // Every state is one the renderer's BackupState union knows.
+        let types = include_str!("../../../src/api/types.ts");
+        for name in expected.iter().flatten().filter_map(|name| name.as_str()) {
+            assert!(types.contains(&format!("| '{name}'")), "{name}");
+        }
     }
 }

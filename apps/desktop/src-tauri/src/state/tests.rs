@@ -11,7 +11,7 @@
 )]
 
 use super::{
-    AppState, Core, ERASE_CONFIRMATION, OPEN_FAILED, RestoreOutcome, RestoreSource, StartupState,
+    AppState, ERASE_CONFIRMATION, OPEN_FAILED, RestoreOutcome, RestoreSource, StartupState,
     backup::BackupState,
 };
 use crate::{error::CommandError, keychain::fake::FakeKeychain, paths::DataPaths};
@@ -20,12 +20,23 @@ use journal_core::{BackupPlan, Entry, Error, Journal, Slot, document_text, list_
 use serde_json::{Value, json};
 use std::{
     fs,
+    os::unix::fs::{FileExt, PermissionsExt},
     path::{Path, PathBuf},
+    sync::{Arc, mpsc},
+    thread,
+    time::Duration as Wait,
 };
 use tempfile::TempDir;
 use zeroize::Zeroizing;
 
+/// Frozen synthetic content of earlier schema versions, shared with journal-core's tests.
+#[allow(dead_code, reason = "the shared fixtures serve several test crates")]
+mod fixtures {
+    include!("../../../../../crates/journal-core/tests/common/fixtures.rs");
+}
+
 const PASSPHRASE: &str = "synthetic portable backup passphrase";
+const WRONG_PASSPHRASE: &str = "not the synthetic passphrase";
 
 /// A data folder, a backup folder and a Keychain, all private to one test.
 struct Fixture {
@@ -64,14 +75,19 @@ impl Fixture {
         self.backups.path().to_path_buf()
     }
 
-    fn launch(&self) -> Core {
+    /// The managed state before launch, as `setup` creates it.
+    fn state(&self) -> AppState {
+        AppState::new(self.paths(), Box::new(self.keychain.clone()))
+    }
+
+    fn launch(&self) -> AppState {
         self.launch_at(noon())
     }
 
-    fn launch_at(&self, now: DateTime<Utc>) -> Core {
-        let mut core = Core::new(self.paths(), Box::new(self.keychain.clone()));
-        core.launch(now);
-        core
+    fn launch_at(&self, now: DateTime<Utc>) -> AppState {
+        let state = self.state();
+        state.launch(now);
+        state
     }
 
     fn stored_plan(&self) -> BackupPlan {
@@ -125,29 +141,18 @@ fn execute(path: &Path, sql: &str) {
         .unwrap();
 }
 
-/// Writes a fictional schema-version-1 journal with one Morning entry and returns its id.
-/// Version 1 had no trash column and no perceived progress.
+/// Writes the frozen fictional schema-version-1 journal, with one Morning entry on 22 November
+/// 2026, and returns that entry's id. Version 1 had no trash column and no perceived progress.
 fn previous_journal(path: &Path) -> String {
-    execute(
-        path,
-        "CREATE TABLE journal_entries(id TEXT PRIMARY KEY,entry_date TEXT NOT NULL,slot TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL);
-         CREATE UNIQUE INDEX active_slot ON journal_entries(entry_date,slot);
-         CREATE TABLE preferences(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-         PRAGMA user_version=1;",
-    );
-    let mut entry = Entry::draft("2026-11-20", Slot::Morning);
-    entry.revision = 1;
-    entry.document = document("Synthetic entry from the previous version.");
-    let mut payload = serde_json::to_value(&entry).unwrap();
-    payload.as_object_mut().unwrap().remove("progress");
-    rusqlite::Connection::open(path)
-        .unwrap()
+    let connection = rusqlite::Connection::open(path).unwrap();
+    connection.execute_batch(fixtures::V1_SCHEMA).unwrap();
+    connection
         .execute(
-            "INSERT INTO journal_entries VALUES(?1,?2,'morning',1,?3)",
-            rusqlite::params![entry.id, entry.date, payload.to_string()],
+            fixtures::V1_INSERT_ENTRY,
+            [fixtures::V1_ENTRY_ID, fixtures::V1_ENTRY_PAYLOAD],
         )
         .unwrap();
-    entry.id
+    fixtures::V1_ENTRY_ID.to_owned()
 }
 
 fn newer_journal(path: &Path) {
@@ -166,6 +171,61 @@ fn foreign_database(path: &Path) {
     );
 }
 
+/// Overwrites `length` bytes at `offset` with a synthetic damage pattern, as a failing disk can.
+fn damage(path: &Path, offset: u64, length: usize) {
+    let file = fs::OpenOptions::new().write(true).open(path).unwrap();
+    file.write_all_at(&vec![0xA5; length], offset).unwrap();
+    file.sync_all().unwrap();
+}
+
+/// Writes a closed journal with one synthetic entry, then damages its file header.
+fn damaged_header(path: &Path) {
+    let journal = Journal::open(path).unwrap();
+    let mut entry = Entry::draft("2026-11-20", Slot::Morning);
+    entry.document = document("Synthetic entry on a damaged disk.");
+    journal.save(entry).unwrap();
+    drop(journal);
+    damage(path, 0, 16);
+}
+
+/// Writes plain text where the journal database belongs.
+fn not_a_database(path: &Path) {
+    fs::write(path, "Synthetic plain text where the journal should be.").unwrap();
+}
+
+/// Byte offset and size of the root page of `table` in the closed database at `path`.
+fn root_page(path: &Path, table: &str) -> (u64, usize) {
+    let connection = rusqlite::Connection::open(path).unwrap();
+    let page_size: i64 = connection
+        .pragma_query_value(None, "page_size", |row| row.get(0))
+        .unwrap();
+    let root: i64 = connection
+        .query_row(
+            "SELECT rootpage FROM sqlite_master WHERE name=?1",
+            [table],
+            |row| row.get(0),
+        )
+        .unwrap();
+    (
+        u64::try_from((root - 1) * page_size).unwrap(),
+        usize::try_from(page_size).unwrap(),
+    )
+}
+
+/// Saves 40 synthetic entries on 20 dates, enough to fill several database pages.
+fn fill(app: &AppState) {
+    for index in 0..40 {
+        let slot = if index % 2 == 0 {
+            Slot::Morning
+        } else {
+            Slot::Evening
+        };
+        let date = format!("2026-10-{:02}", 1 + index / 2);
+        let text = format!("Synthetic entry {index}: a fictional paragraph for several pages.");
+        app.lock().save_entry(draft(&date, slot, &text)).unwrap();
+    }
+}
+
 fn names_in(folder: &Path) -> Vec<String> {
     let mut names: Vec<_> = fs::read_dir(folder)
         .unwrap()
@@ -175,12 +235,12 @@ fn names_in(folder: &Path) -> Vec<String> {
     names
 }
 
-fn ready_with_backups(fixture: &Fixture) -> Core {
-    let mut core = fixture.launch();
-    core.set_backup_folder(fixture.folder(), noon()).unwrap();
-    core.set_backup_passphrase(secret(PASSPHRASE), false, noon())
+fn ready_with_backups(fixture: &Fixture) -> AppState {
+    let app = fixture.launch();
+    app.choose_backup_folder(fixture.folder(), noon()).unwrap();
+    app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
         .unwrap();
-    core
+    app
 }
 
 /// Registers `count` newer stand-in files, so the folder's retention window is full (D-009).
@@ -201,13 +261,14 @@ fn register_stand_ins(folder: &Path, after: i64, count: i64) {
 #[test]
 fn first_launch_opens_an_empty_journal_and_asks_for_a_backup_folder() {
     let fixture = Fixture::new();
-    let core = fixture.launch();
+    let app = fixture.launch();
     let location = fixture.paths().data_dir.display().to_string();
     assert_eq!(
-        serde_json::to_value(core.startup_status()).unwrap(),
+        serde_json::to_value(app.startup_status()).unwrap(),
         json!({"state": "ready", "fromVersion": null, "message": null, "dataLocation": location})
     );
     assert!(fixture.paths().journal.is_file());
+    let core = app.lock();
     assert_eq!(core.today(noon()).unwrap(), "2026-11-22");
     assert!(core.list_entries().unwrap().is_empty());
     assert!(core.list_backups().unwrap().is_empty());
@@ -224,24 +285,32 @@ fn first_launch_opens_an_empty_journal_and_asks_for_a_backup_folder() {
 #[test]
 fn acknowledged_entries_and_preferences_survive_a_new_session() {
     let fixture = Fixture::new();
-    let core = fixture.launch();
+    let app = fixture.launch();
     // Multilingual fixture: user-authored text is stored exactly as typed.
     let text = "Synthetic morning note. Multilingual fixture: café, ελληνικά, 日本語.";
-    let saved = core
+    let saved = app
+        .lock()
         .save_entry(draft("2026-11-22", Slot::Morning, text))
         .unwrap();
     assert_eq!(saved.revision, 1);
-    let mut preferences = serde_json::to_value(core.preferences().unwrap()).unwrap();
+    let mut preferences = serde_json::to_value(app.lock().preferences().unwrap()).unwrap();
     preferences["timeZone"] = json!("America/New_York");
     preferences["theme"] = json!("dark");
-    assert_eq!(core.set_preferences(preferences).unwrap().theme, "dark");
-    drop(core);
+    preferences["textScale"] = json!(130);
+    let stored = app.lock().set_preferences(preferences).unwrap();
+    assert_eq!((stored.theme.as_str(), stored.text_scale), ("dark", 130));
+    drop(app);
 
-    let core = fixture.launch();
+    let app = fixture.launch();
+    let core = app.lock();
     let reopened = core.get_entry(&saved.id).unwrap();
     assert_eq!(text_of(&reopened), text);
     assert_eq!(core.entries_on("2026-11-22").unwrap(), vec![saved]);
-    assert_eq!(core.preferences().unwrap().theme, "dark");
+    let preferences = core.preferences().unwrap();
+    assert_eq!(
+        (preferences.theme.as_str(), preferences.text_scale),
+        ("dark", 130)
+    );
     // 03:00 UTC on 23 November is still 22 November in the journal's time zone.
     let late = Utc.with_ymd_and_hms(2026, 11, 23, 3, 0, 0).unwrap();
     assert_eq!(core.today(late).unwrap(), "2026-11-22");
@@ -250,7 +319,8 @@ fn acknowledged_entries_and_preferences_survive_a_new_session() {
 #[test]
 fn malformed_input_is_refused_with_english_errors_and_changes_nothing() {
     let fixture = Fixture::new();
-    let core = fixture.launch();
+    let app = fixture.launch();
+    let core = app.lock();
     let saved = core
         .save_entry(draft(
             "2026-11-22",
@@ -275,9 +345,19 @@ fn malformed_input_is_refused_with_english_errors_and_changes_nothing() {
         assert!(error.message.ends_with('.'), "{field}");
     }
     assert_eq!(core.get_entry(&saved.id).unwrap(), saved);
-    let mut preferences = serde_json::to_value(core.preferences().unwrap()).unwrap();
-    preferences["timeZone"] = json!("Synthetic/Nowhere");
-    assert_eq!(core.set_preferences(preferences).unwrap_err().code, "date");
+    for (field, value, code) in [
+        ("timeZone", json!("Synthetic/Nowhere"), "date"),
+        ("theme", json!("synthetic"), "document"),
+        ("textScale", json!(120), "document"),
+    ] {
+        let mut preferences = serde_json::to_value(core.preferences().unwrap()).unwrap();
+        preferences[field] = value;
+        assert_eq!(
+            core.set_preferences(preferences).unwrap_err().code,
+            code,
+            "{field}"
+        );
+    }
     assert_eq!(core.entries_on("2026-02-30").unwrap_err().code, "date");
 
     let mut valid = entry;
@@ -289,7 +369,8 @@ fn malformed_input_is_refused_with_english_errors_and_changes_nothing() {
 #[test]
 fn trash_restores_free_slots_and_reports_occupied_ones() {
     let fixture = Fixture::new();
-    let core = fixture.launch();
+    let app = fixture.launch();
+    let core = app.lock();
     let first = core
         .save_entry(draft(
             "2026-11-22",
@@ -323,24 +404,55 @@ fn trash_restores_free_slots_and_reports_occupied_ones() {
     assert_eq!(core.list_entries().unwrap(), vec![replacement]);
 }
 
+/// local-data-protection — Retention expires: ordinary restoration is unavailable as soon as
+/// the 30 days have passed, even while the app is open and before the next purge.
+#[test]
+fn trash_past_its_thirty_days_cannot_be_restored_even_before_the_purge() {
+    let fixture = Fixture::new();
+    let app = fixture.launch();
+    let core = app.lock();
+    let morning = core
+        .save_entry(draft("2026-11-22", Slot::Morning, "Synthetic morning."))
+        .unwrap();
+    let evening = core
+        .save_entry(draft("2026-11-22", Slot::Evening, "Synthetic evening."))
+        .unwrap();
+    core.trash_entry(&morning.id, morning.revision, noon())
+        .unwrap();
+    core.trash_entry(&evening.id, evening.revision, noon())
+        .unwrap();
+    let expiry = noon() + Duration::days(30);
+    assert_eq!(
+        core.restore_entry(&morning.id, expiry).unwrap_err(),
+        CommandError::from(Error::NotFound)
+    );
+    let restored = core
+        .restore_entry(&evening.id, expiry - Duration::seconds(1))
+        .unwrap();
+    assert_eq!(text_of(&restored), "Synthetic evening.");
+}
+
 #[test]
 fn expired_trash_is_purged_when_the_journal_opens() {
     let fixture = Fixture::new();
-    let core = fixture.launch();
-    let entry = core
+    let app = fixture.launch();
+    let entry = app
+        .lock()
         .save_entry(draft(
             "2026-11-22",
             Slot::Evening,
             "Synthetic entry to delete.",
         ))
         .unwrap();
-    core.trash_entry(&entry.id, entry.revision, noon()).unwrap();
-    drop(core);
-    let core = fixture.launch_at(noon() + Duration::days(30) - Duration::seconds(1));
-    assert_eq!(core.list_trash().unwrap().len(), 1);
-    drop(core);
-    let core = fixture.launch_at(noon() + Duration::days(30));
-    assert!(core.list_trash().unwrap().is_empty());
+    app.lock()
+        .trash_entry(&entry.id, entry.revision, noon())
+        .unwrap();
+    drop(app);
+    let app = fixture.launch_at(noon() + Duration::days(30) - Duration::seconds(1));
+    assert_eq!(app.lock().list_trash().unwrap().len(), 1);
+    drop(app);
+    let app = fixture.launch_at(noon() + Duration::days(30));
+    assert!(app.lock().list_trash().unwrap().is_empty());
 }
 
 #[test]
@@ -349,142 +461,73 @@ fn an_older_journal_waits_for_its_protected_upgrade_without_being_changed() {
     fs::create_dir_all(&fixture.paths().data_dir).unwrap();
     let id = previous_journal(&fixture.paths().journal);
     let original = fixture.journal_bytes();
-    let mut core = fixture.launch();
-    let startup = core.startup_status();
+    let app = fixture.launch();
+    let startup = app.startup_status();
     assert_eq!(startup.state, StartupState::NeedsMigration);
     assert_eq!(startup.from_version, Some(1));
     assert_eq!(startup.message, None);
 
     // The journal waits for the upgrade; backup settings stay available.
-    let waiting = [
-        core.list_entries().unwrap_err(),
-        core.save_entry(draft("2026-11-22", Slot::Morning, "Synthetic."))
-            .unwrap_err(),
-        core.run_daily_backup(noon()).unwrap_err(),
-        core.backup_now(noon()).unwrap_err(),
-    ];
+    let waiting = {
+        let mut core = app.lock();
+        [
+            core.list_entries().unwrap_err(),
+            core.save_entry(draft("2026-11-22", Slot::Evening, "Synthetic."))
+                .unwrap_err(),
+            core.run_daily_backup(noon()).unwrap_err(),
+            core.backup_now(noon()).unwrap_err(),
+            core.restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
+                .unwrap_err(),
+        ]
+    };
     assert!(
         waiting
             .iter()
             .all(|error| *error == CommandError::not_ready())
     );
-    assert_eq!(core.backup_status(noon()).state, BackupState::NeedsFolder);
-    let error = core
-        .migrate_journal(secret(PASSPHRASE), false, noon())
+    assert_eq!(
+        app.lock().backup_status(noon()).state,
+        BackupState::NeedsFolder
+    );
+    let error = app
+        .migrate_journal(Some(secret(PASSPHRASE)), false, noon())
         .unwrap_err();
     assert_eq!(error.code, "needsFolder");
-    core.set_backup_folder(fixture.folder(), noon()).unwrap();
-    let error = core
-        .migrate_journal(secret("too short"), false, noon())
+    app.choose_backup_folder(fixture.folder(), noon()).unwrap();
+    let error = app
+        .migrate_journal(Some(secret("too short")), false, noon())
         .unwrap_err();
     assert_eq!(error.code, "passphrase");
     assert_eq!(fixture.journal_bytes(), original);
 
-    let startup = core
-        .migrate_journal(secret(PASSPHRASE), false, noon())
+    let startup = app
+        .migrate_journal(Some(secret(PASSPHRASE)), false, noon())
         .unwrap();
     assert_eq!(startup.state, StartupState::Ready);
     assert_eq!(startup.from_version, None);
-    let entry = core.get_entry(&id).unwrap();
+    let entry = app.lock().get_entry(&id).unwrap();
+    // The frozen version-1 payload, with perceived progress recorded as missing.
     assert_eq!(entry.progress, None);
+    assert_eq!(entry.mood, Some(3));
     assert_eq!(
-        text_of(&entry),
-        "Synthetic entry from the previous version."
+        (entry.date.as_str(), entry.slot),
+        ("2026-11-22", Slot::Morning)
+    );
+    assert_eq!(text_of(&entry), "Synthetic previous journal.");
+    assert_eq!(
+        entry.reflection.difficulty,
+        "Synthetic difficulty from the previous version."
     );
     assert_eq!(list_backups(&fixture.folder()).unwrap().len(), 1);
-    let status = core.backup_status(noon());
+    let status = app.lock().backup_status(noon());
     assert!(status.passphrase_available);
     assert!(!status.remembered);
     assert_eq!(fixture.keychain.contents().item, None);
     // Asking again after the upgrade changes nothing.
-    let again = core
-        .migrate_journal(secret(PASSPHRASE), false, noon())
+    let again = app
+        .migrate_journal(Some(secret(PASSPHRASE)), false, noon())
         .unwrap();
     assert_eq!(again, startup);
-}
-
-#[test]
-fn startup_restore_validates_before_keeping_the_unreadable_journal_aside() {
-    let source = Fixture::new();
-    let mut original = ready_with_backups(&source);
-    let entry = original
-        .save_entry(draft(
-            "2026-11-22",
-            Slot::Morning,
-            "Synthetic recoverable writing.",
-        ))
-        .unwrap();
-    original.backup_now(noon()).unwrap();
-    let backup = source
-        .folder()
-        .join(original.list_backups().unwrap().remove(0).name);
-    let target = Fixture::new();
-    fs::create_dir_all(&target.paths().data_dir).unwrap();
-    fs::write(&target.paths().journal, b"synthetic damaged SQLite header").unwrap();
-    let before = target.journal_bytes();
-    let mut core = target.launch();
-    assert_eq!(core.startup_status().state, StartupState::Failed);
-    core.pick_restore_file(Some(backup));
-    assert!(
-        core.restore_backup(
-            RestoreSource::Picked,
-            secret("synthetic wrong passphrase"),
-            false,
-            noon()
-        )
-        .is_err()
-    );
-    assert_eq!(target.journal_bytes(), before);
-    let outcome = core
-        .restore_backup(RestoreSource::Picked, secret(PASSPHRASE), false, noon())
-        .unwrap();
-    assert_eq!(core.startup_status().state, StartupState::Ready);
-    assert_eq!(core.get_entry(&entry.id).unwrap(), entry);
-    let recovery = target.paths().data_dir.join(outcome.set_aside.unwrap());
-    assert_eq!(fs::read(recovery.join("journal.sqlite")).unwrap(), before);
-    assert!(!outcome.safety_backup);
-}
-
-#[test]
-fn retrying_a_failed_start_reopens_the_original_path_without_resetting_it() {
-    let fixture = Fixture::new();
-    fs::create_dir_all(&fixture.paths().data_dir).unwrap();
-    fs::write(&fixture.paths().journal, b"synthetic damaged file").unwrap();
-    let mut core = fixture.launch();
-    assert_eq!(core.retry_startup(noon()).state, StartupState::Failed);
-    fs::remove_file(&fixture.paths().journal).unwrap();
-    assert_eq!(core.retry_startup(noon()).state, StartupState::Ready);
-    let saved = core
-        .save_entry(draft(
-            "2026-11-22",
-            Slot::Morning,
-            "Synthetic retry writing.",
-        ))
-        .unwrap();
-    assert_eq!(core.retry_startup(noon()).state, StartupState::Ready);
-    assert_eq!(core.get_entry(&saved.id).unwrap(), saved);
-}
-
-#[test]
-fn unreadable_backup_settings_stay_visible_until_a_folder_is_chosen() {
-    let fixture = Fixture::new();
-    fs::create_dir_all(&fixture.paths().data_dir).unwrap();
-    fs::write(&fixture.paths().plan, b"synthetic invalid backup settings").unwrap();
-    let mut core = fixture.launch();
-    assert_eq!(
-        core.backup_status(noon()).state,
-        BackupState::SettingsUnreadable
-    );
-    core.run_daily_backup(noon()).unwrap();
-    assert_eq!(
-        fs::read(&fixture.paths().plan).unwrap(),
-        b"synthetic invalid backup settings"
-    );
-    core.set_backup_folder(fixture.folder(), noon()).unwrap();
-    assert_eq!(
-        core.backup_status(noon()).state,
-        BackupState::NeedsPassphrase
-    );
 }
 
 #[test]
@@ -496,11 +539,11 @@ fn an_older_journal_upgrades_at_launch_when_its_backup_can_be_made() {
         ..BackupPlan::default()
     });
     let id = previous_journal(&fixture.paths().journal);
-    let core = fixture.launch();
-    assert_eq!(core.startup_status().state, StartupState::Ready);
+    let app = fixture.launch();
+    assert_eq!(app.startup_status().state, StartupState::Ready);
     assert_eq!(
-        text_of(&core.get_entry(&id).unwrap()),
-        "Synthetic entry from the previous version."
+        text_of(&app.lock().get_entry(&id).unwrap()),
+        "Synthetic previous journal."
     );
     assert_eq!(list_backups(&fixture.folder()).unwrap().len(), 1);
 }
@@ -515,12 +558,65 @@ fn an_upgrade_that_cannot_back_up_at_launch_waits_with_an_explanation() {
     });
     previous_journal(&fixture.paths().journal);
     let original = fixture.journal_bytes();
-    let core = fixture.launch();
-    let startup = core.startup_status();
+    let app = fixture.launch();
+    let startup = app.startup_status();
     assert_eq!(startup.state, StartupState::NeedsMigration);
     assert_eq!(startup.from_version, Some(1));
     assert_eq!(startup.message, Some(Error::BackupFolder.to_string()));
     assert_eq!(fixture.journal_bytes(), original);
+}
+
+/// local-data-protection — Recoverable pre-migration backup: once the folder is back, the
+/// upgrade runs again with the passphrase already in the session, which stays remembered.
+#[test]
+fn retrying_an_upgrade_with_the_session_passphrase_keeps_it_remembered() {
+    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
+    let drive = fixture.backups.path().join("unplugged synthetic drive");
+    fixture.store_plan(&BackupPlan {
+        folder: Some(drive.clone()),
+        remember: true,
+        ..BackupPlan::default()
+    });
+    previous_journal(&fixture.paths().journal);
+    let app = fixture.launch();
+    assert_eq!(app.startup_status().state, StartupState::NeedsMigration);
+    let status = app.lock().backup_status(noon());
+    assert!(status.passphrase_available && status.remembered);
+
+    fs::create_dir(&drive).unwrap();
+    // `remember` false is not a request to forget: a retry never removes the Keychain item.
+    let startup = app.migrate_journal(None, false, noon()).unwrap();
+    assert_eq!(startup.state, StartupState::Ready);
+    assert_eq!(list_backups(&drive).unwrap().len(), 1);
+    assert_eq!(
+        fixture.keychain.contents().item.as_deref(),
+        Some(PASSPHRASE)
+    );
+    assert!(fixture.stored_plan().remember);
+    assert!(app.lock().backup_status(noon()).remembered);
+}
+
+#[test]
+fn an_upgrade_without_a_new_passphrase_needs_the_one_in_the_session() {
+    let fixture = Fixture::new();
+    fs::create_dir_all(&fixture.paths().data_dir).unwrap();
+    previous_journal(&fixture.paths().journal);
+    let app = fixture.launch();
+    app.choose_backup_folder(fixture.folder(), noon()).unwrap();
+    assert_eq!(
+        app.migrate_journal(None, true, noon()).unwrap_err(),
+        CommandError::needs_passphrase()
+    );
+    app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
+        .unwrap();
+    // Asked to remember it, the retry stores the session passphrase in Keychain.
+    let startup = app.migrate_journal(None, true, noon()).unwrap();
+    assert_eq!(startup.state, StartupState::Ready);
+    assert_eq!(
+        fixture.keychain.contents().item.as_deref(),
+        Some(PASSPHRASE)
+    );
+    assert!(fixture.stored_plan().remember);
 }
 
 #[test]
@@ -530,16 +626,39 @@ fn newer_or_foreign_databases_are_unsupported_and_left_unchanged_until_erased() 
         fs::create_dir_all(&fixture.paths().data_dir).unwrap();
         create(&fixture.paths().journal);
         let original = fixture.journal_bytes();
-        let mut core = fixture.launch();
-        let startup = core.startup_status();
+        let app = fixture.launch();
+        let startup = app.startup_status();
         assert_eq!(startup.state, StartupState::Unsupported);
         assert_eq!(startup.message, Some(Error::Unsupported.to_string()));
-        assert_eq!(core.today(noon()).unwrap_err(), CommandError::not_ready());
+        assert_eq!(
+            app.lock().today(noon()).unwrap_err(),
+            CommandError::not_ready()
+        );
+        // Trying again leaves it unsupported and unchanged.
+        assert_eq!(app.retry_startup(noon()), startup);
         assert_eq!(fixture.journal_bytes(), original);
-        // Erasing application data is the way back to a usable, empty journal.
-        let startup = core.erase_app_data(ERASE_CONFIRMATION, noon()).unwrap();
+        // Erasing application data is one way back to a usable, empty journal.
+        let startup = app.erase_app_data(ERASE_CONFIRMATION, noon()).unwrap();
         assert_eq!(startup.state, StartupState::Ready);
-        assert!(core.list_entries().unwrap().is_empty());
+        assert!(app.lock().list_entries().unwrap().is_empty());
+    }
+}
+
+/// local-data-protection — Safe restore: a damaged journal file is reported as damage, which a
+/// backup can repair, and is never changed by opening it again.
+#[test]
+fn a_damaged_journal_file_reports_a_failed_start_that_explains_the_damage() {
+    for create in [damaged_header as fn(&Path), not_a_database] {
+        let fixture = Fixture::new();
+        fs::create_dir_all(&fixture.paths().data_dir).unwrap();
+        create(&fixture.paths().journal);
+        let original = fixture.journal_bytes();
+        let app = fixture.launch();
+        let startup = app.startup_status();
+        assert_eq!(startup.state, StartupState::Failed);
+        assert_eq!(startup.message, Some(Error::Damaged.to_string()));
+        assert_eq!(app.retry_startup(noon()), startup);
+        assert_eq!(fixture.journal_bytes(), original);
     }
 }
 
@@ -549,24 +668,55 @@ fn an_unusable_data_folder_reports_a_failed_start() {
     let data_dir = fixture.paths().data_dir;
     fs::create_dir_all(data_dir.parent().unwrap()).unwrap();
     fs::write(&data_dir, b"synthetic file where the data folder belongs").unwrap();
-    let core = fixture.launch();
-    let startup = core.startup_status();
+    let app = fixture.launch();
+    let startup = app.startup_status();
     assert_eq!(startup.state, StartupState::Failed);
     assert_eq!(startup.message.as_deref(), Some(OPEN_FAILED));
-    assert_eq!(core.list_entries().unwrap_err(), CommandError::not_ready());
+    assert_eq!(
+        app.lock().list_entries().unwrap_err(),
+        CommandError::not_ready()
+    );
+}
+
+/// The cause of a failed start, such as another process holding the file, can go away while the
+/// app stays open: trying again opens the journal then.
+#[test]
+fn trying_again_opens_the_journal_once_the_cause_of_a_failed_start_is_gone() {
+    let fixture = Fixture::new();
+    let data_dir = fixture.paths().data_dir;
+    fs::create_dir_all(data_dir.parent().unwrap()).unwrap();
+    fs::write(&data_dir, b"synthetic file where the data folder belongs").unwrap();
+    let app = fixture.launch();
+    assert_eq!(app.startup_status().state, StartupState::Failed);
+    assert_eq!(app.retry_startup(noon()).state, StartupState::Failed);
+
+    fs::remove_file(&data_dir).unwrap();
+    let startup = app.retry_startup(noon());
+    assert_eq!(startup.state, StartupState::Ready);
+    assert_eq!(startup.message, None);
+    assert_eq!(app.startup_status(), startup);
+    app.lock()
+        .save_entry(draft("2026-11-22", Slot::Morning, "Synthetic note."))
+        .unwrap();
+    // Once the journal is open, trying again changes nothing.
+    assert_eq!(app.retry_startup(noon()), startup);
+    assert_eq!(app.lock().list_entries().unwrap().len(), 1);
 }
 
 #[test]
 fn backup_status_follows_the_folder_passphrase_and_todays_result() {
     let fixture = Fixture::new();
-    let mut core = fixture.launch();
-    assert_eq!(core.backup_now(noon()).unwrap_err().code, "needsFolder");
+    let app = fixture.launch();
     assert_eq!(
-        core.run_daily_backup(noon()).unwrap().state,
+        app.lock().backup_now(noon()).unwrap_err().code,
+        "needsFolder"
+    );
+    assert_eq!(
+        app.lock().run_daily_backup(noon()).unwrap().state,
         BackupState::NeedsFolder
     );
 
-    let status = core.set_backup_folder(fixture.folder(), noon()).unwrap();
+    let status = app.choose_backup_folder(fixture.folder(), noon()).unwrap();
     assert_eq!(status.state, BackupState::NeedsPassphrase);
     assert_eq!(
         status.folder_path,
@@ -577,31 +727,35 @@ fn backup_status_follows_the_folder_passphrase_and_todays_result() {
         fixture.folder().file_name().and_then(|name| name.to_str())
     );
     assert_eq!(fixture.stored_plan().folder, Some(fixture.folder()));
-    assert_eq!(core.backup_now(noon()).unwrap_err().code, "needsPassphrase");
+    assert_eq!(
+        app.lock().backup_now(noon()).unwrap_err().code,
+        "needsPassphrase"
+    );
     // A due backup without its passphrase is pending, not an error, and writing continues.
     assert_eq!(
-        core.run_daily_backup(noon()).unwrap().state,
+        app.lock().run_daily_backup(noon()).unwrap().state,
         BackupState::NeedsPassphrase
     );
-    let entry = core
+    let entry = app
+        .lock()
         .save_entry(draft(
             "2026-11-22",
             Slot::Morning,
             "Synthetic entry worth keeping.",
         ))
         .unwrap();
-    let error = core
+    let error = app
         .set_backup_passphrase(secret("eleven char"), false, noon())
         .unwrap_err();
     assert_eq!(error.code, "passphrase");
 
-    let status = core
+    let status = app
         .set_backup_passphrase(secret(PASSPHRASE), false, noon())
         .unwrap();
     assert_eq!(status.state, BackupState::Due);
     assert!(status.passphrase_available && !status.remembered);
 
-    let status = core.run_daily_backup(noon()).unwrap();
+    let status = app.lock().run_daily_backup(noon()).unwrap();
     assert_eq!(status.state, BackupState::UpToDate);
     assert_eq!(status.last_success_date.as_deref(), Some("2026-11-22"));
     assert_eq!(status.last_success_at, Some(noon().timestamp()));
@@ -612,10 +766,13 @@ fn backup_status_follows_the_folder_passphrase_and_todays_result() {
         Some("2026-11-22")
     );
     // Later the same day nothing new is published.
-    let later = core.run_daily_backup(noon() + Duration::hours(3)).unwrap();
+    let later = app
+        .lock()
+        .run_daily_backup(noon() + Duration::hours(3))
+        .unwrap();
     assert_eq!(later, status);
-    assert_eq!(core.list_backups().unwrap().len(), 1);
-    assert_eq!(core.get_entry(&entry.id).unwrap(), entry);
+    assert_eq!(app.lock().list_backups().unwrap().len(), 1);
+    assert_eq!(app.lock().get_entry(&entry.id).unwrap(), entry);
 }
 
 #[test]
@@ -628,17 +785,20 @@ fn a_failed_backup_stays_visible_until_the_settings_change() {
         retention_warning: true,
         ..BackupPlan::default()
     });
-    let mut core = fixture.launch();
-    core.set_backup_passphrase(secret(PASSPHRASE), false, noon())
+    let app = fixture.launch();
+    app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
         .unwrap();
-    let status = core.run_daily_backup(noon()).unwrap();
+    let status = app.lock().run_daily_backup(noon()).unwrap();
     assert_eq!(status.state, BackupState::Failed);
     assert_eq!(
         status.last_error,
         Some(CommandError::from(Error::BackupFolder))
     );
     assert_eq!(status.last_success_date.as_deref(), Some("2026-11-21"));
-    assert_eq!(core.backup_now(noon()).unwrap_err().code, "backupFolder");
+    assert_eq!(
+        app.lock().backup_now(noon()).unwrap_err().code,
+        "backupFolder"
+    );
     // No success is recorded for a failed attempt.
     assert_eq!(
         fixture.stored_plan().last_success_date.as_deref(),
@@ -646,7 +806,7 @@ fn a_failed_backup_stays_visible_until_the_settings_change() {
     );
 
     // Results that described the previous folder are forgotten with it.
-    let status = core.set_backup_folder(fixture.folder(), noon()).unwrap();
+    let status = app.choose_backup_folder(fixture.folder(), noon()).unwrap();
     assert_eq!(status.state, BackupState::Due);
     assert_eq!(status.last_error, None);
     assert_eq!(status.last_success_date, None);
@@ -654,16 +814,188 @@ fn a_failed_backup_stays_visible_until_the_settings_change() {
     assert!(!status.retention_warning);
     // Choosing the same folder again changes nothing.
     assert_eq!(
-        core.set_backup_folder(fixture.folder(), noon()).unwrap(),
+        app.choose_backup_folder(fixture.folder(), noon()).unwrap(),
         status
     );
+}
+
+/// A folder that keeps failing does not cost a snapshot, two key derivations and a written file
+/// each time the app is focused: automatic attempts pause for an hour after a failure.
+#[test]
+fn a_failed_daily_backup_pauses_automatic_attempts_for_an_hour() {
+    let fixture = Fixture::new();
+    let drive = fixture.backups.path().join("unplugged synthetic drive");
+    fixture.store_plan(&BackupPlan {
+        folder: Some(drive.clone()),
+        ..BackupPlan::default()
+    });
+    let app = fixture.launch();
+    app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
+        .unwrap();
+    let failed = app.lock().run_daily_backup(noon()).unwrap();
+    assert_eq!(failed.state, BackupState::Failed);
+    assert_eq!(
+        failed.last_error,
+        Some(CommandError::from(Error::BackupFolder))
+    );
+
+    // The drive is back, but the next automatic attempt waits for the hour to pass.
+    fs::create_dir(&drive).unwrap();
+    let paused = app
+        .lock()
+        .run_daily_backup(noon() + Duration::minutes(59))
+        .unwrap();
+    assert_eq!(paused, failed);
+    assert!(list_backups(&drive).unwrap().is_empty());
+    let retried = app
+        .lock()
+        .run_daily_backup(noon() + Duration::minutes(60))
+        .unwrap();
+    assert_eq!(retried.state, BackupState::UpToDate);
+    assert_eq!(list_backups(&drive).unwrap().len(), 1);
+}
+
+#[test]
+fn back_up_now_and_a_new_passphrase_try_again_during_the_pause() {
+    let fixture = Fixture::new();
+    let drive = fixture.backups.path().join("synthetic drive");
+    let unplugged = fixture.backups.path().join("synthetic drive, unplugged");
+    fixture.store_plan(&BackupPlan {
+        folder: Some(drive.clone()),
+        ..BackupPlan::default()
+    });
+    let app = fixture.launch();
+    app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
+        .unwrap();
+    assert_eq!(
+        app.lock().run_daily_backup(noon()).unwrap().state,
+        BackupState::Failed
+    );
+    fs::create_dir(&drive).unwrap();
+    // "Back up now" always tries.
+    let status = app
+        .lock()
+        .backup_now(noon() + Duration::minutes(1))
+        .unwrap();
+    assert_eq!(status.state, BackupState::UpToDate);
+    assert_eq!(list_backups(&drive).unwrap().len(), 1);
+
+    // The next day the drive is unplugged again, then reconnected within the hour.
+    let next_day = noon() + Duration::days(1);
+    fs::rename(&drive, &unplugged).unwrap();
+    assert_eq!(
+        app.lock().run_daily_backup(next_day).unwrap().state,
+        BackupState::Failed
+    );
+    fs::rename(&unplugged, &drive).unwrap();
+    let paused = app
+        .lock()
+        .run_daily_backup(next_day + Duration::minutes(1))
+        .unwrap();
+    assert_eq!(paused.state, BackupState::Failed);
+    assert_eq!(list_backups(&drive).unwrap().len(), 1);
+    // Entering the passphrase again ends the pause.
+    app.set_backup_passphrase(secret(PASSPHRASE), false, next_day)
+        .unwrap();
+    let status = app
+        .lock()
+        .run_daily_backup(next_day + Duration::minutes(2))
+        .unwrap();
+    assert_eq!(status.state, BackupState::UpToDate);
+    assert_eq!(list_backups(&drive).unwrap().len(), 2);
+}
+
+/// local-data-protection — Interrupted backup write: a folder that cannot receive backups is
+/// refused when it is chosen, and the check leaves nothing in a folder that can.
+#[test]
+fn a_backup_folder_is_checked_before_it_is_chosen() {
+    let fixture = Fixture::new();
+    let app = fixture.launch();
+    let missing = fixture.backups.path().join("unplugged synthetic drive");
+    let read_only = fixture.backups.path().join("read-only synthetic folder");
+    fs::create_dir(&read_only).unwrap();
+    fs::set_permissions(&read_only, fs::Permissions::from_mode(0o500)).unwrap();
+    for folder in [missing, read_only.clone()] {
+        let error = app.choose_backup_folder(folder, noon()).unwrap_err();
+        assert_eq!(error, CommandError::from(Error::BackupFolder));
+    }
+    fs::set_permissions(&read_only, fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(
+        app.lock().backup_status(noon()).state,
+        BackupState::NeedsFolder
+    );
+    assert!(!fixture.paths().plan.exists());
+
+    let writable = fixture.backups.path().join("synthetic backups");
+    fs::create_dir(&writable).unwrap();
+    let status = app.choose_backup_folder(writable.clone(), noon()).unwrap();
+    assert_eq!(status.state, BackupState::NeedsPassphrase);
+    assert!(names_in(&writable).is_empty());
+    assert!(names_in(&read_only).is_empty());
+}
+
+/// A restore stages its copy in the data folder, and a backup published there would remove it:
+/// the data folder, and any folder inside it, cannot be the backup folder.
+#[test]
+fn the_data_folder_cannot_be_the_backup_folder() {
+    let fixture = Fixture::new();
+    let app = fixture.launch();
+    let data_dir = fixture.paths().data_dir;
+    let inside = data_dir.join("synthetic backups");
+    fs::create_dir(&inside).unwrap();
+    for folder in [data_dir, inside] {
+        let error = app.choose_backup_folder(folder, noon()).unwrap_err();
+        assert_eq!(error.code, "backupFolder");
+        assert_eq!(
+            error.message,
+            "Choose a folder outside the app's own data folder."
+        );
+    }
+    assert_eq!(
+        app.lock().backup_status(noon()).state,
+        BackupState::NeedsFolder
+    );
+    assert!(!fixture.paths().plan.exists());
+}
+
+#[test]
+fn a_restore_still_works_when_earlier_settings_put_backups_in_the_data_folder() {
+    let fixture = Fixture::new();
+    // Backup settings written before the data folder was refused.
+    fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.paths().data_dir),
+        ..BackupPlan::default()
+    });
+    let app = fixture.launch();
+    app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
+        .unwrap();
+    let kept = app
+        .lock()
+        .save_entry(draft("2026-11-22", Slot::Morning, "Synthetic kept entry."))
+        .unwrap();
+    app.lock().backup_now(noon()).unwrap();
+    let backup = app.lock().list_backups().unwrap().remove(0);
+    app.lock()
+        .save_entry(draft("2026-11-22", Slot::Evening, "Synthetic later entry."))
+        .unwrap();
+    let outcome = app
+        .lock()
+        .restore_backup(
+            RestoreSource::Registered { name: backup.name },
+            PASSPHRASE,
+            false,
+            noon() + Duration::minutes(5),
+        )
+        .unwrap();
+    assert!(outcome.safety_backup);
+    assert_eq!(app.lock().list_entries().unwrap(), vec![kept]);
 }
 
 #[test]
 fn the_passphrase_is_remembered_only_when_asked() {
     let fixture = Fixture::new();
-    let mut core = fixture.launch();
-    let status = core
+    let app = fixture.launch();
+    let status = app
         .set_backup_passphrase(secret(PASSPHRASE), true, noon())
         .unwrap();
     assert!(status.remembered && status.passphrase_available);
@@ -672,25 +1004,25 @@ fn the_passphrase_is_remembered_only_when_asked() {
         Some(PASSPHRASE)
     );
     assert!(fixture.stored_plan().remember);
-    drop(core);
-    let mut core = fixture.launch();
-    assert!(core.backup_status(noon()).passphrase_available);
+    drop(app);
+    let app = fixture.launch();
+    assert!(app.lock().backup_status(noon()).passphrase_available);
 
     // Declining Keychain storage keeps a new passphrase for this session only.
-    let status = core
+    let status = app
         .set_backup_passphrase(secret("another synthetic passphrase"), false, noon())
         .unwrap();
     assert!(status.passphrase_available && !status.remembered);
     assert_eq!(fixture.keychain.contents().item, None);
-    drop(core);
-    let mut core = fixture.launch();
-    let status = core.backup_status(noon());
+    drop(app);
+    let app = fixture.launch();
+    let status = app.lock().backup_status(noon());
     assert!(!status.passphrase_available && !status.remembered);
-    assert_eq!(core.startup_status().state, StartupState::Ready);
+    assert_eq!(app.startup_status().state, StartupState::Ready);
 
-    core.set_backup_passphrase(secret(PASSPHRASE), true, noon())
+    app.set_backup_passphrase(secret(PASSPHRASE), true, noon())
         .unwrap();
-    let status = core.forget_backup_passphrase(noon()).unwrap();
+    let status = app.forget_backup_passphrase(noon()).unwrap();
     assert!(!status.passphrase_available && !status.remembered);
     assert_eq!(fixture.keychain.contents().item, None);
     assert!(!fixture.stored_plan().remember);
@@ -704,23 +1036,24 @@ fn a_keychain_failure_keeps_the_session_passphrase_and_writing_available() {
         ..BackupPlan::default()
     });
     fixture.keychain.contents().failing = true;
-    let mut core = fixture.launch();
-    assert_eq!(core.startup_status().state, StartupState::Ready);
-    assert!(!core.backup_status(noon()).passphrase_available);
+    let app = fixture.launch();
+    assert_eq!(app.startup_status().state, StartupState::Ready);
+    assert!(!app.lock().backup_status(noon()).passphrase_available);
 
-    let error = core
+    let error = app
         .set_backup_passphrase(secret(PASSPHRASE), true, noon())
         .unwrap_err();
     assert_eq!(error, CommandError::keychain());
-    let status = core.backup_status(noon());
+    let status = app.lock().backup_status(noon());
     assert!(status.passphrase_available);
     assert!(!status.remembered);
     assert!(!fixture.stored_plan().remember);
 
-    let error = core.forget_backup_passphrase(noon()).unwrap_err();
+    let error = app.forget_backup_passphrase(noon()).unwrap_err();
     assert_eq!(error, CommandError::keychain());
-    assert!(!core.backup_status(noon()).passphrase_available);
-    core.save_entry(draft("2026-11-22", Slot::Evening, "Synthetic note."))
+    assert!(!app.lock().backup_status(noon()).passphrase_available);
+    app.lock()
+        .save_entry(draft("2026-11-22", Slot::Evening, "Synthetic note."))
         .unwrap();
 }
 
@@ -731,27 +1064,155 @@ fn a_remembered_passphrase_that_is_gone_is_no_longer_reported_as_remembered() {
         remember: true,
         ..BackupPlan::default()
     });
-    let core = fixture.launch();
-    let status = core.backup_status(noon());
+    let app = fixture.launch();
+    let status = app.lock().backup_status(noon());
     assert!(!status.passphrase_available && !status.remembered);
+}
+
+/// A Keychain prompt can sit unanswered behind other windows, for example after a rebuild of
+/// the app: the journal opens and saves without waiting for it.
+#[test]
+fn a_keychain_prompt_at_launch_never_keeps_the_journal_from_opening_or_saving() {
+    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
+    fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.folder()),
+        remember: true,
+        ..BackupPlan::default()
+    });
+    fixture.keychain.show_prompt();
+    let app = Arc::new(fixture.state());
+    let launching = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.launch(noon()))
+    };
+    fixture.keychain.wait_for_prompt();
+
+    assert_eq!(app.startup_status().state, StartupState::Ready);
+    app.lock()
+        .save_entry(draft("2026-11-22", Slot::Morning, "Synthetic note."))
+        .unwrap();
+    let status = app.lock().backup_status(noon());
+    assert!(status.remembered && !status.passphrase_available);
+
+    fixture.keychain.answer();
+    launching.join().unwrap();
+    assert!(app.lock().backup_status(noon()).passphrase_available);
+}
+
+#[test]
+fn a_keychain_prompt_while_remembering_the_passphrase_never_blocks_saving() {
+    let fixture = Fixture::new();
+    let app = Arc::new(fixture.launch());
+    fixture.keychain.show_prompt();
+    let remembering = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.set_backup_passphrase(secret(PASSPHRASE), true, noon()))
+    };
+    fixture.keychain.wait_for_prompt();
+
+    app.lock()
+        .save_entry(draft("2026-11-22", Slot::Morning, "Synthetic note."))
+        .unwrap();
+    assert!(!app.lock().backup_status(noon()).passphrase_available);
+
+    fixture.keychain.answer();
+    let status = remembering.join().unwrap().unwrap();
+    assert!(status.passphrase_available && status.remembered);
+}
+
+/// An older journal that the remembered passphrase can upgrade at launch is not reported as
+/// waiting for its upgrade while Keychain is still being read.
+#[test]
+fn an_older_journal_waits_for_the_remembered_passphrase_before_its_status_is_reported() {
+    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
+    fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.folder()),
+        remember: true,
+        ..BackupPlan::default()
+    });
+    previous_journal(&fixture.paths().journal);
+    fixture.keychain.show_prompt();
+    let app = Arc::new(fixture.state());
+    let launching = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.launch(noon()))
+    };
+    fixture.keychain.wait_for_prompt();
+    let (reported, startup) = mpsc::channel();
+    let asking = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || reported.send(app.startup_status()).unwrap())
+    };
+    assert!(startup.recv_timeout(Wait::from_millis(300)).is_err());
+    // Backup settings stay available meanwhile.
+    assert_eq!(
+        app.lock().backup_status(noon()).state,
+        BackupState::NeedsPassphrase
+    );
+
+    fixture.keychain.answer();
+    assert_eq!(startup.recv().unwrap().state, StartupState::Ready);
+    launching.join().unwrap();
+    asking.join().unwrap();
+    assert_eq!(list_backups(&fixture.folder()).unwrap().len(), 1);
+}
+
+/// D-10: backup settings that cannot be read are reported, and kept as they are until the person
+/// chooses a backup folder again, instead of turning silently into "not set up".
+#[test]
+fn unreadable_backup_settings_are_reported_and_kept_until_a_folder_is_chosen() {
+    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
+    fs::create_dir_all(&fixture.paths().data_dir).unwrap();
+    let unreadable = br#"{"unknownField":true}"#;
+    fs::write(&fixture.paths().plan, unreadable).unwrap();
+    let app = fixture.launch();
+    assert_eq!(app.startup_status().state, StartupState::Ready);
+    let status = app.lock().backup_status(noon());
+    assert_eq!(status.state, BackupState::SettingsUnreadable);
+    assert!(!status.passphrase_available && !status.remembered);
+    assert_eq!(status.folder_path, None);
+
+    app.set_backup_passphrase(secret(PASSPHRASE), true, noon())
+        .unwrap();
+    assert_eq!(
+        app.lock().run_daily_backup(noon()).unwrap().state,
+        BackupState::SettingsUnreadable
+    );
+    assert_eq!(fs::read(&fixture.paths().plan).unwrap(), unreadable);
+
+    // Choosing a backup folder writes the settings again, with the Keychain choice made since.
+    let status = app.choose_backup_folder(fixture.folder(), noon()).unwrap();
+    assert_eq!(status.state, BackupState::Due);
+    assert!(status.remembered);
+    let stored = fixture.stored_plan();
+    assert_eq!(stored.folder, Some(fixture.folder()));
+    assert!(stored.remember);
+    drop(app);
+    let app = fixture.launch();
+    let status = app.lock().backup_status(noon());
+    assert_eq!(status.state, BackupState::Due);
+    assert!(status.passphrase_available);
 }
 
 #[test]
 fn restore_publishes_a_safety_backup_first_and_brings_back_the_backed_up_journal() {
     let fixture = Fixture::new();
-    let mut core = ready_with_backups(&fixture);
-    let kept = core
+    let app = ready_with_backups(&fixture);
+    let kept = app
+        .lock()
         .save_entry(draft(
             "2026-11-22",
             Slot::Morning,
             "Synthetic entry in the backup.",
         ))
         .unwrap();
-    core.backup_now(noon()).unwrap();
-    let backup = core.list_backups().unwrap().remove(0);
-    core.save_entry(edited(&kept, "Synthetic edit made after the backup."))
+    app.lock().backup_now(noon()).unwrap();
+    let backup = app.lock().list_backups().unwrap().remove(0);
+    app.lock()
+        .save_entry(edited(&kept, "Synthetic edit made after the backup."))
         .unwrap();
-    let later = core
+    let later = app
+        .lock()
         .save_entry(draft(
             "2026-11-22",
             Slot::Evening,
@@ -769,33 +1230,36 @@ fn restore_publishes_a_safety_backup_first_and_brings_back_the_backed_up_journal
         },
         RestoreSource::Picked,
     ] {
-        let error = core
-            .restore_backup(source, secret(PASSPHRASE), false, noon())
+        let error = app
+            .lock()
+            .restore_backup(source, PASSPHRASE, false, noon())
             .unwrap_err();
         assert_eq!(error.code, "restore");
     }
     // A wrong passphrase fails before a safety backup could prune an older backup.
-    let error = core
+    let error = app
+        .lock()
         .restore_backup(
             RestoreSource::Registered {
                 name: backup.name.clone(),
             },
-            secret("not the synthetic passphrase"),
+            WRONG_PASSPHRASE,
             false,
             noon(),
         )
         .unwrap_err();
     assert_eq!(error, CommandError::from(Error::Restore));
-    assert_eq!(core.list_backups().unwrap().len(), 1);
-    assert_eq!(core.list_entries().unwrap().len(), 2);
+    assert_eq!(app.lock().list_backups().unwrap().len(), 1);
+    assert_eq!(app.lock().list_entries().unwrap().len(), 2);
 
     let restored_at = noon() + Duration::minutes(5);
-    let outcome = core
+    let outcome = app
+        .lock()
         .restore_backup(
             RestoreSource::Registered {
                 name: backup.name.clone(),
             },
-            secret(PASSPHRASE),
+            PASSPHRASE,
             false,
             restored_at,
         )
@@ -805,23 +1269,23 @@ fn restore_publishes_a_safety_backup_first_and_brings_back_the_backed_up_journal
         RestoreOutcome {
             entries: 1,
             safety_backup: true,
-            set_aside: None,
+            set_aside: None
         }
     );
-    assert_eq!(core.list_entries().unwrap(), vec![kept]);
+    assert_eq!(app.lock().list_entries().unwrap(), vec![kept]);
     assert_eq!(
-        core.get_entry(&later.id).unwrap_err(),
+        app.lock().get_entry(&later.id).unwrap_err(),
         CommandError::from(Error::NotFound)
     );
     // No private copy of the backup is left in the data folder.
     assert!(
         names_in(&fixture.paths().data_dir)
             .iter()
-            .all(|name| !name.starts_with(".ttd-incomplete-"))
+            .all(|name| !name.starts_with(".ttd-"))
     );
 
     // The safety backup, listed first, holds the journal as it was before the restore.
-    let safety = core.list_backups().unwrap().remove(0);
+    let safety = app.lock().list_backups().unwrap().remove(0);
     assert_eq!(safety.created_at, restored_at.timestamp());
     let check = TempDir::new().unwrap();
     let mut replaced = Journal::open(&check.path().join("check.sqlite")).unwrap();
@@ -842,106 +1306,309 @@ fn restore_publishes_a_safety_backup_first_and_brings_back_the_backed_up_journal
 #[test]
 fn restoring_the_oldest_of_thirty_backups_survives_its_pruning_by_the_safety_backup() {
     let fixture = Fixture::new();
-    let mut core = ready_with_backups(&fixture);
-    let kept = core
+    let app = ready_with_backups(&fixture);
+    let kept = app
+        .lock()
         .save_entry(draft(
             "2026-11-22",
             Slot::Morning,
             "Synthetic entry in the oldest backup.",
         ))
         .unwrap();
-    core.backup_now(noon()).unwrap();
-    let oldest = core.list_backups().unwrap().remove(0);
+    app.lock().backup_now(noon()).unwrap();
+    let oldest = app.lock().list_backups().unwrap().remove(0);
     register_stand_ins(&fixture.folder(), noon().timestamp(), 29);
-    assert_eq!(core.list_backups().unwrap().len(), 30);
-    core.save_entry(draft("2026-11-22", Slot::Evening, "Synthetic later entry."))
+    assert_eq!(app.lock().list_backups().unwrap().len(), 30);
+    app.lock()
+        .save_entry(draft("2026-11-22", Slot::Evening, "Synthetic later entry."))
         .unwrap();
 
-    let outcome = core
+    let outcome = app
+        .lock()
         .restore_backup(
             RestoreSource::Registered {
                 name: oldest.name.clone(),
             },
-            secret(PASSPHRASE),
+            PASSPHRASE,
             false,
             noon() + Duration::hours(1),
         )
         .unwrap();
     assert!(outcome.safety_backup);
-    assert_eq!(core.list_entries().unwrap(), vec![kept]);
+    assert_eq!(app.lock().list_entries().unwrap(), vec![kept]);
     // Retention removed the restored file only after the restore had copied it.
     assert!(!fixture.folder().join(&oldest.name).exists());
-    assert_eq!(core.list_backups().unwrap().len(), 30);
+    assert_eq!(app.lock().list_backups().unwrap().len(), 30);
 }
 
+/// D-8: a restore stopped by its safety backup says so, the backup status keeps the cause, and
+/// the person can confirm restoring without one.
 #[test]
-fn a_new_mac_restores_with_only_the_backup_file_and_its_passphrase() {
-    let original = Fixture::new();
-    let mut core = ready_with_backups(&original);
-    let morning = core
-        .save_entry(draft(
-            "2026-11-21",
-            Slot::Morning,
-            "Synthetic morning to recover.",
-        ))
+fn a_failed_safety_backup_stops_the_restore_until_the_person_confirms() {
+    let fixture = Fixture::new();
+    let app = fixture.launch();
+    let drive = fixture.backups.path().join("synthetic drive");
+    fs::create_dir(&drive).unwrap();
+    app.choose_backup_folder(drive.clone(), noon()).unwrap();
+    app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
         .unwrap();
-    let evening = core
+    let kept = app
+        .lock()
+        .save_entry(draft("2026-11-22", Slot::Morning, "Synthetic kept entry."))
+        .unwrap();
+    app.lock().backup_now(noon()).unwrap();
+    let elsewhere = TempDir::new().unwrap();
+    let copy = elsewhere.path().join("synthetic copy.ttd.age");
+    fs::copy(
+        drive.join(app.lock().list_backups().unwrap()[0].name.clone()),
+        &copy,
+    )
+    .unwrap();
+    app.lock()
+        .save_entry(draft("2026-11-22", Slot::Evening, "Synthetic later entry."))
+        .unwrap();
+    // The backup drive is unplugged.
+    fs::rename(&drive, fixture.backups.path().join("unplugged")).unwrap();
+    app.lock().pick_restore_file(Some(copy));
+
+    // The chosen backup is checked first: a wrong passphrase is reported as such.
+    let error = app
+        .lock()
+        .restore_backup(RestoreSource::Picked, WRONG_PASSPHRASE, false, noon())
+        .unwrap_err();
+    assert_eq!(error, CommandError::from(Error::Restore));
+    let error = app
+        .lock()
+        .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
+        .unwrap_err();
+    assert_eq!(error, CommandError::safety_backup_failed());
+    assert_eq!(app.lock().list_entries().unwrap().len(), 2);
+    assert_eq!(
+        app.lock().backup_status(noon()).last_error,
+        Some(CommandError::from(Error::BackupFolder))
+    );
+
+    let outcome = app
+        .lock()
+        .restore_backup(RestoreSource::Picked, PASSPHRASE, true, noon())
+        .unwrap();
+    assert_eq!(
+        outcome,
+        RestoreOutcome {
+            entries: 1,
+            safety_backup: false,
+            set_aside: None
+        }
+    );
+    assert_eq!(app.lock().list_entries().unwrap(), vec![kept]);
+}
+
+/// local-data-protection — Safe restore: a journal whose pages are damaged can be replaced from
+/// a backup once the person confirms that it cannot be backed up first.
+#[test]
+fn a_damaged_journal_is_replaced_once_the_person_confirms_a_restore_without_a_safety_backup() {
+    // Damage that stops the journal from being read, then damage that only stops its backup.
+    for table in ["journal_entries", "preferences"] {
+        let fixture = Fixture::new();
+        let app = ready_with_backups(&fixture);
+        fill(&app);
+        app.lock().backup_now(noon()).unwrap();
+        let backup = app.lock().list_backups().unwrap().remove(0);
+        drop(app);
+        let (offset, length) = root_page(&fixture.paths().journal, table);
+        damage(&fixture.paths().journal, offset, length);
+        let damaged = fixture.journal_bytes();
+
+        let app = fixture.launch();
+        assert_eq!(app.startup_status().state, StartupState::Ready, "{table}");
+        app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
+            .unwrap();
+        let source = || RestoreSource::Registered {
+            name: backup.name.clone(),
+        };
+        let error = app
+            .lock()
+            .restore_backup(source(), WRONG_PASSPHRASE, false, noon())
+            .unwrap_err();
+        assert_eq!(error, CommandError::from(Error::Restore), "{table}");
+        let error = app
+            .lock()
+            .restore_backup(source(), PASSPHRASE, false, noon())
+            .unwrap_err();
+        assert_eq!(error, CommandError::safety_backup_failed(), "{table}");
+        assert_eq!(fixture.journal_bytes(), damaged, "{table}");
+        assert_eq!(app.lock().list_backups().unwrap().len(), 1, "{table}");
+
+        let outcome = app
+            .lock()
+            .restore_backup(source(), PASSPHRASE, true, noon())
+            .unwrap();
+        assert_eq!(
+            outcome,
+            RestoreOutcome {
+                entries: 40,
+                safety_backup: false,
+                set_aside: None
+            },
+            "{table}"
+        );
+        assert_eq!(app.lock().list_entries().unwrap().len(), 40, "{table}");
+        assert!(app.lock().preferences().is_ok(), "{table}");
+    }
+}
+
+/// local-data-protection — Safe restore: when the journal cannot be opened at all, a backup file
+/// replaces it from the startup screen, and the unreadable file is kept aside, never deleted.
+#[test]
+fn a_journal_that_cannot_be_opened_is_kept_aside_and_replaced_from_a_backup_file() {
+    let original = Fixture::new();
+    let app = ready_with_backups(&original);
+    let kept = app
+        .lock()
         .save_entry(draft(
             "2026-11-21",
             Slot::Evening,
             "Synthetic evening to recover.",
         ))
         .unwrap();
-    core.backup_now(noon()).unwrap();
+    app.lock().backup_now(noon()).unwrap();
     let backup = original
         .folder()
-        .join(core.list_backups().unwrap().remove(0).name);
+        .join(app.lock().list_backups().unwrap().remove(0).name);
+    drop(app);
+
+    for (create, state) in [
+        (damaged_header as fn(&Path), StartupState::Failed),
+        (not_a_database, StartupState::Failed),
+        (newer_journal, StartupState::Unsupported),
+    ] {
+        let fixture = Fixture::new();
+        let data_dir = fixture.paths().data_dir;
+        fs::create_dir_all(&data_dir).unwrap();
+        create(&fixture.paths().journal);
+        let log = data_dir.join("journal.sqlite-wal");
+        fs::write(&log, b"synthetic write-ahead log of the unreadable journal").unwrap();
+        let unreadable = fixture.journal_bytes();
+        let app = fixture.launch();
+        assert_eq!(app.startup_status().state, state);
+        app.lock().pick_restore_file(Some(backup.clone()));
+
+        // A wrong passphrase moves nothing.
+        let error = app
+            .lock()
+            .restore_backup(RestoreSource::Picked, WRONG_PASSPHRASE, false, noon())
+            .unwrap_err();
+        assert_eq!(error, CommandError::from(Error::Restore));
+        assert_eq!(fixture.journal_bytes(), unreadable);
+        assert_eq!(app.startup_status().state, state);
+
+        let outcome = app
+            .lock()
+            .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
+            .unwrap();
+        let name = format!("journal.unreadable-{}.sqlite", noon().timestamp());
+        assert_eq!(
+            outcome,
+            RestoreOutcome {
+                entries: 1,
+                safety_backup: false,
+                set_aside: Some(name.clone())
+            }
+        );
+        assert_eq!(fs::read(data_dir.join(&name)).unwrap(), unreadable);
+        assert_eq!(
+            fs::read(data_dir.join(format!("{name}-wal"))).unwrap(),
+            b"synthetic write-ahead log of the unreadable journal"
+        );
+        let startup = app.startup_status();
+        assert_eq!(
+            (startup.state, startup.message),
+            (StartupState::Ready, None)
+        );
+        assert_eq!(app.lock().list_entries().unwrap(), vec![kept.clone()]);
+        drop(app);
+
+        // The restored journal opens normally at the next launch; the unreadable one stays aside.
+        let app = fixture.launch();
+        assert_eq!(app.startup_status().state, StartupState::Ready);
+        assert_eq!(app.lock().list_entries().unwrap(), vec![kept.clone()]);
+        assert_eq!(fs::read(data_dir.join(&name)).unwrap(), unreadable);
+    }
+}
+
+#[test]
+fn a_new_mac_restores_with_only_the_backup_file_and_its_passphrase() {
+    let original = Fixture::new();
+    let app = ready_with_backups(&original);
+    let morning = app
+        .lock()
+        .save_entry(draft(
+            "2026-11-21",
+            Slot::Morning,
+            "Synthetic morning to recover.",
+        ))
+        .unwrap();
+    let evening = app
+        .lock()
+        .save_entry(draft(
+            "2026-11-21",
+            Slot::Evening,
+            "Synthetic evening to recover.",
+        ))
+        .unwrap();
+    app.lock().backup_now(noon()).unwrap();
+    let backup = original
+        .folder()
+        .join(app.lock().list_backups().unwrap().remove(0).name);
 
     // A clean Mac: no folder, no Keychain item, an empty journal.
     let clean = Fixture::new();
-    let mut core = clean.launch();
-    let picked = core.pick_restore_file(Some(backup.clone())).unwrap();
+    let app = clean.launch();
+    let picked = app.lock().pick_restore_file(Some(backup.clone())).unwrap();
     assert_eq!(
         Some(picked.name.as_str()),
         backup.file_name().and_then(|name| name.to_str())
     );
-    let outcome = core
-        .restore_backup(RestoreSource::Picked, secret(PASSPHRASE), false, noon())
+    let outcome = app
+        .lock()
+        .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
         .unwrap();
     assert_eq!(
         outcome,
         RestoreOutcome {
             entries: 2,
             safety_backup: false,
-            set_aside: None,
+            set_aside: None
         }
     );
     assert_eq!(
-        core.entries_on("2026-11-21").unwrap(),
+        app.lock().entries_on("2026-11-21").unwrap(),
         vec![morning, evening]
     );
     // The picked file is used once; the backup folder of the clean Mac was never involved.
-    let error = core
-        .restore_backup(RestoreSource::Picked, secret(PASSPHRASE), false, noon())
+    let error = app
+        .lock()
+        .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
         .unwrap_err();
     assert_eq!(error.code, "restore");
     assert!(names_in(&clean.folder()).is_empty());
-    assert_eq!(core.pick_restore_file(None), None);
+    assert_eq!(app.lock().pick_restore_file(None), None);
 }
 
 #[test]
 fn erasing_removes_app_data_and_secrets_but_never_the_backup_folder() {
     let fixture = Fixture::new();
-    let mut core = fixture.launch();
-    core.set_backup_folder(fixture.folder(), noon()).unwrap();
-    core.set_backup_passphrase(secret(PASSPHRASE), true, noon())
+    let app = fixture.launch();
+    app.choose_backup_folder(fixture.folder(), noon()).unwrap();
+    app.set_backup_passphrase(secret(PASSPHRASE), true, noon())
         .unwrap();
-    core.save_entry(draft(
-        "2026-11-22",
-        Slot::Morning,
-        "Synthetic entry to erase.",
-    ))
-    .unwrap();
+    app.lock()
+        .save_entry(draft(
+            "2026-11-22",
+            Slot::Morning,
+            "Synthetic entry to erase.",
+        ))
+        .unwrap();
     // Synthetic files stand in for earlier backups and other files in the chosen folder.
     fs::write(
         fixture.folder().join("ttd-1-synthetic.ttd.age"),
@@ -950,52 +1617,78 @@ fn erasing_removes_app_data_and_secrets_but_never_the_backup_folder() {
     .unwrap();
     fs::write(fixture.folder().join("synthetic notes.txt"), b"synthetic").unwrap();
     let folder_before = names_in(&fixture.folder());
-    let leftover = fixture.paths().data_dir.join(".ttd-incomplete-synthetic");
-    fs::write(&leftover, b"synthetic").unwrap();
+    // Leftover temporary copies and journals that a restore kept aside are app data too.
+    let leftovers = [
+        ".ttd-incomplete-synthetic",
+        ".ttd-restore-staging-synthetic",
+        "journal.unreadable-1795363200.sqlite",
+        "journal.unreadable-1795363200.sqlite-wal",
+    ]
+    .map(|name| fixture.paths().data_dir.join(name));
+    for leftover in &leftovers {
+        fs::write(leftover, b"synthetic").unwrap();
+    }
 
-    let error = core.erase_app_data("erase", noon()).unwrap_err();
+    let error = app.erase_app_data("erase", noon()).unwrap_err();
     assert_eq!(error, CommandError::confirmation());
-    assert_eq!(core.list_entries().unwrap().len(), 1);
+    assert_eq!(app.lock().list_entries().unwrap().len(), 1);
 
-    let startup = core.erase_app_data(ERASE_CONFIRMATION, noon()).unwrap();
+    let startup = app.erase_app_data(ERASE_CONFIRMATION, noon()).unwrap();
     assert_eq!(startup.state, StartupState::Ready);
-    assert!(core.list_entries().unwrap().is_empty());
+    assert!(app.lock().list_entries().unwrap().is_empty());
     assert!(!fixture.paths().plan.exists());
-    assert!(!leftover.exists());
+    assert!(leftovers.iter().all(|leftover| !leftover.exists()));
     assert_eq!(fixture.keychain.contents().item, None);
-    let status = core.backup_status(noon());
+    let status = app.lock().backup_status(noon());
     assert_eq!(status.state, BackupState::NeedsFolder);
     assert!(!status.passphrase_available && !status.remembered);
     assert_eq!(names_in(&fixture.folder()), folder_before);
-    drop(core);
+    drop(app);
     // The next launch finds the fresh journal and no remembered settings.
-    let core = fixture.launch();
-    assert!(core.list_entries().unwrap().is_empty());
-    assert_eq!(core.backup_status(noon()).state, BackupState::NeedsFolder);
+    let app = fixture.launch();
+    assert!(app.lock().list_entries().unwrap().is_empty());
+    assert_eq!(
+        app.lock().backup_status(noon()).state,
+        BackupState::NeedsFolder
+    );
 }
 
+/// D-11: a Keychain error from erasing comes only after the journal and the backup settings were
+/// erased and a fresh journal opened, so the interface can reload and name what remains.
 #[test]
-fn an_incomplete_erasure_is_reported_after_the_journal_is_reopened() {
+fn an_incomplete_erasure_is_reported_after_the_journal_and_settings_are_erased() {
     let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
-    let mut core = fixture.launch();
-    core.save_entry(draft(
-        "2026-11-22",
-        Slot::Morning,
-        "Synthetic entry to erase.",
-    ))
-    .unwrap();
+    let app = fixture.launch();
+    app.choose_backup_folder(fixture.folder(), noon()).unwrap();
+    app.set_backup_passphrase(secret(PASSPHRASE), true, noon())
+        .unwrap();
+    app.lock()
+        .save_entry(draft(
+            "2026-11-22",
+            Slot::Morning,
+            "Synthetic entry to erase.",
+        ))
+        .unwrap();
     fixture.keychain.contents().failing = true;
-    let error = core.erase_app_data(ERASE_CONFIRMATION, noon()).unwrap_err();
+    let error = app.erase_app_data(ERASE_CONFIRMATION, noon()).unwrap_err();
     assert_eq!(error, CommandError::keychain());
-    assert_eq!(core.startup_status().state, StartupState::Ready);
-    assert!(core.list_entries().unwrap().is_empty());
+    assert_eq!(app.startup_status().state, StartupState::Ready);
+    assert!(app.lock().list_entries().unwrap().is_empty());
+    assert!(!fixture.paths().plan.exists());
+    let status = app.lock().backup_status(noon());
+    assert_eq!(status.state, BackupState::NeedsFolder);
+    assert!(!status.passphrase_available && !status.remembered);
+    // Only the Keychain item remains.
+    assert_eq!(
+        fixture.keychain.contents().item.as_deref(),
+        Some(PASSPHRASE)
+    );
 }
 
 #[test]
 fn the_journal_closes_at_exit_only_when_no_operation_holds_it() {
     let fixture = Fixture::new();
-    let state = AppState::new(fixture.paths(), Box::new(fixture.keychain.clone()));
-    state.lock().launch(noon());
+    let state = fixture.launch();
     {
         let core = state.lock();
         state.close_if_idle();

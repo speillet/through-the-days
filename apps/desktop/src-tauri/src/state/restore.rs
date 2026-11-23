@@ -3,10 +3,14 @@
 //! The renderer never sends a path: a registered name is checked and resolved inside the chosen
 //! folder, and a picked file stays in native state.
 
-use super::Core;
-use crate::{diagnostics, error::CommandError, paths::TEMPORARY_PREFIX};
+use super::{Core, StartupState};
+use crate::{
+    diagnostics,
+    error::CommandError,
+    paths::{self, STAGING_PREFIX, SetAside},
+};
 use chrono::{DateTime, Utc};
-use journal_core::{Error, list_backups, verify_backup};
+use journal_core::{Error, Journal, erase_journal_files, list_backups, verify_backup};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File, OpenOptions},
@@ -15,7 +19,6 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
-use zeroize::Zeroizing;
 
 /// Larger than any backup journal-core can restore (its journal image is limited to 1 GiB).
 const MAXIMUM_BACKUP_BYTES: u64 = 2 << 30;
@@ -46,7 +49,8 @@ pub struct RestoreOutcome {
     pub entries: usize,
     /// A validated backup of the replaced journal was published first.
     pub safety_backup: bool,
-    /// A recovery folder holding the unopened journal and its SQLite companions.
+    /// Display-only file name of a journal that could not be opened and was kept aside in the
+    /// data folder; `None` when the journal was replaced in place.
     pub set_aside: Option<String>,
 }
 
@@ -77,39 +81,36 @@ impl Core {
 
     /// Replaces the journal with a validated backup.
     ///
-    /// When the current journal holds any entry, including trash, and a folder and the session
-    /// passphrase are available, a safety backup of it is published first; if that fails the
-    /// restore is cancelled. The chosen backup is validated before the safety backup, so a
-    /// wrong passphrase never publishes one. A failed restore leaves the journal unchanged.
+    /// The chosen backup is verified first, so a wrong passphrase or a damaged file changes
+    /// nothing. When the current journal holds any entry, including trash, and a folder and the
+    /// session passphrase are available, a safety backup of it is published before it is
+    /// replaced. If the journal cannot be read for that, or the safety backup fails, the restore
+    /// stops with `safetyBackupFailed`, unless `without_safety_backup` confirms that it may go
+    /// ahead without one. When the start failed or found a journal this version cannot open,
+    /// the backup replaces the journal file instead (see [`Self::restore_at_startup`]). A failed
+    /// restore leaves the journal unchanged.
     pub fn restore_backup(
         &mut self,
         source: RestoreSource,
-        passphrase: Zeroizing<String>,
+        passphrase: &str,
         without_safety_backup: bool,
         now: DateTime<Utc>,
     ) -> Result<RestoreOutcome, CommandError> {
+        match self.startup.state {
+            StartupState::Ready => {}
+            StartupState::Failed | StartupState::Unsupported => {
+                return self.restore_at_startup(&source, passphrase, now);
+            }
+            StartupState::NeedsMigration => return Err(CommandError::not_ready()),
+        }
         let source = self.restore_source(&source)?;
         // The safety backup can prune the oldest registered backup, which may be the one being
         // restored, so the restore reads a private copy (ciphertext only) taken beforehand.
         let staged = StagedCopy::of(&source, &self.paths.data_dir).map_err(|_| Error::Restore)?;
-        verify_backup(staged.path(), &passphrase)?;
-        if self.journal.is_none() {
-            return self.restore_unopened(staged.path(), &passphrase, now);
-        }
-        let needs_safety = match self.needs_safety_backup() {
-            Ok(needed) => needed,
-            Err(_) if without_safety_backup => false,
-            Err(_) => return Err(CommandError::safety_backup_failed()),
-        };
-        let safety_backup = if needs_safety {
-            // Publishing prunes the oldest backup: only do it for a restore that can succeed.
-            self.publish_safety_backup(now)?;
-            true
-        } else {
-            false
-        };
+        verify_backup(staged.path(), passphrase)?;
+        let safety_backup = self.safety_backup(without_safety_backup, now)?;
         let journal = self.journal.as_mut().ok_or_else(CommandError::not_ready)?;
-        journal.restore_from(staged.path(), &passphrase)?;
+        journal.restore_from(staged.path(), passphrase)?;
         drop(staged);
         if let Err(error) = journal.purge_expired(now.timestamp()) {
             diagnostics::record("purge expired trash", error.code());
@@ -123,51 +124,55 @@ impl Core {
         })
     }
 
-    /// Restores off to the side first, keeping every original SQLite file together for recovery.
-    fn restore_unopened(
+    /// Restores when no journal is open because the start failed or found a journal this
+    /// version cannot open.
+    ///
+    /// Once the backup is verified, the journal file and its SQLite companions are moved aside
+    /// in the data folder, never deleted, and a new journal created in their place receives the
+    /// backup. If that fails, the new journal is removed and the files are moved back.
+    fn restore_at_startup(
         &mut self,
-        backup: &Path,
+        source: &RestoreSource,
         passphrase: &str,
         now: DateTime<Utc>,
     ) -> Result<RestoreOutcome, CommandError> {
-        let candidate = tempfile::Builder::new()
-            .prefix(TEMPORARY_PREFIX)
-            .tempfile_in(&self.paths.data_dir)
-            .map_err(|_| Error::Storage)?;
-        let mut journal = journal_core::Journal::open(candidate.path())?;
-        journal.restore_from(backup, passphrase)?;
-        let entries = journal.list()?.len();
-        drop(journal);
-        let name = format!("journal-recovery-{}", uuid::Uuid::new_v4());
-        let recovery_dir = self.paths.data_dir.join(&name);
-        crate::paths::create_private_dir(&recovery_dir).map_err(|_| Error::Storage)?;
-        let mut moved = Vec::new();
-        for suffix in ["", "-wal", "-shm", "-journal"] {
-            let file = format!("journal.sqlite{suffix}");
-            let original = self.paths.data_dir.join(&file);
-            match fs::rename(&original, recovery_dir.join(&file)) {
-                Ok(()) => moved.push(file),
-                Err(error) if error.kind() == io::ErrorKind::NotFound => (),
-                Err(_) => {
-                    for file in &moved {
-                        let _ = fs::rename(recovery_dir.join(file), self.paths.data_dir.join(file));
-                    }
-                    return Err(Error::Storage.into());
+        paths::create_private_dir(&self.paths.data_dir).map_err(|_| Error::Storage)?;
+        let source = self.restore_source(source)?;
+        let staged = StagedCopy::of(&source, &self.paths.data_dir).map_err(|_| Error::Restore)?;
+        verify_backup(staged.path(), passphrase)?;
+        let set_aside =
+            SetAside::move_journal(&self.paths.journal, now.timestamp()).map_err(|_| {
+                diagnostics::record("set journal aside", Error::Storage.code());
+                Error::Storage
+            })?;
+        let restored = Journal::open(&self.paths.journal).and_then(|mut journal| {
+            journal.restore_from(staged.path(), passphrase)?;
+            Ok(journal)
+        });
+        let journal = match restored {
+            Ok(journal) => journal,
+            Err(error) => {
+                diagnostics::record("restore at startup", error.code());
+                // Only the new, empty journal is removed; the original files go back in place.
+                let _ = erase_journal_files(&self.paths.journal);
+                if let Some(set_aside) = set_aside
+                    && set_aside.put_back().is_err()
+                {
+                    diagnostics::record("put journal back", Error::Storage.code());
                 }
+                return Err(error.into());
             }
-        }
-        if candidate.persist_noclobber(&self.paths.journal).is_err() {
-            for file in &moved {
-                let _ = fs::rename(recovery_dir.join(file), self.paths.data_dir.join(file));
-            }
-            return Err(Error::Storage.into());
-        }
-        self.open_journal(now);
+        };
+        drop(staged);
+        let entries = journal.list()?.len();
+        self.journal = Some(journal);
+        self.startup = self.status(StartupState::Ready, None, None);
+        self.purge_after_opening(now);
         self.picked = None;
         Ok(RestoreOutcome {
             entries,
             safety_backup: false,
-            set_aside: Some(name),
+            set_aside: set_aside.map(|set_aside| set_aside.name().to_owned()),
         })
     }
 
@@ -193,12 +198,36 @@ impl Core {
         }
     }
 
-    /// A journal that holds any entry, including trash, is backed up before it is replaced
-    /// whenever a folder and the session passphrase make that possible.
-    fn needs_safety_backup(&self) -> Result<bool, CommandError> {
+    /// Publishes a safety backup of a journal that holds any entry, including trash, whenever a
+    /// folder and the session passphrase make that possible. Returns whether one was published.
+    ///
+    /// A journal that cannot be read, or a safety backup that fails, stops the restore unless
+    /// `without_safety_backup` confirms going ahead without one. The cause of a failed backup
+    /// stays visible in the backup status.
+    fn safety_backup(
+        &mut self,
+        without_safety_backup: bool,
+        now: DateTime<Utc>,
+    ) -> Result<bool, CommandError> {
         if self.plan.folder.is_none() || self.passphrase.is_none() {
             return Ok(false);
         }
+        let published = match self.holds_entries() {
+            Ok(false) => return Ok(false),
+            Ok(true) => self.publish_safety_backup(now),
+            Err(error) => {
+                diagnostics::record("read journal before restore", error.code);
+                Err(error)
+            }
+        };
+        match published {
+            Ok(()) => Ok(true),
+            Err(_) if without_safety_backup => Ok(false),
+            Err(_) => Err(CommandError::safety_backup_failed()),
+        }
+    }
+
+    fn holds_entries(&self) -> Result<bool, CommandError> {
         let journal = self.journal()?;
         Ok(!journal.list()?.is_empty() || !journal.trash_items()?.is_empty())
     }
@@ -215,6 +244,7 @@ impl Core {
             .as_deref()
             .ok_or_else(CommandError::needs_passphrase)?;
         if let Err(error) = journal.backup_to(folder, passphrase, now.timestamp()) {
+            diagnostics::record("safety backup", error.code());
             let error = CommandError::from(error);
             self.last_error = Some(error.clone());
             return Err(error);
@@ -224,7 +254,8 @@ impl Core {
 }
 
 /// A private copy of a backup file in the data folder, removed when dropped. It holds the
-/// encrypted file only, and its name lets launch and erasure clean up after a crash.
+/// encrypted file only, and its name lets launch and erasure clean up after a crash. Its prefix
+/// is not the temporary-file prefix, which a backup published into the same folder removes.
 struct StagedCopy(PathBuf);
 
 impl StagedCopy {
@@ -238,7 +269,7 @@ impl StagedCopy {
             .duration_since(UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_nanos());
         let name = format!(
-            "{TEMPORARY_PREFIX}restore-{}-{nanos}-{}",
+            "{STAGING_PREFIX}{}-{nanos}-{}",
             std::process::id(),
             COPIES.fetch_add(1, Ordering::Relaxed)
         );
@@ -266,7 +297,7 @@ impl Drop for StagedCopy {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, reason = "a failed unwrap is a failed test")]
 mod tests {
-    use super::{RestoreSource, is_backup_name};
+    use super::{RestoreOutcome, RestoreSource, is_backup_name};
 
     #[test]
     fn registered_names_cannot_leave_the_backup_folder() {
@@ -312,5 +343,30 @@ mod tests {
         let path: Option<RestoreSource> =
             serde_json::from_value(serde_json::json!({"kind": "path", "path": "/etc"})).ok();
         assert_eq!(path, None);
+    }
+
+    #[test]
+    fn outcomes_use_the_renderer_shape() {
+        let outcome = RestoreOutcome {
+            entries: 2,
+            safety_backup: false,
+            set_aside: Some("journal.unreadable-1795363200.sqlite".into()),
+        };
+        assert_eq!(
+            serde_json::to_value(outcome).unwrap(),
+            serde_json::json!({
+                "entries": 2, "safetyBackup": false,
+                "setAside": "journal.unreadable-1795363200.sqlite"
+            })
+        );
+        let in_place = RestoreOutcome {
+            entries: 0,
+            safety_backup: true,
+            set_aside: None,
+        };
+        assert_eq!(
+            serde_json::to_value(in_place).unwrap()["setAside"],
+            serde_json::Value::Null
+        );
     }
 }

@@ -48,10 +48,19 @@ impl CommandError {
         Self::shell("confirmation", "Type ERASE in capital letters to confirm.")
     }
 
+    /// A restore stopped because the current journal could not be backed up first.
     pub fn safety_backup_failed() -> Self {
         Self::shell(
             "safetyBackupFailed",
             "A safety backup of your current journal could not be made, so nothing was restored. If your current journal is damaged, you can restore without a safety backup.",
+        )
+    }
+
+    /// The chosen backup folder is the application data folder or a folder inside it.
+    pub fn data_folder_chosen() -> Self {
+        Self::shell(
+            "backupFolder",
+            "Choose a folder outside the app's own data folder.",
         )
     }
 
@@ -83,15 +92,14 @@ mod tests {
             CommandError::needs_passphrase(),
             CommandError::keychain(),
             CommandError::confirmation(),
+            CommandError::safety_backup_failed(),
+            CommandError::data_folder_chosen(),
             CommandError::unknown(),
         ]
     }
 
-    /// Codes are only useful to the renderer if its `ErrorCode` union knows them.
-    #[test]
-    fn every_shell_and_core_code_is_part_of_the_renderer_contract() {
-        let types = include_str!("../../src/api/types.ts");
-        let core_errors = [
+    fn core_errors() -> Vec<CommandError> {
+        [
             Error::Storage,
             Error::Conflict,
             Error::Occupied,
@@ -100,25 +108,59 @@ mod tests {
             Error::Document,
             Error::MigrationRequired,
             Error::Unsupported,
+            Error::Damaged,
             Error::Score,
             Error::Completion,
             Error::Reflection,
             Error::Emotion,
             Error::Backup,
             Error::BackupValidation,
+            Error::BackupRegistry,
+            Error::BackupFolder,
             Error::Restore,
             Error::Passphrase,
-        ];
-        let errors = shell_errors()
-            .into_iter()
-            .chain(core_errors.into_iter().map(CommandError::from));
-        for error in errors {
+        ]
+        .into_iter()
+        .map(CommandError::from)
+        .collect()
+    }
+
+    /// Codes are only useful to the renderer if its `ErrorCode` union knows them.
+    #[test]
+    fn every_shell_and_core_code_is_part_of_the_renderer_contract() {
+        let types = include_str!("../../src/api/types.ts");
+        for error in shell_errors().into_iter().chain(core_errors()) {
             assert!(
                 types.contains(&format!("| '{}'", error.code)),
                 "ErrorCode in types.ts is missing {}",
                 error.code
             );
-            assert!(error.message.ends_with('.'), "{}", error.message);
+            // A full sentence, or one that ends with the action it names ("Choose a backup file…").
+            assert!(
+                error.message.ends_with('.') || error.message.ends_with('…'),
+                "{}",
+                error.message
+            );
+        }
+    }
+
+    /// The browser preview reproduces the native errors, so both show the same English text.
+    #[test]
+    fn every_message_is_the_one_the_browser_preview_shows() {
+        let preview = concat!(
+            include_str!("../../src/api/memory.ts"),
+            include_str!("../../src/api/client.ts")
+        );
+        for error in shell_errors().into_iter().chain(core_errors()) {
+            // The preview has no data folder that could be chosen as the backup folder.
+            if error == CommandError::data_folder_chosen() {
+                continue;
+            }
+            assert!(
+                preview.contains(&error.message),
+                "the browser preview does not show the message of {}",
+                error.code
+            );
         }
     }
 

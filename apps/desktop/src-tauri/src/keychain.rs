@@ -3,6 +3,9 @@
 //! The passphrase is a generic password item: service [`SERVICE`] (a separate service for
 //! development builds, so they never read the release item) and account [`ACCOUNT`]. Other
 //! platforms have no store: nothing is remembered and the passphrase lives for the session.
+//!
+//! Any operation can wait for the person to answer a macOS prompt, for example after a rebuild
+//! changed the app's signature, so callers never hold the journal while they use the store.
 
 use zeroize::Zeroizing;
 
@@ -105,7 +108,7 @@ impl SecretStore for Unavailable {
 #[cfg(test)]
 pub mod fake {
     use super::{KeychainError, SecretStore};
-    use std::sync::{Arc, Mutex, PoisonError};
+    use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
     use zeroize::Zeroizing;
 
     #[derive(Debug, Default)]
@@ -115,9 +118,20 @@ pub mod fake {
         pub failing: bool,
     }
 
+    /// Operations wait while `holding` is set, like a Keychain prompt nobody has answered yet.
+    #[derive(Debug, Default)]
+    struct Prompt {
+        holding: bool,
+        /// Operations waiting for the prompt to be answered.
+        waiting: usize,
+    }
+
     /// A shared handle: the test keeps one clone to inspect what the shell stored.
     #[derive(Debug, Clone, Default)]
-    pub struct FakeKeychain(pub Arc<Mutex<Contents>>);
+    pub struct FakeKeychain {
+        contents: Arc<Mutex<Contents>>,
+        prompt: Arc<(Mutex<Prompt>, Condvar)>,
+    }
 
     impl FakeKeychain {
         pub fn holding(passphrase: &str) -> Self {
@@ -126,13 +140,55 @@ pub mod fake {
             keychain
         }
 
-        pub fn contents(&self) -> std::sync::MutexGuard<'_, Contents> {
-            self.0.lock().unwrap_or_else(PoisonError::into_inner)
+        pub fn contents(&self) -> MutexGuard<'_, Contents> {
+            self.contents.lock().unwrap_or_else(PoisonError::into_inner)
+        }
+
+        /// Makes every later operation wait, as if macOS showed a prompt, until [`Self::answer`].
+        pub fn show_prompt(&self) {
+            self.prompt().holding = true;
+        }
+
+        /// Answers the prompt: waiting operations continue.
+        pub fn answer(&self) {
+            self.prompt().holding = false;
+            self.prompt.1.notify_all();
+        }
+
+        /// Waits until an operation is waiting for the prompt.
+        pub fn wait_for_prompt(&self) {
+            let mut prompt = self.prompt();
+            while prompt.waiting == 0 {
+                prompt = self
+                    .prompt
+                    .1
+                    .wait(prompt)
+                    .unwrap_or_else(PoisonError::into_inner);
+            }
+        }
+
+        fn prompt(&self) -> MutexGuard<'_, Prompt> {
+            self.prompt.0.lock().unwrap_or_else(PoisonError::into_inner)
+        }
+
+        fn pass_prompt(&self) {
+            let mut prompt = self.prompt();
+            prompt.waiting += 1;
+            self.prompt.1.notify_all();
+            while prompt.holding {
+                prompt = self
+                    .prompt
+                    .1
+                    .wait(prompt)
+                    .unwrap_or_else(PoisonError::into_inner);
+            }
+            prompt.waiting -= 1;
         }
     }
 
     impl SecretStore for FakeKeychain {
         fn read(&self) -> Result<Option<Zeroizing<String>>, KeychainError> {
+            self.pass_prompt();
             let contents = self.contents();
             if contents.failing {
                 return Err(KeychainError);
@@ -141,6 +197,7 @@ pub mod fake {
         }
 
         fn store(&self, passphrase: &str) -> Result<(), KeychainError> {
+            self.pass_prompt();
             let mut contents = self.contents();
             if contents.failing {
                 return Err(KeychainError);
@@ -150,6 +207,7 @@ pub mod fake {
         }
 
         fn delete(&self) -> Result<(), KeychainError> {
+            self.pass_prompt();
             let mut contents = self.contents();
             if contents.failing {
                 return Err(KeychainError);
