@@ -11,6 +11,8 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   OPENSPEC_TELEMETRY: "0"
+  # Password-derived encryption tests use substantial memory per running test.
+  RUST_TEST_THREADS: "2"
 
 jobs:
   journal-core:
@@ -33,7 +35,8 @@ jobs:
 
   desktop-shell:
     name: Desktop shell (macOS)
-    runs-on: macos-latest
+    # Standard Intel capacity avoids the ARM pool that failed to acquire our first jobs.
+    runs-on: macos-15-intel
     timeout-minutes: 40
     steps:
       - name: Check out repository
@@ -60,7 +63,7 @@ jobs:
     name: Interface (TypeScript)
     # macOS WebKit honours the system keyboard-navigation rules that the native app's
     # WKWebView follows, so end-to-end keyboard checks are meaningful only on macOS.
-    runs-on: macos-latest
+    runs-on: macos-15-intel
     timeout-minutes: 30
     steps:
       - name: Check out repository
