@@ -4,7 +4,7 @@
 
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 1430;
+const PORT = Number(process.env.TTD_E2E_PORT ?? 1430);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const CI = Boolean(process.env.CI);
 
@@ -35,9 +35,9 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'], ...context } },
   ],
   webServer: {
-    command: 'npx vite --port 1430 --strictPort',
+    command: `npx vite --port ${PORT} --strictPort`,
     url: BASE_URL,
-    reuseExistingServer: !CI,
+    reuseExistingServer: !CI && !process.env.TTD_E2E_PORT,
     timeout: 60_000,
   },
 });
