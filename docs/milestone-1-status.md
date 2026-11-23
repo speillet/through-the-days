@@ -28,6 +28,12 @@ The smoke runner uses and removes a temporary development journal rather than op
 
 The quit regression first reproduced an unanswered flush approving exit; it now verifies the app stays open and a later quit retries. Emission/timer failures follow the same safe path. The review finding was rechecked after the fix.
 
+### GitHub CI
+
+The first [Application run](https://github.com/speillet/through-the-days/actions/runs/45264362275) passed the Linux journal-core job. Both macOS jobs were cancelled before execution because GitHub could not allocate ARM runners after repeated attempts. The specification workflow passed.
+
+CI now uses the [standard macOS 15 Intel runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) for the same native/interface checks. Local native verification above ran on Apple Silicon. Rust test concurrency is bounded to two because password-derived encryption uses substantial memory per test. This changes verification infrastructure only; product requirements and delivered behaviour are unchanged. The rerun must establish its own result and is not implied to pass by these configuration changes.
+
 ## Specification reconciliation
 
 The verified `journal-entries`, `daily-check-in`, `journal-editor` and `local-persistence` deltas are synchronised into `openspec/specs/`. The complete intended contracts remain in the active `build-offline-journal` change. `desktop-shell`, `local-data-protection` and `product-guardrails` remain there pending broader platform/acceptance verification; their existing code and automated coverage are not a substitute for all their native scenarios.
