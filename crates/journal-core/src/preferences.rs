@@ -30,6 +30,8 @@ pub struct Preferences {
     pub show_word_count: bool,
     /// Text size of the interface and the journal page in percent: 100, 115, 130 or 150.
     pub text_scale: u16,
+    pub timeline_days: u8,
+    pub timeline_metrics: Vec<String>,
 }
 
 impl Default for Preferences {
@@ -46,6 +48,13 @@ impl Default for Preferences {
             default_depth: Depth::Daily,
             show_word_count: false,
             text_scale: 100,
+            timeline_days: 14,
+            timeline_metrics: vec![
+                "mood".into(),
+                "energy".into(),
+                "pride".into(),
+                "progress".into(),
+            ],
         }
     }
 }
@@ -69,6 +78,14 @@ impl Preferences {
         self.journal_date(Utc::now())?;
         if !matches!(self.theme.as_str(), "system" | "light" | "dark")
             || !TEXT_SCALES.contains(&self.text_scale)
+        {
+            return Err(Error::Document);
+        }
+        if ![7, 14, 30].contains(&self.timeline_days)
+            || self
+                .timeline_metrics
+                .iter()
+                .any(|m| !matches!(m.as_str(), "mood" | "energy" | "pride" | "progress"))
         {
             return Err(Error::Document);
         }

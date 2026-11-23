@@ -62,6 +62,8 @@ export interface Entry {
   wins: Win[];
   /** IANA time zone configured when the entry was created (context only). */
   createdTimeZone: string;
+  /** Older journals default to true; exclusion affects insights, never original reading. */
+  includeInInsights?: boolean;
 }
 
 export interface Preferences {
@@ -77,6 +79,8 @@ export interface Preferences {
   showWordCount: boolean;
   /** Text size for the whole interface and the journal page; layout spacing is unchanged. */
   textScale: TextScale;
+  timelineDays?: 7 | 14 | 30;
+  timelineMetrics?: ScoreMetric[];
 }
 
 export interface TrashItem {
@@ -137,12 +141,7 @@ export interface StartupStatus {
 }
 
 export type BackupState =
-  | 'settingsUnreadable'
-  | 'needsFolder'
-  | 'needsPassphrase'
-  | 'due'
-  | 'upToDate'
-  | 'failed';
+  'settingsUnreadable' | 'needsFolder' | 'needsPassphrase' | 'due' | 'upToDate' | 'failed';
 
 export interface BackupStatus {
   state: BackupState;
@@ -190,4 +189,63 @@ export interface RestoreOutcome {
    * (restore from the startup screen); null when the journal was replaced in place.
    */
   setAside: string | null;
+}
+
+export type ScoreMetric = 'mood' | 'energy' | 'pride' | 'progress';
+export interface SearchRequest {
+  text?: string;
+  from?: string | null;
+  to?: string | null;
+  slot?: Slot | null;
+  emotion?: string | null;
+  complete?: boolean | null;
+  hasWin?: boolean | null;
+  metric?: ScoreMetric | null;
+  minimum?: number | null;
+}
+export interface Measure {
+  observations: number;
+  mean: number | null;
+}
+export interface Observation {
+  id: string;
+  slot: Slot;
+  mood: number | null;
+  energy: number | null;
+  pride: number | null;
+  progress: number | null;
+}
+export interface DayObservations {
+  date: string;
+  observations: Observation[];
+}
+export interface ReadingReport {
+  from: string;
+  to: string;
+  calendarDays: number;
+  recordedDays: number;
+  entries: number;
+  wins: number;
+  actions: number;
+  mood: Measure;
+  energy: Measure;
+  pride: Measure;
+  progress: Measure;
+  days: DayObservations[];
+}
+export interface WeeklyReview {
+  weekStart: string;
+  weekEnd: string;
+  notes: string;
+  revision: number;
+  summary: string | null;
+  stale: boolean;
+  report: ReadingReport;
+}
+export interface Milestone {
+  id: string;
+  date: string;
+  title: string;
+  notes: string;
+  revision: number;
 }

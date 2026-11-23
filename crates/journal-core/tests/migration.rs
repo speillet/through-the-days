@@ -38,7 +38,7 @@ fn existing_journal_waits_for_recovery_then_migrates_with_nullable_progress() {
     );
     assert_eq!(age_files(directory.path()).len(), 1);
     assert_eq!(list_backups(directory.path()).unwrap().len(), 1);
-    assert_eq!(schema_version(&path), Ok(Some(2)));
+    assert_eq!(schema_version(&path), Ok(Some(3)));
     drop(journal);
 
     // The upgrade step itself records the missing answer: `progress` defaults when it is absent,

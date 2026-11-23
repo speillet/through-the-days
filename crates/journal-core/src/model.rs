@@ -117,6 +117,8 @@ pub struct Entry {
     /// IANA time zone configured when the entry was created; context only.
     #[serde(default = "default_time_zone")]
     pub created_time_zone: String,
+    #[serde(default = "default_true")]
+    pub include_in_insights: bool,
 }
 
 impl Entry {
@@ -140,6 +142,7 @@ impl Entry {
             actions: vec![],
             wins: vec![],
             created_time_zone: default_time_zone(),
+            include_in_insights: true,
         }
     }
 
@@ -223,6 +226,10 @@ pub(crate) fn parse_date(date: &str) -> Result<NaiveDate, Error> {
 
 fn default_time_zone() -> String {
     "Europe/Paris".into()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Node types of the editor schema, `JOURNAL_NODE_TYPES` in

@@ -15,6 +15,9 @@ import type {
   RestoreSource,
   StartupStatus,
   TrashItem,
+  ReadingReport,
+  WeeklyReview,
+  Milestone,
 } from './types';
 
 export const FLUSH_REQUEST_EVENT = 'app://flush-request';
@@ -51,6 +54,21 @@ export function createTauriApi(): JournalApi {
     setPreferences: (preferences) => call<Preferences>('set_preferences', { preferences }),
     entriesOn: (date) => call<Entry[]>('entries_on', { date }),
     listEntries: () => call<Entry[]>('list_entries'),
+    searchEntries: (request) => call<Entry[]>('search_entries', { request }),
+    readingReport: (request) => call<ReadingReport>('reading_report', { request }),
+    weeklyReview: (date) => call<WeeklyReview>('weekly_review', { date }),
+    saveWeeklyNotes: (date, notes, revision) =>
+      call<WeeklyReview>('save_weekly_notes', { date, notes, revision }),
+    generateWeeklySummary: (date, revision) =>
+      call<WeeklyReview>('generate_weekly_summary', { date, revision }),
+    clearReadingSummaries: async () => {
+      await call<null>('clear_reading_summaries');
+    },
+    listMilestones: () => call<Milestone[]>('list_milestones'),
+    saveMilestone: (milestone) => call<Milestone>('save_milestone', { milestone }),
+    deleteMilestone: async (id, revision) => {
+      await call<null>('delete_milestone', { id, revision });
+    },
     getEntry: (id) => call<Entry>('get_entry', { id }),
     saveEntry: (entry) => call<Entry>('save_entry', { entry }, ENTRY_NOT_SENT),
     trashEntry: async (id, revision) => {

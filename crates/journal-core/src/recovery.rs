@@ -391,12 +391,17 @@ fn check_structure(connection: &Connection) -> Result<(), Error> {
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
-    // Both supported versions use these names; anything else (a trigger, a view) is refused.
-    let expected = [
+    // Only this version's named tables and indexes are accepted; triggers/views are refused.
+    let mut expected = vec![
         ("index", "active_slot", "journal_entries"),
         ("table", "journal_entries", "journal_entries"),
         ("table", "preferences", "preferences"),
     ];
+    if schema::user_version(connection)? >= 3 {
+        expected.push(("table", "timeline_milestones", "timeline_milestones"));
+        expected.push(("table", "weekly_reviews", "weekly_reviews"));
+    }
+    expected.sort_unstable();
     let matches = objects
         .iter()
         .map(|(kind, name, table)| (kind.as_str(), name.as_str(), table.as_str()))
@@ -422,6 +427,7 @@ fn canonical_copy(staged: &Connection) -> Result<Connection, Error> {
     schema::create_current(&transaction)?;
     copy_entries(staged, &transaction)?;
     copy_preferences(staged, &transaction)?;
+    copy_reading_records(staged, &transaction)?;
     transaction.commit()?;
     Ok(canonical)
 }
@@ -475,6 +481,36 @@ fn copy_preferences(staged: &Connection, canonical: &Connection) -> Result<(), E
             serde_json::from_str::<Preferences>(&value)?.validate()?;
         }
         insert.execute(params![key, value])?;
+    }
+    Ok(())
+}
+
+fn copy_reading_records(staged: &Connection, canonical: &Connection) -> Result<(), Error> {
+    let mut query = staged.prepare("SELECT week_start,payload FROM weekly_reviews")?;
+    for row in query.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+        let (key, payload) = row?;
+        let review: crate::reviews::StoredReview = serde_json::from_str(&payload)?;
+        review.validate()?;
+        if review.week_start != key {
+            return Err(Error::Restore);
+        }
+        canonical.execute(
+            "INSERT INTO weekly_reviews(week_start,payload) VALUES(?1,?2)",
+            params![key, payload],
+        )?;
+    }
+    let mut query = staged.prepare("SELECT id,payload FROM timeline_milestones")?;
+    for row in query.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+        let (id, payload) = row?;
+        let milestone: crate::Milestone = serde_json::from_str(&payload)?;
+        milestone.validate()?;
+        if milestone.id != id || milestone.revision == 0 {
+            return Err(Error::Restore);
+        }
+        canonical.execute(
+            "INSERT INTO timeline_milestones(id,payload) VALUES(?1,?2)",
+            params![id, payload],
+        )?;
     }
     Ok(())
 }

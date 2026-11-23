@@ -450,8 +450,13 @@ mod tests {
         assert_eq!(names, expected);
         // Every state is one the renderer's BackupState union knows.
         let types = include_str!("../../../src/api/types.ts");
+        let state_union = types
+            .split("export type BackupState")
+            .nth(1)
+            .and_then(|declaration| declaration.split(';').next())
+            .unwrap_or_default();
         for name in expected.iter().flatten().filter_map(|name| name.as_str()) {
-            assert!(types.contains(&format!("| '{name}'")), "{name}");
+            assert!(state_union.contains(&format!("'{name}'")), "{name}");
         }
     }
 }
