@@ -73,3 +73,17 @@ Every numbered case in the [product acceptance tests](acceptance-tests.md), link
 Keep tests at observable interfaces. Persistence and migration tests use real temporary databases; browser tests validate the React surface; native Mac checks cover the application shell, VoiceOver, and platform behavior that browser automation cannot establish.
 
 Each task carries verification evidence for its own slice. Record the command or manual scenario, the actual result, and limitations when the task is implemented. Mark a requirement implemented only after its scenarios are verified; OpenSpec validation alone is not that evidence.
+
+## Milestone 1 evidence
+
+The isolated milestone-1 branch was checked on November 23, 2026 with synthetic data. `npm run check`, 416 interface tests, 147 Rust tests and 52 WebKit/Chromium tests pass. Clippy, frontend compilation and the macOS debug build pass. Three native launches verify writing/save, exact recovery after restart and English UI with French system-language settings. [Milestone 1 status](milestone-1-status.md) records commands, scope and remaining acceptance.
+
+| Acceptance cases | Concrete evidence | Limits |
+|---|---|---|
+| 1–3, 7, 13 | `crates/journal-core/tests/journal.rs`, persistence/schema suites; autosave/clock/exit state tests; writing/editor browser suites. | Only acknowledged revisions are durable; native OS termination limits are documented. |
+| 9–10, 12 | Core recovery/migration suites and native state tests cover coherent snapshots, wrong keys, corruption, partial writes, clean restore, daily/catch-up, recovery after failed open and managed erasure. Privacy guards exclude interface network APIs/remote assets. | OS networking disabled, actual Keychain/file dialogs and physical exFAT checks remain unexecuted. |
+| 8, 21–22 | English-copy, privacy and Unicode guards; browser keyboard, reduced-motion, appearance, small-window and accessibility checks. | Automated scans do not establish VoiceOver or every native interaction. |
+| 24–26, 32 | WritingDepth/GentleView/check-in/domain tests and browser writing scenarios verify the same entry survives depth/visibility changes, nullable progress and explicitly promoted wins without double counting. | Later reading-surface combinations belong to milestone 2. |
+| 33 | Trash removes active source access; native erasure covers the journal, its companions, managed set-aside journals, device settings and credentials. Independent encrypted backups remain separate. | Full derivative-surface acceptance remains unchecked; future derivatives are not present here. |
+
+The milestone-1 task file retains unfinished acceptance. Later-milestone rows in the ownership table remain plans. Verified main-spec sync is limited to entries, check-in, editor and persistence; the active change is not archived.

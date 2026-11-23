@@ -1,7 +1,7 @@
 # Through the Days — A Personal Journal, Progress Tracker, and CBT Companion for macOS
 
-> **Status:** Consolidated product requirements v0.7 — implementation specification, not a finished application.
-> **Updated:** November 22, 2026
+> **Status:** Consolidated product requirements v0.7 — implementation specification. The offline journal is implemented in this branch, with native acceptance still open. Reading and later runtime features are outside this milestone-1 PR.
+> **Updated:** November 23, 2026
 > **Product name:** Through the Days
 > **GitHub repository:** `through-the-days`
 > **Proposed macOS bundle identifier:** `com.throughthedays.app`
@@ -13,7 +13,7 @@
 > **Differentiators:** A short guided reflection before writing, recognition of daily actions and small wins, optional LLM-assisted cognitive behavioural therapy (CBT) exercises, a progress timeline, thematic exploration, calendar and book-style reading, and optional local ChatGPT analytics.
 > **Privacy:** Local-first; no automatic uploads of private data and no automatic publication.
 
-Detailed development planning now lives in [the OpenSpec workflow](docs/specification-workflow.md), with [recorded product decisions](docs/product-decisions.md), a [domain glossary](GLOSSARY.md), and [acceptance coverage](docs/acceptance-coverage.md). The eight changes under `openspec/changes/` are proposed specifications, not implemented features. Explicit decisions from the specification interview refine this brief, including 30-day trash and daily encrypted backups with next-launch catch-up before real personal use; the live database initially relies on macOS protections. [Appendix v0.1](appendix.md) is a proposal source; its useful additions are consolidated here and in OpenSpec, with duplicates, deferrals, and conflict resolutions recorded in [the integration assessment](docs/appendix-integration.md). This product reference, its linked thematic documents, and recorded user decisions govern development. The [main README](README.md) is the short user-facing overview.
+Detailed development planning now lives in [the OpenSpec workflow](docs/specification-workflow.md), with [recorded product decisions](docs/product-decisions.md), a [domain glossary](GLOSSARY.md), and [acceptance coverage](docs/acceptance-coverage.md). Verified entry, check-in, editor and persistence requirements are synchronised to `openspec/specs/`. The milestone-1 change remains active for outstanding native acceptance; it has not been archived. Later runtime milestones are outside this branch. See [milestone 1 status](docs/milestone-1-status.md). Explicit decisions from the specification interview refine this brief, including 30-day trash and daily encrypted backups with next-launch catch-up before real personal use; the live database initially relies on macOS protections. [Appendix v0.1](appendix.md) is a proposal source; its useful additions are consolidated here and in OpenSpec, with duplicates, deferrals, and conflict resolutions recorded in [the integration assessment](docs/appendix-integration.md). This product reference, its linked thematic documents, and recorded user decisions govern development. The [main README](README.md) is the short user-facing overview.
 
 ---
 
@@ -756,7 +756,7 @@ JSON round trips preserve the selected core records, IDs, timestamps, provenance
 
 The [integration assessment](docs/appendix-integration.md) maps all INT-01–INT-10 ideas and TEST-01–TEST-22 cases to their canonical owners. Existing check-in, timeline, counters, consent, manual CBT and metrics were enriched rather than copied into competing features or tables. The original [appendix](appendix.md) remains a historical proposal, including alternatives not adopted.
 
-The eight [OpenSpec changes](docs/specification-workflow.md) separate the core journal, reading/review views, manual CBT and optional AI, exploration, later source-backed insights, the extended CBT library, ChatGPT analysis, and distribution/portability. Their tasks remain unchecked; document validation is not evidence of an implemented application.
+The eight [OpenSpec changes](docs/specification-workflow.md) separate the core journal, reading/review views, manual CBT and optional AI, exploration, later source-backed insights, the extended CBT library, ChatGPT analysis, and distribution/portability. Milestone 1's tasks carry their verification evidence; later changes keep unchecked tasks, and document validation alone is not evidence of an implemented application.
 
 ## Functional and methodological references
 

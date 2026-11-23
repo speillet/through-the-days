@@ -1,0 +1,30 @@
+[workspace]
+members = ["crates/journal-core", "apps/desktop/src-tauri"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+
+# Backup encryption calibrates its scrypt cost to the running build. Optimising the
+# key-derivation crates in development builds keeps that cost comparable to release
+# builds, so a development build can restore a backup made by a release build.
+[profile.dev.package.scrypt]
+opt-level = 3
+
+[profile.dev.package.salsa20]
+opt-level = 3
+
+[profile.dev.package.pbkdf2]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
+
+[profile.dev.package.hmac]
+opt-level = 3

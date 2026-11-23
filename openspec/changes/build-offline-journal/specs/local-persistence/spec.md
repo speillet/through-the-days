@@ -36,6 +36,11 @@ The system SHALL progressively save from the first interaction, distinguish pend
 - **WHEN** a partially answered check-in is acknowledged and the app is closed
 - **THEN** the same partial answers are restored without requiring completion.
 
+#### Scenario: Pending save during supported quit
+
+- **WHEN** a supported app-quit request is waiting for a save or cannot obtain a renderer flush acknowledgement
+- **THEN** the app remains open with unacknowledged input available for retry; a timeout or event failure does not authorise exit.
+
 ### Requirement: Safe migrations
 
 The system SHALL apply versioned schema migrations without silently dropping existing journal content and SHALL leave a recoverable prior state when a migration fails.

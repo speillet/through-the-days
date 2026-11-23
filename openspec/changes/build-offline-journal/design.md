@@ -4,7 +4,7 @@
 
 See proposal.md for product motivation and scope. Milestone: 1 (product-roadmap phases 0–1, with backup/restore advanced by D-005). No product dependency; this is the first implementation milestone.
 
-Status: draft design. Confirmed requirements are distinguished from the engineering proposals below; later milestone choices remain deferred in the decision register. Artifact presence is not implementation approval.
+Status: implemented development design. See `tasks.md` and `docs/milestone-1-status.md` for actual evidence and remaining native acceptance. Later milestone choices remain separate; this change is not archived.
 
 ## Goals / Non-Goals
 
@@ -18,19 +18,19 @@ The first journal needs no hosted backend, account model, bundled Python, or mod
 
 README_THROUGH_THE_DAYS.md §§0–5, 10–14, 19–22; decisions D-001–D-007. Read docs/product-decisions.md and the relevant ADRs before changing these constraints.
 
-### Proposed implementation approach
+### Implementation approach
 
-Keep persistence behind Rust/Tauri commands, with SQLite as the only journal authority. The React interface never supplies arbitrary filesystem paths or SQL. Separate entry identity/lifecycle, optional reflection, and editor document while committing the entry aggregate atomically. Use a thin desktop interface over a cohesive journal module. Prototype Tiptap as the canonical editor document; Markdown is derived, not independently edited. User-confirmed civil-date, trash, and protection decisions are in the decision register.
+`crates/journal-core` owns validation, SQLite and recovery behind the Rust/Tauri commands. One validated entry aggregate contains the canonical Tiptap JSON document, answers, actions and wins; indexed identity/date/slot/revision columns enforce conflict-safe saves (ADR 0003). React never supplies arbitrary filesystem paths or SQL. Markdown is derived from the canonical document.
 
-Choose concrete adapters after inspecting the installed versions and official documentation with Context7. Keep interface contracts small and explicit about validation, ordering, errors, and save acknowledgment. Introduce replaceable adapters only for real variations; avoid speculative framework layers.
+The native adapter uses system dialogs, a device-local backup plan and optional Keychain storage. Waiting for a Keychain prompt or testing a backup folder does not hold the journal lock. Startup status is finalised before it is reported; protected upgrades, failed opens and damaged-journal recovery have distinct states. A damaged journal and its companions are kept aside before a validated replacement is installed. Explicit application erasure also removes those managed set-aside files, leaving independent backup copies alone.
 
 ### Appendix refinements
 
 Writing depth changes presentation, never entry identity. Quick/Daily remain usable before Deep Reflection's manual worksheet exists in milestone 3. A mode choice and suggested durations are skippable.
 
-Add nullable progress_score with a 1–10 constraint alongside existing scores. Fresh schemas include it once; upgrades use a versioned migration with existing rows set to NULL. Expand the existing check-in contract and entry_reflections for optional learning/helped answers; do not create a competing reflection store.
+Schema 2 stores nullable progress (1–10), learning/helped answers and other reflection fields inside the entry aggregate. Missing older fields default without inventing scores; protected migrations and historical fixtures verify preservation. No competing reflection table is introduced.
 
-Use personal_wins for explicitly approved multiple items, with stable IDs, date, optional entry link, origin, visibility, and timestamps. Existing proud_of remains the person's reflection; explicit promotion creates one linked win and is idempotent. Reports count canonical win IDs only. Do not copy every pride answer automatically or retain source-linked copies beyond source-deletion permissions.
+Explicit small wins have stable IDs, date, source/origin and visibility within their owning entry aggregate. Existing pride text remains a reflection; explicit promotion creates one linked win idempotently. Rest and unapproved suggestions never automatically create a win. Reports in later milestones count canonical win IDs.
 
 Gentle view composes existing visibility and prompt controls as one preference. It does not erase values or suppress persistence failures and backup prompts. Expanded templates, timelines, and AI remain in their own milestones.
 
@@ -48,18 +48,18 @@ Relevant acceptance cases are mapped in docs/acceptance-coverage.md. Each implem
 
 ## Risks / Trade-offs
 
-A close event can race a pending save: expose pending state and specify recovery at the acknowledged revision. Trash and backups retain sensitive content: explain retention and avoid promising forensic erasure. Live SQLite is not application-encrypted. Backup format, schedule, and recovery still need detailed design.
+A close event can race a pending save: flush before supported window-close/app-quit flows, retain failures for retry and recover the last acknowledged revision. Missing renderer replies, timeout, event emission or timer failures keep the app open; a matching timeout permits a later quit retry and stale timers cannot cancel newer requests. macOS-initiated termination paths remain a documented limitation in `docs/product-decisions.md`. Trash and backups retain sensitive content: explain retention without promising forensic erasure. Live SQLite is not application-encrypted.
 
 ## Migration Plan
 
 Work first with synthetic data. Version persistent formats and derived indexes. Validate migrations against prior supported fixtures and recoverable snapshots. A failed migration or restore must preserve the prior usable journal; derived indexes can be rebuilt. New views and optional adapters can be disabled independently of writing.
 
-Choose a documented authenticated backup format and a standard password-based key-derivation implementation; do not invent cryptography. Verify versioning, corruption detection, temporary-file cleanup, clean-Mac restore, and recovery of an interrupted write. Back up a consistent SQLite snapshot rather than copying a live database file without coordinating its journal/WAL state.
+Backups use authenticated age-v1 passphrase encryption over a consistent canonical SQLite snapshot, with bounded scrypt work, verification before publication and cleanup on failure. `docs/backup-format.md` records the format and recovery contract. Rust tests cover decryption failures, corruption, clean restore, interrupted publication and preservation of the previous valid journal.
 
-Daily backup runs while the app is active and catches up at the next launch. A portable backup passphrase can optionally be remembered in Keychain. When unavailable, show pending backup and request the credential. Select backup retention and destination defaults during implementation; do not silently reuse the independently confirmed 30-day trash period. Retain the last valid backup until a validated replacement exists.
+Daily backup runs while active and catches up at launch, using a folder selected in settings. Keep the 30 latest validated backups (D-009), pruning only after a verified replacement succeeds. Changed passphrases apply to future snapshots; older files retain their original key. A portable passphrase can be remembered in Keychain; unavailable credentials leave backup pending and writing usable. The 30-day Trash policy is separate.
 
 ## Decision gates
 
-D-006 and D-007 settle portable recovery, daily frequency, and next-launch catch-up. Specify O-009's retention, destination defaults, and credential-change behavior in the backup slice. Check editor fidelity, schema constraints, save acknowledgment, and entry-completion transitions against the engineering proposals.
+D-006/D-007/D-009 and the backup contract resolve O-009. Editor fidelity, schema constraints, acknowledged saves and completion transitions are covered by the implementation suites. Manual native acceptance remains in the original tasks and the supplementary native checklist.
 
-These are explicit gates before dependent implementation, not assumptions settled by this draft. Reopen the relevant interview branch when this milestone is requested. Technical details that do not change behavior can be selected during the prototype and recorded with evidence.
+Keep failed or unexecuted acceptance unchecked. Sync only verified behaviour into main specifications and archive this change only after every tracked task is delivered.

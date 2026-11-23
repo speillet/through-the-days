@@ -1,0 +1,174 @@
+/*
+ * Design tokens (docs/design-system.md). Light is the default; dark follows macOS
+ * unless html[data-theme="light"] overrides it, and html[data-theme="dark"] forces it.
+ * Text pairs meet WCAG AA; control borders and emotion markers meet 3:1.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Palette */
+  --paper: #f9fafc;
+  --mist: #edf0f6;
+  --ink: #25314a;
+  --iris: #5755a4;
+  --sage: #38775e;
+  --slate: #657086;
+
+  /* Roles */
+  --color-background: var(--paper);
+  --color-page: #ffffff;
+  --color-sunken: var(--mist);
+  --color-text: var(--ink);
+  /* Slate deepened slightly so muted text keeps 4.5:1 on Mist and the tinted fills. */
+  --color-text-muted: #5a6478;
+  --color-accent: var(--iris);
+  --color-accent-strong: #46447f;
+  --color-on-accent: #ffffff;
+  --color-accent-soft: #e9e8f6;
+  --color-success: var(--sage);
+  --color-success-soft: #e6f2ec;
+  --color-danger: #b42e2a;
+  --color-on-danger: #ffffff;
+  --color-danger-soft: #fbeceb;
+  --color-warning: #8a5b00;
+  --color-warning-soft: #fdf3dd;
+  --color-info-soft: #eceef7;
+  --color-divider: #d8dde7;
+  --color-control-border: #7f889b;
+  --color-focus: var(--iris);
+  --color-overlay: rgb(37 49 74 / 38%);
+  --color-selection: #dcdbf2;
+  --shadow-page: 0 1px 2px rgb(37 49 74 / 6%), 0 10px 30px rgb(37 49 74 / 6%);
+  --shadow-dialog: 0 18px 48px rgb(37 49 74 / 22%);
+
+  /* Emotion families: secondary markers beside English labels and values. */
+  --emotion-coral: #ef6863;
+  --emotion-amber: #f4bc59;
+  --emotion-blue: #74a8d9;
+  --emotion-mint: #74c7a4;
+  --family-unpleasant-high: var(--emotion-coral);
+  --family-pleasant-high: var(--emotion-amber);
+  --family-unpleasant-low: var(--emotion-blue);
+  --family-pleasant-low: var(--emotion-mint);
+  /* Strong variants for borders, markers and text on paper (at least 4.4:1). */
+  --family-unpleasant-high-strong: #c2413b;
+  --family-pleasant-high-strong: #9a6a10;
+  --family-unpleasant-low-strong: #3a70a6;
+  --family-pleasant-low-strong: #2a7a58;
+  /* Soft fills that keep ink text at AAA contrast. */
+  --family-unpleasant-high-soft: #fdeceb;
+  --family-pleasant-high-soft: #fef5e2;
+  --family-unpleasant-low-soft: #e8f1fa;
+  --family-pleasant-low-soft: #e6f5ee;
+
+  /* Typography: local fonts only. */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui, sans-serif;
+  --font-writing: Charter, 'Bitstream Charter', Georgia, serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-writing: 1.125rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.625rem;
+  --text-2xl: 2.125rem;
+  --leading-tight: 1.25;
+  --leading-ui: 1.45;
+  --leading-writing: 1.65;
+  --measure: 65ch;
+
+  /* Space, shape, motion */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --rail-width: 236px;
+  --rail-collapsed-width: 60px;
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --easing: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --paper: #121a2b;
+    --mist: #222c43;
+    --ink: #e7ebf3;
+    --iris: #afa9f5;
+    --sage: #7fc4a6;
+    --slate: #a3acc0;
+    --color-text-muted: var(--slate);
+    --color-page: #1a2338;
+    --color-accent-strong: #c9c5fa;
+    --color-on-accent: #121a2b;
+    --color-accent-soft: #2b3150;
+    --color-success-soft: #1f3a33;
+    --color-danger: #f28b82;
+    --color-on-danger: #121a2b;
+    --color-danger-soft: #3b2a33;
+    --color-warning: #f4bc59;
+    --color-warning-soft: #3a3220;
+    --color-info-soft: #262f4a;
+    --color-divider: #2c3650;
+    --color-control-border: #707da0;
+    --color-overlay: rgb(5 8 15 / 62%);
+    --color-selection: #3a3f6e;
+    --shadow-page: 0 1px 2px rgb(0 0 0 / 30%), 0 12px 32px rgb(0 0 0 / 25%);
+    --shadow-dialog: 0 18px 48px rgb(0 0 0 / 50%);
+    --family-unpleasant-high-strong: var(--emotion-coral);
+    --family-pleasant-high-strong: var(--emotion-amber);
+    --family-unpleasant-low-strong: var(--emotion-blue);
+    --family-pleasant-low-strong: var(--emotion-mint);
+    --family-unpleasant-high-soft: #3b2a33;
+    --family-pleasant-high-soft: #3a3220;
+    --family-unpleasant-low-soft: #22324a;
+    --family-pleasant-low-soft: #1f3a33;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --paper: #121a2b;
+  --mist: #222c43;
+  --ink: #e7ebf3;
+  --iris: #afa9f5;
+  --sage: #7fc4a6;
+  --slate: #a3acc0;
+  --color-text-muted: var(--slate);
+  --color-page: #1a2338;
+  --color-accent-strong: #c9c5fa;
+  --color-on-accent: #121a2b;
+  --color-accent-soft: #2b3150;
+  --color-success-soft: #1f3a33;
+  --color-danger: #f28b82;
+  --color-on-danger: #121a2b;
+  --color-danger-soft: #3b2a33;
+  --color-warning: #f4bc59;
+  --color-warning-soft: #3a3220;
+  --color-info-soft: #262f4a;
+  --color-divider: #2c3650;
+  --color-control-border: #707da0;
+  --color-overlay: rgb(5 8 15 / 62%);
+  --color-selection: #3a3f6e;
+  --shadow-page: 0 1px 2px rgb(0 0 0 / 30%), 0 12px 32px rgb(0 0 0 / 25%);
+  --shadow-dialog: 0 18px 48px rgb(0 0 0 / 50%);
+  --family-unpleasant-high-strong: var(--emotion-coral);
+  --family-pleasant-high-strong: var(--emotion-amber);
+  --family-unpleasant-low-strong: var(--emotion-blue);
+  --family-pleasant-low-strong: var(--emotion-mint);
+  --family-unpleasant-high-soft: #3b2a33;
+  --family-pleasant-high-soft: #3a3220;
+  --family-unpleasant-low-soft: #22324a;
+  --family-pleasant-low-soft: #1f3a33;
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Local journal window; the journal, files, dialogs and the window appearance are owned by native commands. The window may listen for events (the quit and close requests) and destroy itself after flushing pending saves on close.",
+  "windows": ["main"],
+  "permissions": ["core:event:default", "core:window:allow-destroy"]
+}

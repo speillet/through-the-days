@@ -47,7 +47,7 @@ The system SHALL accept optional pride from 1 to 10, pride text, small wins, dif
 
 ### Requirement: Reported actions and intentions
 
-The system SHALL store multiple reported activities separately from prose and future intentions, with optional preset or custom categories.
+The system SHALL store multiple reported activities separately from prose and future intentions, each recorded as an optional preset category or as the person's own custom activity.
 
 #### Scenario: Rest and reading
 

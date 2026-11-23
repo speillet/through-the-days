@@ -22,3 +22,8 @@ backups/
 conversations.json
 *.pem
 *.key
+*.age
+test-results/
+playwright-report/
+.reference/
+apps/desktop/src-tauri/gen/

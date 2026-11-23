@@ -1,0 +1,458 @@
+/* Shell layout, navigation rail, views, and the journal-page building blocks. */
+
+.app-shell {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell--focus {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Navigation rail ---------------------------------------------------------- */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: var(--rail-width);
+  height: 100vh;
+  /* No bottom padding: the pinned utility list below carries it. */
+  padding: var(--space-3) var(--space-2) 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-divider);
+  background: var(--color-sunken);
+  transition: width var(--duration-base) var(--easing);
+}
+
+.rail--collapsed {
+  width: var(--rail-collapsed-width);
+}
+
+.rail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-1) 0 var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.rail--collapsed .rail__header {
+  justify-content: center;
+  padding: 0;
+}
+
+.rail__brand {
+  overflow: hidden;
+  font-family: var(--font-writing);
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rail__toggle {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.rail__toggle:hover {
+  background: var(--color-divider);
+  color: var(--color-text);
+}
+
+.rail__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+}
+
+/* Trash and Settings stay at the bottom of the window: when a short window makes the
+   rail scroll, the "Coming later" list scrolls beneath them instead of pushing them out. */
+.rail__list--end {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-divider);
+  background: var(--color-sunken);
+}
+
+.rail__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 34px;
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+}
+
+.rail--collapsed .rail__item {
+  justify-content: center;
+  padding: var(--space-1);
+}
+
+.rail__item:hover {
+  background: var(--color-divider);
+}
+
+.rail__item--active,
+.rail__item--active:hover {
+  background: var(--color-page);
+  color: var(--color-accent-strong);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(37 49 74 / 8%);
+}
+
+/* The bookmark: a slim iris ribbon marks the open view, in addition to aria-current. */
+.rail__item--active::before {
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--color-accent);
+  content: '';
+}
+
+.rail__icon {
+  flex: none;
+  color: currentColor;
+}
+
+.rail__label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rail__later {
+  margin-top: var(--space-4);
+}
+
+.rail__group-label {
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rail__unavailable {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+.rail__unavailable .rail__icon {
+  grid-row: span 2;
+  opacity: 0.75;
+}
+
+.rail__badge {
+  grid-column: 2;
+  font-size: var(--text-xs);
+  line-height: 1.2;
+}
+
+/* Main region ---------------------------------------------------------------- */
+
+.app-main {
+  min-width: 0;
+  height: 100vh;
+  overflow-y: auto;
+  container-type: inline-size;
+  container-name: main;
+  scroll-padding-top: var(--space-5);
+}
+
+.app-main:focus-visible {
+  outline-offset: -4px;
+}
+
+.status-area {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 1120px;
+  padding: var(--space-4) var(--space-6) 0;
+  margin: 0 auto;
+}
+
+.status-area:empty {
+  display: none;
+}
+
+.view {
+  max-width: 1120px;
+  padding: var(--space-5) var(--space-6) var(--space-8);
+  margin: 0 auto;
+}
+
+.view-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.view-title {
+  font-family: var(--font-writing);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.view-subtitle {
+  color: var(--color-text-muted);
+}
+
+.startup-gate {
+  display: grid;
+  min-height: 100vh;
+  padding: var(--space-6);
+  place-items: center;
+}
+
+/* Today workspace: check-in beside the journal page, stacked above it when narrow. */
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'checkin'
+    'page';
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.workspace__checkin {
+  grid-area: checkin;
+  min-width: 0;
+}
+
+.workspace__page {
+  grid-area: page;
+  min-width: 0;
+}
+
+@container main (min-width: 960px) {
+  .workspace {
+    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    grid-template-areas: 'checkin page';
+  }
+
+  .workspace__checkin {
+    position: sticky;
+    top: var(--space-4);
+  }
+}
+
+/* Focus mode: only the page remains, centred. */
+.app-shell--focus .workspace {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'page';
+}
+
+.app-shell--focus .workspace__checkin {
+  display: none;
+}
+
+/* A quiet surface for side panels such as the check-in or a trash item. */
+.panel {
+  padding: var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+  background: var(--color-page);
+}
+
+/* The journal page: the focal point of the workspace. */
+.journal-page {
+  position: relative;
+  padding: var(--space-6) var(--space-7) var(--space-7);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+  background: var(--color-page);
+  box-shadow: var(--shadow-page);
+}
+
+/* A restrained iris bookmark ribbon at the top edge of the page. */
+.journal-page::before {
+  position: absolute;
+  top: -1px;
+  right: var(--space-7);
+  width: 14px;
+  height: 34px;
+  background: var(--color-accent);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 76%, 0 100%);
+  content: '';
+}
+
+.date-heading {
+  font-family: var(--font-writing);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: var(--leading-tight);
+}
+
+.slot-label {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Writing typography for the editor and read-only entries. */
+.prose {
+  max-width: var(--measure);
+  font-family: var(--font-writing);
+  font-size: var(--text-writing);
+  line-height: var(--leading-writing);
+  overflow-wrap: break-word;
+}
+
+.prose > * + * {
+  margin-top: 0.85em;
+}
+
+.prose h1,
+.prose h2,
+.prose h3 {
+  margin-top: 1.4em;
+  font-family: var(--font-writing);
+  line-height: var(--leading-tight);
+}
+
+.prose h1 {
+  font-size: 1.5em;
+}
+
+.prose h2 {
+  font-size: 1.3em;
+}
+
+.prose h3 {
+  font-size: 1.12em;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.4em;
+}
+
+.prose li + li {
+  margin-top: 0.3em;
+}
+
+.prose blockquote {
+  padding-left: var(--space-4);
+  border-left: 3px solid var(--color-divider);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.prose code {
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: var(--color-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.prose pre {
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.prose hr {
+  margin: 1.6em 0;
+  border: 0;
+  border-top: 1px solid var(--color-divider);
+}
+
+/* Emotion family markers: always paired with a visible English label. */
+.family-marker {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--marker-strong, var(--color-control-border));
+  border-radius: 50%;
+  background: var(--marker, transparent);
+}
+
+[data-family='unpleasant-high'] {
+  --marker: var(--family-unpleasant-high);
+  --marker-strong: var(--family-unpleasant-high-strong);
+  --marker-soft: var(--family-unpleasant-high-soft);
+}
+
+[data-family='pleasant-high'] {
+  --marker: var(--family-pleasant-high);
+  --marker-strong: var(--family-pleasant-high-strong);
+  --marker-soft: var(--family-pleasant-high-soft);
+}
+
+[data-family='unpleasant-low'] {
+  --marker: var(--family-unpleasant-low);
+  --marker-strong: var(--family-unpleasant-low-strong);
+  --marker-soft: var(--family-unpleasant-low-soft);
+}
+
+[data-family='pleasant-low'] {
+  --marker: var(--family-pleasant-low);
+  --marker-strong: var(--family-pleasant-low-strong);
+  --marker-soft: var(--family-pleasant-low-soft);
+}
+
+@container main (max-width: 720px) {
+  .view,
+  .status-area {
+    padding-right: var(--space-5);
+    padding-left: var(--space-5);
+  }
+
+  .journal-page {
+    padding: var(--space-5) var(--space-5) var(--space-6);
+  }
+
+  .journal-page::before {
+    right: var(--space-5);
+  }
+}

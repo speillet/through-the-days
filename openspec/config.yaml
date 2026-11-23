@@ -1,7 +1,7 @@
 schema: spec-driven
 
 context: |
-  Through the Days is a personal, offline-first macOS journal; no application features are implemented yet.
+  Through the Days is a personal, offline-first macOS journal; milestone 1 has application code and automated checks. Native acceptance remains open; see docs/milestone-1-status.md.
   User overview: README.md. Product requirements: README_THROUGH_THE_DAYS.md and linked thematic documents.
   Technical design: docs/technical-design.md; roadmap: docs/roadmap.md; acceptance cases: docs/acceptance-tests.md.
   Later explicit user decisions: docs/product-decisions.md.

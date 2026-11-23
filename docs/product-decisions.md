@@ -14,6 +14,10 @@ Confirmed choices refine the original README v0.6 and remain in force in the con
 | D-006 | Encrypt backups with a dedicated portable passphrase, optionally remembered in macOS Keychain. | A clean Mac can restore a backup with that passphrase; the live journal still has no application vault password. |
 | D-007 | Back up daily while the app is open; catch up at the next launch when it was closed. | The MVP needs no background service. Catch-up records the current recoverable state, not invented snapshots for missed days. |
 | D-008 | Every in-app LLM assistant must be supportive without being a yes-man: challenge evidenced errors and unsupported conclusions with kindness, calibrated uncertainty, and self-correction. | One shared policy applies to CBT, journal questions, generated interpretations, and local/remote adapters; acceptance checks must test dialogue stance, not just output structure. |
+| D-009 | Keep the 30 latest validated encrypted backups, in a folder chosen in the app. | Prune only after a replacement succeeds; independently retained copies and the 30-day trash policy remain separate. |
+| D-010 | Include recorded scores from saved drafts as well as completed entries in descriptive statistics. Confirmed 23 November 2026. | Show per-metric observation counts and distinct recorded days; missing values are never zero. |
+| D-011 | Keep separate Morning/Evening calendar markers, explicit neutral numeric values and independently chosen emotion labels. Confirmed 23 November 2026. | A score of 5 on either axis has no strong quadrant colour; labels never overwrite scores. |
+| D-012 | Book View shows one entry per page, with scrolling for long text, adjustable text size and a preserved reading position. Confirmed 23 November 2026. | Render each document once in full, preserve text selection, and retain the entry/position across navigation and resize. |
 
 ## Inherited requirements
 
@@ -21,17 +25,29 @@ The README already fixes the offline-first Tauri 2 + React/TypeScript + Rust + S
 
 ## Engineering proposals
 
-These proposals make acceptance cases precise and must be verified during implementation. They are not additional user-approved product choices.
+These engineering choices make acceptance cases precise; they are not additional user-approved product choices. The automated suites cover the first five choices. See [actual evidence and remaining acceptance](acceptance-coverage.md#milestone-1-evidence); milestone 1 is not yet archived.
 
 - Autosave acknowledges a revision only after the complete entry aggregate commits. Recovery promises the last acknowledged revision; unsaved edits remain visibly pending and are retained for retry after a failure.
 - Autosave never silently marks an entry complete. Writing-only drafts remain readable. An explicit completion action validates the README predicate; edits that invalidate it return the entry to draft without discarding content.
-- Capture the creation time zone as context while preserving the chosen journal date. An entry open across midnight stays attached to its chosen date.
+- Capture the creation time zone as context while preserving the chosen journal date. An entry open across midnight stays attached to its chosen date; a Today view with no open entry moves on to the new date.
 - A trash restore into an occupied date/slot reports a conflict without overwriting either record. Permanent deletion removes the entry's retained live-store data; independent backup snapshots can retain an earlier copy.
-- Prototype Tiptap with a single canonical document and derived Markdown. Select editor and chart libraries after checking formatting, Unicode, export fidelity, and macOS behavior.
+- Tiptap holds a single canonical document; Markdown is derived for review and copying. Chart libraries are selected in milestone 2.
+
+Implementation choices adopted in milestone 1, also engineering proposals rather than product decisions:
+
+- Each entry is stored as one validated aggregate ([ADR 0003](adr/0003-store-each-entry-as-one-validated-aggregate.md)).
+- The backup plan (folder, last success, Keychain choice) is device-local and outside the journal, so a restore never changes backup settings.
+- Before a restore replaces a journal that has entries, the app makes a safety backup when a folder and passphrase are available. If the current journal cannot be read, restoring without that safety backup needs explicit confirmation. A journal that cannot be opened at launch can be restored from a backup; the unreadable file is kept aside, never deleted.
+- Daily backups are attempted at launch, every 10 minutes and when the window regains focus while the app is open. After a failed automatic attempt they pause for an hour unless the folder or passphrase changes; Back up now always runs.
+- Gentle view hides score panels, suggested durations and the completion control. Drafts remain complete records of what was written, and leaving Gentle view restores every control.
+- Interface text size can be set to 100, 115, 130 or 150%, independently of layout spacing.
+- Development builds use a separate com.throughthedays.app.dev data folder and Keychain item.
+- Supported window close and application Quit wait for acknowledged saves. A missing renderer reply, timeout, event failure or timer failure keeps the app open and permits retry rather than approving exit.
+- Known limit: quits started by macOS itself (Dock, app switcher, logout or shutdown) skip the flush-before-quit request. Acknowledged revisions are durable, and the interface saves pending input when the window loses focus.
 
 ## Backup policy details
 
-O-001 is resolved by D-006; daily frequency and catch-up are resolved by D-007. The user approved daily backups and next-launch catch-up, rather than accepting the entire bundled policy proposed during the interview. Backup retention, destination defaults, and credential-change behavior remain engineering proposals to specify during backup design. In particular, 30 days is confirmed for trash, not for backup retention.
+O-001 is resolved by D-006; daily frequency and catch-up are resolved by D-007. Backup retention is resolved by D-009. The [backup contract](backup-format.md) specifies native destination selection, validated publication, safe passphrase changes and recovery. Existing backups retain their original passphrase; a changed credential applies to future snapshots. The 30 latest validated backups are a count, independent of the 30 days confirmed for trash.
 
 If the backup credential is unavailable, request it and show that backup is pending; journal writing remains usable. Never report a successful daily backup until one has completed.
 
@@ -39,14 +55,14 @@ If the backup credential is unavailable, request it and show that backup is pend
 
 | ID | Question | Trigger |
 |---|---|---|
-| O-002 | Which scored drafts contribute to trends, and what denominator is displayed? | Before implementing progress aggregation in milestone 2. |
-| O-003 | How should neutral numeric scores and differently labelled emotions appear in calendar markers? | Before finalising calendar and chart visual encoding. |
-| O-004 | What exact pagination, text scaling, and selection behavior works for long entries? | Book View prototype with synthetic long documents. |
+| O-002 | Resolved by D-010: include saved scored drafts, state each metric's observation count and date coverage. | Resolved for milestone 2. |
+| O-003 | Resolved by D-011: separate slots, neutral numeric markers and independent emotion labels. | Resolved for milestone 2. |
+| O-004 | Resolved by D-012: one complete entry per page with scrolling, text selection, text size and stable position. | Resolved for milestone 2. |
 | O-005 | Which local model, context/cost limits, and crisis-resource country behavior should AI assistance support? | After manual CBT is usable, before enabling an adapter. |
 | O-006 | Should an avoid-mode counter default to completed 24-hour intervals or local calendar days? | Before goal-counter design. |
 | O-007 | Which operating systems, architectures, signing identity, and distribution channel must the public release support? | Before milestone 6 distribution work. |
 | O-008 | Which ChatGPT export versions and bounded import sizes are supported? | Before implementing import. |
-| O-009 | Specify backup destination defaults, retention, and safe credential-change behavior. Daily frequency and next-launch catch-up are already decided. | Backup design, before using real data. |
+| O-009 | Resolved by D-009 and the [backup format](backup-format.md): a folder chosen in the app, the 30 latest validated backups, and new passphrases applying to future backups only. | Resolved in milestone 1. |
 | O-010 | Specify retrieval offsets/normalisation, bounded context, and minimum evidence for descriptive patterns. | Before P2 source-backed insights. |
 | O-011 | Specify private JSON schema versions, conflict-resolution UX, selected-content boundaries, and destination/protection defaults. | Before private portability. |
 | O-012 | Review wording and bounded steps for the extended offline exercise library. | After the original manual exercises work, before P2 templates ship. |

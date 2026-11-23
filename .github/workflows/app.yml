@@ -1,0 +1,87 @@
+name: Application
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  OPENSPEC_TELEMETRY: "0"
+  # Password-derived encryption tests use substantial memory per running test.
+  RUST_TEST_THREADS: "2"
+
+jobs:
+  journal-core:
+    name: Journal core (Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Lint
+        run: cargo clippy -p journal-core --all-targets --locked -- -D warnings
+      - name: Test with synthetic journals
+        run: cargo test -p journal-core --locked
+
+  desktop-shell:
+    name: Desktop shell (macOS)
+    # Standard Intel capacity avoids the ARM pool that failed to acquire our first jobs.
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "26"
+          cache: npm
+      - name: Install pinned tooling
+        run: npm ci --no-audit --no-fund
+      - name: Build the interface
+        run: npm run build
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Lint native commands
+        run: cargo clippy -p through-the-days --all-targets --locked -- -D warnings
+      - name: Test native commands
+        run: cargo test -p through-the-days --locked
+
+  interface:
+    name: Interface (TypeScript)
+    # macOS WebKit honours the system keyboard-navigation rules that the native app's
+    # WKWebView follows, so end-to-end keyboard checks are meaningful only on macOS.
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "26"
+          cache: npm
+      - name: Install pinned tooling
+        run: npm ci --no-audit --no-fund
+      - name: Type-check
+        run: npm run check
+      - name: Unit and component tests
+        run: npm test
+      - name: Install browsers for end-to-end tests
+        run: npx playwright install webkit chromium
+      - name: End-to-end tests with synthetic data
+        run: npm run test:e2e

@@ -1,0 +1,86 @@
+/* Month grid for choosing a journal date (components/CalendarGrid.tsx). */
+
+.calendar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: max-content;
+}
+
+.calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.calendar__step {
+  width: 30px;
+  padding: 0;
+}
+
+.calendar__month {
+  font-weight: 600;
+}
+
+.calendar__grid {
+  border-collapse: collapse;
+}
+
+.calendar__weekday {
+  width: 38px;
+  padding-bottom: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: center;
+}
+
+.calendar__grid td {
+  padding: 1px;
+  text-align: center;
+}
+
+.calendar__day {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar__day:hover {
+  border-color: var(--color-control-border);
+}
+
+.calendar__day--outside {
+  color: var(--color-text-muted);
+}
+
+/* Today: an underline mark, not colour alone. */
+.calendar__day--today::after {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  content: '';
+  transform: translateX(-50%);
+}
+
+/* The chosen day: a filled, bold tile. */
+.calendar__day--selected,
+.calendar__day--selected:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-weight: 700;
+}
