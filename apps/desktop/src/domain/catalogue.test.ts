@@ -48,10 +48,6 @@ describe('shared copy', () => {
 
   it('lists every later milestone view', () => {
     expect(UNAVAILABLE_VIEWS).toEqual([
-      'Calendar',
-      'My Journal',
-      'Book View',
-      'Trends',
       'Keywords & Tags',
       'Goals & Counters',
       'CBT Exercises',

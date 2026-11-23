@@ -6,8 +6,14 @@
 import { useStartup } from '../../state/startup';
 import { BACKUPS_KEPT } from '../backup/status';
 import '../backup/backup.css';
+import {useState} from 'react';
+import {useApi,toCommandError} from '../../api/client';
+import {Button} from '../../components/Button';
+import {Notice} from '../../components/Notice';
 
 export function PrivacySection() {
+  const api=useApi();const [cleared,setCleared]=useState(false);const [error,setError]=useState<string|null>(null);
+  async function clearSummaries(){setCleared(false);setError(null);try{await api.clearReadingSummaries();setCleared(true);}catch(caught){setError(toCommandError(caught).message);}}
   const dataLocation = useStartup().status?.dataLocation ?? null;
   return (
     <div className="settings-stack privacy">
@@ -65,6 +71,7 @@ export function PrivacySection() {
           them.
         </p>
       </div>
+      <div className="privacy__block"><h3 className="backup-group__title">Generated reading information</h3><p className="settings-text">Clear local weekly summaries whenever you like. Your original writing, weekly notes and private milestones are kept. The search index is temporary and rebuilt from saved entries for each query.</p><Button onClick={()=>void clearSummaries()}>Clear local summaries</Button>{cleared ? <p role="status">Local summaries cleared.</p>:null}{error ? <Notice tone="error">{error}</Notice>:null}</div>
     </div>
   );
 }

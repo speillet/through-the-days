@@ -48,10 +48,6 @@ export const SAVE_STATE_LABELS = {
 
 /** Later milestones, listed in navigation as unavailable rather than as placeholder screens. */
 export const UNAVAILABLE_VIEWS = [
-  'Calendar',
-  'My Journal',
-  'Book View',
-  'Trends',
   'Keywords & Tags',
   'Goals & Counters',
   'CBT Exercises',

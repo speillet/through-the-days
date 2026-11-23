@@ -135,7 +135,7 @@ export async function storedJournal(page: Page): Promise<StoredJournal> {
 }
 
 /** Opens a view from the navigation rail. */
-export async function openView(page: Page, name: 'Today' | 'Trash' | 'Settings'): Promise<void> {
+export async function openView(page: Page, name: 'Today' | 'Trash' | 'Settings' | 'Calendar' | 'My Journal' | 'Book View' | 'Trends' | 'Weekly Review' | 'The Path So Far'): Promise<void> {
   await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name, exact: true }).click();
 }
 

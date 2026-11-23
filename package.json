@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "description": "A private, offline-first macOS journal",
-  "workspaces": ["apps/desktop"],
+  "workspaces": [
+    "apps/desktop"
+  ],
   "engines": {
     "node": ">=22.20.0"
   },
@@ -22,6 +24,7 @@
     "smoke:native": "npm run smoke:native --workspace @through-the-days/desktop"
   },
   "devDependencies": {
-    "@fission-ai/openspec": "2.1.1"
+    "@fission-ai/openspec": "2.1.1",
+    "prettier": "3.10.1"
   }
 }
