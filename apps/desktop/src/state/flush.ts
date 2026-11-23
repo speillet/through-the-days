@@ -10,7 +10,7 @@ export interface Flusher {
   hasPending?: () => boolean;
 }
 
-/** Bounded below the native quit fallback (10 s) and long enough for a save queued behind a backup. */
+/** Keep the caller responsive so it can recheck pending input; a timeout never approves exit. */
 export const FLUSH_TIMEOUT_MS = 8_000;
 
 const flushers = new Set<Flusher>();

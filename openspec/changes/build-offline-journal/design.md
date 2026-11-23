@@ -48,7 +48,7 @@ Relevant acceptance cases are mapped in docs/acceptance-coverage.md. Each implem
 
 ## Risks / Trade-offs
 
-A close event can race a pending save: flush before supported window-close/app-quit flows, retain failures for retry and recover the last acknowledged revision. Native cancellation invalidates stale exit acknowledgements; a missing renderer response does not confirm a save. macOS-initiated termination paths remain a documented limitation in `docs/product-decisions.md`. Trash and backups retain sensitive content: explain retention without promising forensic erasure. Live SQLite is not application-encrypted.
+A close event can race a pending save: flush before supported window-close/app-quit flows, retain failures for retry and recover the last acknowledged revision. Missing renderer replies, timeout, event emission or timer failures keep the app open; a matching timeout permits a later quit retry and stale timers cannot cancel newer requests. macOS-initiated termination paths remain a documented limitation in `docs/product-decisions.md`. Trash and backups retain sensitive content: explain retention without promising forensic erasure. Live SQLite is not application-encrypted.
 
 ## Migration Plan
 

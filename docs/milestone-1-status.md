@@ -6,7 +6,7 @@ Audited November 23, 2026 on `feat/milestone-1`. This is an offline-journal deve
 
 The branch includes the Rust journal authority and Tauri/React application: two independent slots per chosen civil date, optional reflection, rich writing, explicit and automatic saves, writing depths, Gentle view, thirty-day Trash, encrypted daily backups with next-launch catch-up, and validated restore. It uses schema 2; reading/reviews and their schema-3 additions are not part of this PR.
 
-Native refinements keep Keychain/folder waits outside the journal lock, finalise startup before reporting its state, preserve damaged journals before replacement, reject stale quit confirmations and include managed set-aside journals in explicit application-data erasure. Debug builds use a separate development data folder and Keychain identity.
+Native refinements keep Keychain/folder waits outside the journal lock, finalise startup before reporting its state, preserve damaged journals before replacement, retain pending writing on quit timeout or renderer failure and include managed set-aside journals in explicit application-data erasure. Debug builds use a separate development data folder and Keychain identity.
 
 ## Actual verification
 
@@ -18,13 +18,15 @@ All fixtures and journals are synthetic. The isolated branch passed:
 | `npm run check` | TypeScript passes. |
 | `npm test` | 416 tests across 35 files pass. |
 | `TTD_E2E_PORT=1433 npm run test:e2e -- --workers=2` | 52 WebKit/Chromium tests pass on this worktree's own server. |
-| `cargo test --workspace --locked -- --test-threads=2` | 146 tests pass: 74 journal-core and 72 native-shell tests. |
+| `cargo test --workspace --locked -- --test-threads=2` | 147 tests pass: 74 journal-core and 73 native-shell tests. |
 | `npm run build` | Frontend builds; Vite reports a large-chunk advisory. |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | Passes. |
 | `npm run tauri --workspace @through-the-days/desktop -- build --debug --bundles app` | macOS debug bundle builds. |
 | `npm run smoke:native` | Three native launches pass: write/save, exact recovery, and recovery with French system-language settings and English UI. |
 
 The smoke runner uses and removes a temporary development journal rather than opening personal data. It does not exercise VoiceOver or a disabled-network Mac. Local raw logs live in ignored `.reference/verification/`.
+
+The quit regression first reproduced an unanswered flush approving exit; it now verifies the app stays open and a later quit retries. Emission/timer failures follow the same safe path. The review finding was rechecked after the fix.
 
 ## Specification reconciliation
 

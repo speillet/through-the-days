@@ -41,10 +41,10 @@ Status: application code is implemented; automated and native-smoke evidence was
 
 ## Verification evidence
 
-See [development status](../../../docs/milestone-1-status.md) for commands, actual results and limits: 416 interface tests, 146 Rust tests, 52 browser tests, a native bundle build and three native smoke launches passed.
+See [development status](../../../docs/milestone-1-status.md) for commands, actual results and limits: 416 interface tests, 147 Rust tests, 52 browser tests, a native bundle build and three native smoke launches passed.
 
 - 1.1 and 4.2: `docs/backup-format.md`, core recovery/migration suites, native backup/restore state tests and browser protection scenarios cover portable encryption, retention, failure preservation, daily catch-up and clean restore. Real Keychain prompts and an actual exFAT drive remain manual checks.
-- 2.1–3.2 and 4.1: core journal/persistence/schema suites, frontend autosave/flush/exit tests, native state tests and writing/editor/protection browser scenarios cover acknowledged independent entries, validation/conflicts, aggregate answers, save failures and Trash. Native smoke verifies actual save/restart recovery. See technical design for platform termination limits.
+- 2.1–3.2 and 4.1: core journal/persistence/schema suites, frontend autosave/flush/exit tests, native state tests and writing/editor/protection browser scenarios cover acknowledged independent entries, validation/conflicts, aggregate answers, save failures and Trash. Native smoke verifies actual save/restart recovery. The quit regression verifies a missing flush acknowledgement keeps the app open and permits a later retry, including stale-timeout cancellation. See technical design for platform termination limits.
 - 6.1–6.4: domain/check-in, WritingDepth, GentleView, Today and writing browser tests cover identity-preserving depth changes, nullable progress, explicit canonical wins and visibility without data loss. Later reading-surface combinations remain in that change's task 4.4.
 - 7.2: privacy guards and native diagnostics/migration tests cover metadata-only error reporting and protected migration failure.
 - 1.2, 5.1, 5.2 and 7.1 remain unchecked: native Skip/focus/assistive checks, all mapped acceptance, and the full derivative-removal audit have not been established by this audit.

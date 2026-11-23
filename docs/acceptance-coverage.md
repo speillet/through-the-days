@@ -76,7 +76,7 @@ Each task carries verification evidence for its own slice. Record the command or
 
 ## Milestone 1 evidence
 
-The isolated milestone-1 branch was checked on November 23, 2026 with synthetic data. `npm run check`, 416 interface tests, 146 Rust tests and 52 WebKit/Chromium tests pass. Clippy, frontend compilation and the macOS debug build pass. Three native launches verify writing/save, exact recovery after restart and English UI with French system-language settings. [Milestone 1 status](milestone-1-status.md) records commands, scope and remaining acceptance.
+The isolated milestone-1 branch was checked on November 23, 2026 with synthetic data. `npm run check`, 416 interface tests, 147 Rust tests and 52 WebKit/Chromium tests pass. Clippy, frontend compilation and the macOS debug build pass. Three native launches verify writing/save, exact recovery after restart and English UI with French system-language settings. [Milestone 1 status](milestone-1-status.md) records commands, scope and remaining acceptance.
 
 | Acceptance cases | Concrete evidence | Limits |
 |---|---|---|

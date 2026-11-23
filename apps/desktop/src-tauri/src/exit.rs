@@ -4,9 +4,9 @@
 //! open, the renderer receives [`FLUSH_REQUEST_EVENT`] and flushes its pending saves. It then
 //! calls `confirm_exit`, or `cancel_exit` when a save still fails: the app stays open with the
 //! unsaved writing on screen, and a later quit asks again. If the renderer answers neither
-//! within [`FLUSH_TIMEOUT`], the app quits anyway: acknowledged revisions are already durable,
-//! so only unacknowledged input could be lost. Closing the window is handled by the renderer
-//! itself before it destroys the window.
+//! within [`FLUSH_TIMEOUT`], the app stays open and a later quit can retry. A timeout or
+//! unavailable renderer never substitutes for a successful save acknowledgment. Closing
+//! the window is handled by the renderer itself before it destroys the window.
 //!
 //! Known limit: a quit that macOS starts itself skips this gate. Quit from the Dock or from the
 //! app switcher, logging out, restarting or shutting down, and an AppleScript `quit` send
@@ -26,7 +26,7 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime};
 
 /// Event asking the renderer to flush pending saves before the app quits.
 pub const FLUSH_REQUEST_EVENT: &str = "app://flush-request";
-/// How long a quit waits for the renderer before it proceeds without confirmation.
+/// How long a quit waits before allowing another attempt without approving exit.
 pub const FLUSH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// What to do with a request to quit.
@@ -34,7 +34,7 @@ pub const FLUSH_TIMEOUT: Duration = Duration::from_secs(10);
 pub enum ExitDecision {
     /// Let the app quit now.
     Proceed,
-    /// Keep running, ask the renderer to flush and start the fallback timer of this request.
+    /// Keep running, ask the renderer to flush and start the retry timer of this request.
     FlushFirst(u64),
     /// Keep running: a flush request is already waiting for an answer.
     AwaitFlush,
@@ -85,14 +85,14 @@ impl ExitGate {
         self.state().outstanding = None;
     }
 
-    /// Confirms on behalf of a renderer that never answered `request`. `false` when it answered,
-    /// by confirming or by cancelling.
-    pub fn confirm_unanswered(&self, request: u64) -> bool {
+    /// Keeps the app open when `request` never received an answer, allowing a later retry.
+    /// A stale timeout cannot cancel a newer request or replace a confirmation.
+    pub fn cancel_unanswered(&self, request: u64) -> bool {
         let mut state = self.state();
         if state.confirmed || state.outstanding != Some(request) {
             return false;
         }
-        state.confirmed = true;
+        state.outstanding = None;
         true
     }
 }
@@ -160,21 +160,23 @@ pub fn on_run_event<R: Runtime>(app: &AppHandle<R>, event: RunEvent) {
 
 fn request_flush<R: Runtime>(app: &AppHandle<R>, request: u64) {
     if app.emit(FLUSH_REQUEST_EVENT, ()).is_err() {
-        confirm_and_exit(app);
+        app.state::<ExitGate>().cancel_unanswered(request);
+        crate::diagnostics::record("request exit flush", "exitFlush");
         return;
     }
     let handle = app.clone();
-    let fallback = thread::Builder::new()
-        .name("exit-fallback".into())
+    let retry_timer = thread::Builder::new()
+        .name("exit-flush-timeout".into())
         .spawn(move || {
             thread::sleep(FLUSH_TIMEOUT);
-            if handle.state::<ExitGate>().confirm_unanswered(request) {
-                handle.exit(0);
+            if handle.state::<ExitGate>().cancel_unanswered(request) {
+                crate::diagnostics::record("wait for exit flush", "exitFlushTimeout");
             }
         });
-    if fallback.is_err() {
-        // Never leave a quit waiting on a renderer that may not answer.
-        confirm_and_exit(app);
+    if retry_timer.is_err() {
+        // A failed timer must never approve quitting without the renderer's acknowledgment.
+        app.state::<ExitGate>().cancel_unanswered(request);
+        crate::diagnostics::record("schedule exit retry", "exitFlush");
     }
 }
 
@@ -193,8 +195,8 @@ mod tests {
         assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::AwaitFlush);
         assert!(gate.confirm());
         assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::Proceed);
-        // The fallback of an answered request does nothing.
-        assert!(!gate.confirm_unanswered(1));
+        // The timeout of an answered request does nothing.
+        assert!(!gate.cancel_unanswered(1));
     }
 
     #[test]
@@ -217,6 +219,21 @@ mod tests {
     }
 
     #[test]
+    fn an_unanswered_flush_keeps_the_app_open_and_allows_retry() {
+        let gate = ExitGate::default();
+        assert_eq!(
+            gate.on_quit_requested(false, 1),
+            ExitDecision::FlushFirst(1)
+        );
+        // A slow save or unresponsive renderer has not acknowledged the writing.
+        gate.cancel_unanswered(1);
+        assert_eq!(
+            gate.on_quit_requested(false, 1),
+            ExitDecision::FlushFirst(2)
+        );
+    }
+
+    #[test]
     fn a_failed_flush_keeps_the_app_open_until_a_later_quit_succeeds() {
         let gate = ExitGate::default();
         assert_eq!(
@@ -224,16 +241,16 @@ mod tests {
             ExitDecision::FlushFirst(1)
         );
         gate.cancel();
-        // The fallback timer of the cancelled request no longer quits.
-        assert!(!gate.confirm_unanswered(1));
-        // The next quit asks the renderer again, with its own fallback.
+        // The timeout of the cancelled request cannot change a later quit.
+        assert!(!gate.cancel_unanswered(1));
+        // The next quit asks the renderer again, with its own timeout.
         assert_eq!(
             gate.on_quit_requested(false, 1),
             ExitDecision::FlushFirst(2)
         );
-        assert!(!gate.confirm_unanswered(1));
-        assert!(gate.confirm_unanswered(2));
-        assert!(!gate.confirm());
+        assert!(!gate.cancel_unanswered(1));
+        assert!(gate.confirm());
+        assert!(!gate.cancel_unanswered(2));
         assert_eq!(gate.on_quit_requested(false, 1), ExitDecision::Proceed);
     }
 }

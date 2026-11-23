@@ -42,6 +42,7 @@ Implementation choices adopted in milestone 1, also engineering proposals rather
 - Gentle view hides score panels, suggested durations and the completion control. Drafts remain complete records of what was written, and leaving Gentle view restores every control.
 - Interface text size can be set to 100, 115, 130 or 150%, independently of layout spacing.
 - Development builds use a separate com.throughthedays.app.dev data folder and Keychain item.
+- Supported window close and application Quit wait for acknowledged saves. A missing renderer reply, timeout, event failure or timer failure keeps the app open and permits retry rather than approving exit.
 - Known limit: quits started by macOS itself (Dock, app switcher, logout or shutdown) skip the flush-before-quit request. Acknowledged revisions are durable, and the interface saves pending input when the window loses focus.
 
 ## Backup policy details
