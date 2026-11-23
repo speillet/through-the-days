@@ -4,9 +4,11 @@ OpenSpec turns the product brief into reviewable changes containing behavior, de
 
 ## Current state
 
-The application is not implemented. Eight draft changes capture the [product roadmap](roadmap.md). Their requirements use SHALL statements and concrete scenarios. The first change includes additional decisions confirmed on 22 November 2026.
+Milestone 1 has application code and automated verification in this branch. Verified entry, check-in, editor and persistence requirements are synchronised into openspec/specs/. The change remains active, with incomplete acceptance tasks unchecked; it is not archived. See [milestone 1 status](milestone-1-status.md) and [acceptance evidence](acceptance-coverage.md#milestone-1-evidence).
 
-The empty openspec/specs/ directory is intentional: no product behavior has been delivered yet. Proposed requirements live in openspec/changes/. Syntax validation checks document structure; it does not approve product choices or prove application correctness.
+Checks that need a person at a Mac are tracked in the confirm-native-macos-checks change: a VoiceOver pass, keyboard navigation with real keys, full screen, the native dialogs and Keychain prompts, a launch with networking off, and an exFAT backup drive. This checklist does not discharge the original milestone tasks. Seven further product changes capture the rest of the [product roadmap](roadmap.md). Their requirements use SHALL statements and concrete scenarios.
+
+openspec/specs/ describes only delivered, verified behavior; proposed requirements live in openspec/changes/. Syntax validation checks document structure; it does not approve product choices or prove application correctness.
 
 ## Where to read
 
@@ -61,7 +63,21 @@ The PR template prompts this review. CI checks strict OpenSpec structure and rej
 
 ## Commands
 
-Install a supported Node.js version, then use the lockfile:
+Application checks (Rust needs rustup; the pinned toolchain installs itself):
+
+~~~sh
+npm ci
+npm run check          # TypeScript
+npm test               # component, state and guard tests (Vitest)
+npm run test:e2e       # WebKit and Chromium end-to-end tests with synthetic data
+npm run test:rust      # journal-core and native shell tests
+npm run tauri --workspace @through-the-days/desktop -- build --debug --bundles app
+npm run smoke:native   # drives the debug app natively with a throwaway data folder
+~~~
+
+Development builds keep their data in a separate com.throughthedays.app.dev folder; the smoke check uses a temporary folder. Never point a development build at a real journal.
+
+Install a supported Node.js version, then use the lockfile for the specification tooling:
 
 ~~~sh
 npm ci

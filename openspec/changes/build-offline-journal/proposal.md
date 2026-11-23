@@ -9,7 +9,7 @@ A person needs to write, record a skippable check-in, and recover exactly what w
 - Deliver milestone 1 (product-roadmap phases 0–1, with backup/restore advanced by D-005).
 - Launch a personal Mac app, complete or skip reflection, write in either slot, and recover data after restart. Make backup/restore usable before real-data use.
 - Add optional perceived progress, data-preserving writing depths, and multiple user-owned wins without changing the two-slot or completion rules (appendix INT-01/02/10).
-- Keep the proposal and its tasks visibly unimplemented until verification.
+- Record verified implementation slices and retain unchecked acceptance work until its evidence exists.
 
 ## Capabilities
 
@@ -25,16 +25,16 @@ A person needs to write, record a skippable check-in, and recover exactly what w
 
 ### Modified Capabilities
 
-None. The delivered capability inventory is currently empty.
+None. This change introduces the first capabilities; verified entry, check-in, editor and persistence deltas are synchronised to main specs while broader native acceptance remains open.
 
 ## Impact
 
 Dependencies: No product dependency; this is the first implementation milestone.
 
-Sources: README_THROUGH_THE_DAYS.md §§0–5, 10–14, 19–22; decisions D-001–D-007.
+Sources: README_THROUGH_THE_DAYS.md §§0–5, 10–14, 19–22; decisions D-001–D-009.
 
 Out of scope: Calendar, Book View, trends, tags, counters, CBT, AI, ChatGPT import, cloud accounts, and public release packaging.
 
-Open decisions: D-006 and D-007 settle portable recovery, daily backups, and next-launch catch-up. O-009 covers destination defaults, retention, and credential changes during backup design. Check editor fidelity, schema constraints, save acknowledgment, and entry-completion transitions against the engineering proposals.
+Backup choices are resolved: D-006/D-007 settle portable recovery, daily frequency and catch-up; D-009 and `docs/backup-format.md` settle the chosen folder, 30 validated snapshots and future-only credential changes. No unresolved product choice blocks this implementation. Native acceptance still requires the evidence tracked in `tasks.md`.
 
-Status: draft planning baseline derived from the README and recorded user decisions; no application implementation is claimed.
+Status: offline-journal implementation prepared for review. Automated and native-smoke evidence is recorded in `docs/milestone-1-status.md` and acceptance coverage. The change remains active, with unfinished acceptance tasks unchecked; it is not archived.

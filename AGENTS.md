@@ -4,7 +4,9 @@ Read [the specification workflow](docs/specification-workflow.md) before plannin
 
 ## Product context
 
-Through the Days is a personal, offline-first macOS journal. The current repository contains specifications and development tooling; application features are not implemented. The first delivery is the offline journal, followed by reading, CBT, exploration, analytics, and distribution.
+Through the Days is a personal, offline-first macOS journal. Milestone 1, the offline journal, is implemented in crates/journal-core (journal authority) and apps/desktop (Tauri shell and React interface). Reading, CBT, exploration, analytics, and distribution follow as separate changes.
+
+Development builds use a separate com.throughthedays.app.dev data folder or TTD_DATA_DIR; never point them at a real journal.
 
 All product copy, prompts, fixtures, and repository documentation use English. Preserve user-authored text in its original language. Keep personal records and secrets outside the repository; use synthetic test data.
 
@@ -12,7 +14,7 @@ For any in-app LLM assistant, follow the shared [llm-assistance policy](openspec
 
 ## Specifications
 
-[README.md](README.md) is the concise user-facing overview. [README_THROUGH_THE_DAYS.md](README_THROUGH_THE_DAYS.md) and its linked technical design, roadmap, and acceptance documents are the detailed product requirements, including the assessed appendix additions. Explicit user decisions recorded in [product-decisions.md](docs/product-decisions.md) refine it. Changes under openspec/changes/ describe proposed behavior; openspec/specs/ records delivered behavior after verification and archive. A valid specification is not evidence that its feature works.
+[README.md](README.md) is the concise user-facing overview. [README_THROUGH_THE_DAYS.md](README_THROUGH_THE_DAYS.md) and its linked technical design, roadmap, and acceptance documents are the detailed product requirements, including the assessed appendix additions. Explicit user decisions recorded in [product-decisions.md](docs/product-decisions.md) refine it. Changes under openspec/changes/ describe proposed behavior; openspec/specs/ records verified delivered behavior; an incompletely verified change remains active. A valid specification is not evidence that its feature works.
 
 Use OpenSpec's spec-driven schema. Each requirement needs a SHALL statement and observable WHEN/THEN scenarios. Use the CLI to scaffold changes. Resolve relevant open product decisions with the user before implementing them; record engineering proposals as proposals until checked.
 

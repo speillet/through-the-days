@@ -1,6 +1,6 @@
 # Development roadmap
 
-The application is in planning. All milestones below describe future work; dates and implementation completion are not implied. See the [user overview](../README.md), [detailed product requirements](../README_THROUGH_THE_DAYS.md), and [OpenSpec workflow](specification-workflow.md).
+Milestone 1 (phases 0–1, the offline journal) has application code and passing automated checks; native acceptance remains open. See [milestone 1 status](milestone-1-status.md) and [acceptance evidence](acceptance-coverage.md#milestone-1-evidence). Later milestones describe future work; dates are not implied. See the [user overview](../README.md), [detailed product requirements](../README_THROUGH_THE_DAYS.md), and [OpenSpec workflow](specification-workflow.md).
 
 Original section numbering is retained for source references.
 
@@ -8,22 +8,22 @@ Original section numbering is retained for source references.
 
 ### Phase 0 — macOS UX prototype
 
-- [ ] Initialise **Tauri 2 + React + TypeScript + Vite**.
-- [ ] Build the original design system inspired by How We Feel principles, with sidebar, themes and accessible navigation.
-- [ ] Prototype **Today** and the **short pre-writing check-in**: mood/energy, actions, pride `1..10`, editor and synthetic test records.
-- [ ] Test keyboard entry, macOS reading, dark mode, small windows and **Skip**.
-- [ ] Verify **all UI strings and emotion labels are English**, including accessibility and empty states.
+- [x] Initialise **Tauri 2 + React + TypeScript + Vite**.
+- [x] Build the original design system inspired by How We Feel principles, with sidebar, themes and accessible navigation.
+- [x] Prototype **Today** and the **short pre-writing check-in**: mood/energy, actions, pride `1..10`, editor and synthetic test records.
+- [ ] Complete native keyboard entry, macOS reading, dark mode, small-window and **Skip** acceptance. Automated checks pass. A VoiceOver pass and real-key keyboard checks in the native window are tracked in the confirm-native-macos-checks change.
+- [x] Verify **all UI strings and emotion labels are English**, including accessibility and empty states.
 
 **Acceptance:** A macOS app opens with a complete clickable flow using fictional data.
 
 ### Phase 1 — Journal and daily reflection (first usable MVP)
 
-- [ ] SQLite, migrations, drafts and reliable autosave.
-- [ ] Create/edit at most two entries per date (Morning/Evening), with distinct mood/energy and free text.
-- [ ] Save activities, optional pride/progress `1..10`, approved small-win items, optional learning/helped answers, difficulties and a next small step.
-- [ ] Allow skipping reflection, switching writing depths without data loss, filling fields later, and selecting Gentle view.
-- [ ] Deliver 30-day trash, portable encrypted daily backups with next-launch catch-up, and tested restore before real personal use.
-- [ ] Test integrity, dates, app restarts and the **English-only interface**.
+- [x] SQLite, migrations, drafts and reliable autosave.
+- [x] Create/edit at most two entries per date (Morning/Evening), with distinct mood/energy and free text.
+- [x] Save activities, optional pride/progress `1..10`, approved small-win items, optional learning/helped answers, difficulties and a next small step.
+- [x] Allow skipping reflection, switching writing depths without data loss, filling fields later, and selecting Gentle view.
+- [x] Deliver 30-day trash, portable encrypted daily backups with next-launch catch-up, and tested restore before real personal use.
+- [x] Test integrity, dates, app restarts and the **English-only interface**.
 
 **Acceptance:** Journal text and check-in answers are exactly restored after restart without internet access; nothing is uploaded.
 
@@ -89,7 +89,8 @@ Original section numbering is retained for source references.
 
 | Order | Change | Scope |
 |---|---|---|
-| 1 | [build-offline-journal](../openspec/changes/build-offline-journal/proposal.md) | Phases 0–1: writing, check-in, durable storage, trash, backup and restore before real use |
+| 1 | [build-offline-journal](../openspec/changes/build-offline-journal/proposal.md) (implemented; acceptance open) | Phases 0–1: writing, check-in, durable storage, trash, backup and restore before real use |
+| 1a | [confirm-native-macos-checks](../openspec/changes/confirm-native-macos-checks/proposal.md) | Manual native checks of milestone 1: VoiceOver, real-key keyboard navigation, full screen, native dialogs and Keychain, offline launch, exFAT drive |
 | 2 | [add-journal-reading](../openspec/changes/add-journal-reading/proposal.md) | Phase 2: calendar, book, timeline, local search, Weekly Review and The Path So Far |
 | 3 | [add-cbt-companion](../openspec/changes/add-cbt-companion/proposal.md) | Phase 3: manual worksheets and experiments, then optional AI; extended templates are P2 |
 | 4 | [add-personal-exploration](../openspec/changes/add-personal-exploration/proposal.md) | Phase 4: tags, keyword statistics, independent goals |

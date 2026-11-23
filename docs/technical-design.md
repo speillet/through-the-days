@@ -1,6 +1,6 @@
 # Technical design
 
-Architecture, storage, repository structure, and data contracts for the planned macOS application. No application implementation is claimed here.
+Architecture, storage, repository structure, and data contracts for the macOS application. Milestone 1 (the offline journal) implements the journal storage, protection, backups and commands described for it here; sections about later milestones remain plans.
 
 Section numbers match the [detailed product reference](../README_THROUGH_THE_DAYS.md) so existing OpenSpec source references stay meaningful.
 
@@ -68,7 +68,7 @@ Use a dedicated macOS app data directory, resolved with Tauri's runtime path API
 
 For the first personal MVP, rely on macOS session/disk protections for the live store and describe ordinary SQLite as unencrypted by the application; do not assume FileVault is enabled. A separate application vault password is out of this initial scope. API secrets belong in macOS Keychain.
 
-Before real use, provide encrypted local backups with a dedicated portable passphrase and optional Keychain storage. Back up daily while the app is active, with next-launch catch-up after a missed day. An unavailable passphrase means backup is pending, never falsely successful. A consistent recoverable encrypted backup is required before migrating an existing journal; pause safely if it cannot be made. Fresh database creation needs no prior snapshot. Destination defaults and backup retention remain design decisions; the confirmed 30-day period applies to trash, not backups.
+Before real use, provide encrypted local backups with a dedicated portable passphrase and optional Keychain storage. Back up daily while the app is active, with next-launch catch-up after a missed day. An unavailable passphrase means backup is pending, never falsely successful. A consistent recoverable encrypted backup is required before migrating an existing journal; pause safely if it cannot be made. Fresh database creation needs no prior snapshot. Backups go to a folder the person chooses in the app, and the 30 latest validated backups are kept (D-009); the confirmed 30-day period applies to trash, not backups. The [backup format](backup-format.md) specifies the encryption, validation, retention and recovery contract.
 
 Deleted entries stay in local trash for 30 days with explicit restore/permanent deletion. Active cleanup or next launch removes expired live-store records and related retained data. Restore never overwrites an occupied date/slot. Older independent backup/export copies have a separate retention/protection policy; ordinary deletion makes no forensic-erasure promise.
 
@@ -79,6 +79,8 @@ Clear derivative indexes, embeddings, summaries, and pinned excerpts independent
 ## 11. Data model
 
 ### 11.1. `journal_entries` — primary SQLite table
+
+> **Milestone 1 storage.** Each entry is stored as one validated JSON aggregate beside indexed `id`, `entry_date`, `slot`, `revision` and `trashed_at` columns ([ADR 0003](adr/0003-store-each-entry-as-one-validated-aggregate.md)). The fields below describe the aggregate's logical content: actions, small wins and reflections live inside it, `body_markdown` is derived on demand rather than stored, and the trash expiry is computed from the deletion time. A partial unique index enforces one active entry per date and slot.
 
 | Field | Indicative SQL type | Meaning |
 |---|---|---|
@@ -154,6 +156,22 @@ These values are **illustrative** and do not describe any actual user.
 ---
 
 ## 12. Recommended repository structure
+
+Milestone 1 layout:
+
+```text
+through-the-days/
+├── crates/journal-core/      # journal authority: entry aggregate, validation, SQLite, trash, backups
+├── apps/desktop/
+│   ├── src/                  # React interface: api, domain, state, components, features, styles, guards
+│   ├── e2e/                  # Playwright tests with synthetic data
+│   ├── native-smoke/         # debug-only native smoke scenarios
+│   └── src-tauri/            # native shell: commands, dialogs, Keychain, flush before quit
+├── docs/                     # product, design, backup format, ADRs
+└── openspec/                 # delivered specs and proposed changes
+```
+
+The planned layout for later milestones:
 
 ```text
 through-the-days/
@@ -375,6 +393,8 @@ interface CbtSession {
 | `get_goal_snapshot` | Compute counters based on date convention | Explicit units and time zone |
 | `start_cbt_session` / `save_cbt_step` | Persist guided CBT worksheets | Must work without LLM |
 | `suggest_cbt_next_step` | Optional LLM support | Consent, schema validation, no automatic changes |
+
+Milestone 1 delivers the journal commands defined in `apps/desktop/src/api/types.ts` and `apps/desktop/src-tauri/src/commands.rs`: entries (`entries_on`, `save_entry`, `get_entry`, `list_entries`), trash, preferences, backups, restore, protected migration, startup retry and erasure. The other rows belong to later milestones.
 
 **Cross-cutting invariants:** minimal Tauri permissions, parameterised SQL, no arbitrary filesystem paths supplied by renderer, no API keys in logs, correct recalculation after edits, HTML escaping/sanitisation, tested backups, and exclusively synthetic CI fixtures.
 
