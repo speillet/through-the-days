@@ -72,15 +72,16 @@ fn recover<T: ?Sized>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
 /// The managed state: [`Core`] behind the lock every command takes, and the secret store.
 ///
 /// Locks are taken in the order `launch`, `secrets`, `core`, and a lock is never requested
-/// while a later one in that order is held.
+/// while a later one in that order is held. Keychain is never used while `core` is held.
 pub struct AppState {
     /// Held by the launch while its startup outcome can still change, so the startup status is
     /// never reported before it is final.
     launch: Mutex<()>,
     /// Held through each change to the Keychain item and the session change that follows it,
     /// so they reach Keychain and the session in the same order, without holding the journal.
-    /// The launch reads Keychain without it: a prompt nobody answers then holds up no change,
-    /// and a read that a change overtook is discarded (see [`Core::adopt_remembered`]).
+    /// The launch reads Keychain without it, so a prompt nobody answers holds up no change, and
+    /// takes it only to use what it read: a change under way finishes first, and a read that a
+    /// change overtook is then discarded (see [`Core::adopt_remembered`]).
     secrets: Mutex<()>,
     /// The Keychain store.
     keychain: Box<dyn SecretStore>,
@@ -148,10 +149,14 @@ impl AppState {
     /// with it, if its encrypted pre-migration backup can be made.
     ///
     /// The read does not wait for `secrets` either, so entering or forgetting a passphrase
-    /// meanwhile never waits for that prompt; the newer choice then wins over the read.
+    /// meanwhile never waits for that prompt. Using what it read does: a change still under way,
+    /// such as a protected upgrade storing a new passphrase, finishes first, and the newer
+    /// choice then wins over the read. So the launch never upgrades the journal with a
+    /// passphrase that such a change replaced.
     pub fn finish_launch(&self, pending: PendingLaunch<'_>, now: DateTime<Utc>) {
         if let Some(generation) = pending.keychain_read {
             let remembered = self.keychain.read();
+            let _changing = self.secrets();
             self.lock().adopt_remembered(generation, remembered, now);
         }
     }

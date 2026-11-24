@@ -60,6 +60,10 @@ export function StartupGate() {
 /**
  * The journal is opening. An older journal waits for the passphrase remembered in Keychain to
  * upgrade it, and the Keychain prompt can open behind the window: after a few seconds, say so.
+ *
+ * Once the prompt is answered, the launch backs up and upgrades the journal while holding it,
+ * and the backup status waits for it as well; asking again could not show that the prompt was
+ * answered before the journal opens. So the hint also says what follows the answer.
  */
 function Opening() {
   const api = useApi();
@@ -88,7 +92,10 @@ function Opening() {
       <h1 className="startup__title">{APP_NAME}</h1>
       <p role="status">Opening your journal…</p>
       {waitingForKeychain ? (
-        <Notice tone="info">{KEYCHAIN_PENDING_TEXT} The app continues once you answer it.</Notice>
+        <Notice tone="info">
+          {KEYCHAIN_PENDING_TEXT} After you answer it, the app may take a few more seconds to back up and upgrade your
+          journal.
+        </Notice>
       ) : null}
     </>
   );

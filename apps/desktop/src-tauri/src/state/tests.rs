@@ -16,7 +16,9 @@ use super::{
 };
 use crate::{error::CommandError, keychain::fake::FakeKeychain, paths::DataPaths};
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use journal_core::{BackupPlan, Entry, Error, Journal, Slot, document_text, list_backups};
+use journal_core::{
+    BackupPlan, Entry, Error, Journal, Slot, document_text, list_backups, verify_backup,
+};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -1046,6 +1048,18 @@ fn a_keychain_failure_keeps_the_session_passphrase_and_writing_available() {
     // A refused read is over: nothing is pending any more.
     assert!(status.remembered && !status.passphrase_available && !status.keychain_pending);
 
+    // Keychain cannot replace the remembered passphrase, so it may still hold the earlier one.
+    let status = app
+        .set_backup_passphrase(secret("synthetic replacement passphrase"), true, noon())
+        .unwrap();
+    assert_eq!(status.keychain_warning, Some(KeychainWarning::NotReplaced));
+    assert_eq!(status.state, BackupState::Due);
+    assert!(status.passphrase_available && !status.remembered);
+    assert!(!fixture.stored_plan().remember);
+    // The warning belongs to that reply only.
+    assert_eq!(app.lock().backup_status(noon()).keychain_warning, None);
+
+    // Once nothing is remembered, a refused store only leaves the new passphrase unremembered.
     let status = app
         .set_backup_passphrase(secret(PASSPHRASE), true, noon())
         .unwrap();
@@ -1053,11 +1067,7 @@ fn a_keychain_failure_keeps_the_session_passphrase_and_writing_available() {
         status.keychain_warning,
         Some(KeychainWarning::NotRemembered)
     );
-    assert_eq!(status.state, BackupState::Due);
     assert!(status.passphrase_available && !status.remembered);
-    assert!(!fixture.stored_plan().remember);
-    // The warning belongs to that reply only.
-    assert_eq!(app.lock().backup_status(noon()).keychain_warning, None);
 
     // Neither a passphrase kept for this session only nor forgetting it can remove the item.
     let status = app
@@ -1151,9 +1161,9 @@ fn a_keychain_prompt_while_remembering_the_passphrase_never_blocks_saving() {
     assert!(status.passphrase_available && status.remembered);
 }
 
-/// A Keychain prompt at launch can wait unanswered behind the window. A passphrase entered
-/// meanwhile applies at once, even when Keychain refuses to store it, and the late answer to the
-/// launch's read never replaces it.
+/// local-data-protection — Keychain prompt unanswered with the journal open: a passphrase
+/// entered meanwhile does not wait for the launch's read, even when Keychain refuses to store
+/// it, and the late answer to that read never replaces it.
 #[test]
 fn a_keychain_prompt_at_launch_never_holds_up_a_new_passphrase() {
     const NEW: &str = "synthetic passphrase typed during the prompt";
@@ -1193,9 +1203,11 @@ fn a_keychain_prompt_at_launch_never_holds_up_a_new_passphrase() {
         .expect("the new passphrase waited for the launch's Keychain prompt")
         .unwrap();
     assert_eq!(status.state, BackupState::Due);
+    // Keychain still holds the passphrase remembered before, and the reply says so.
+    assert_eq!(status.keychain_warning, Some(KeychainWarning::NotReplaced));
     assert_eq!(
-        status.keychain_warning,
-        Some(KeychainWarning::NotRemembered)
+        fixture.keychain.contents().item.as_deref(),
+        Some(PASSPHRASE)
     );
     // The launch's read no longer matters once a passphrase was entered.
     assert!(!status.keychain_pending);
@@ -1257,8 +1269,9 @@ fn a_keychain_prompt_at_launch_never_holds_up_forgetting_the_passphrase() {
     assert!(!fixture.stored_plan().remember);
 }
 
-/// An older journal that the remembered passphrase can upgrade at launch is not reported as
-/// waiting for its upgrade while Keychain is still being read.
+/// local-data-protection — Keychain prompt unanswered before a protected upgrade: an older
+/// journal that the remembered passphrase can upgrade at launch is not reported as waiting for
+/// its upgrade while Keychain is still being read, and the journal is unchanged until then.
 #[test]
 fn an_older_journal_waits_for_the_remembered_passphrase_before_its_status_is_reported() {
     let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
@@ -1268,6 +1281,7 @@ fn an_older_journal_waits_for_the_remembered_passphrase_before_its_status_is_rep
         ..BackupPlan::default()
     });
     previous_journal(&fixture.paths().journal);
+    let original = fixture.journal_bytes();
     fixture.keychain.show_prompt();
     let app = Arc::new(fixture.state());
     let launching = {
@@ -1285,12 +1299,69 @@ fn an_older_journal_waits_for_the_remembered_passphrase_before_its_status_is_rep
     let status = app.lock().backup_status(noon());
     assert_eq!(status.state, BackupState::NeedsPassphrase);
     assert!(status.keychain_pending);
+    assert_eq!(fixture.journal_bytes(), original);
 
     fixture.keychain.answer();
     assert_eq!(startup.recv().unwrap().state, StartupState::Ready);
     launching.join().unwrap();
     asking.join().unwrap();
     assert_eq!(list_backups(&fixture.folder()).unwrap().len(), 1);
+}
+
+/// local-data-protection — Passphrase typed while Keychain answers late: trying a failed start
+/// again can reach the protected upgrade while the launch still reads the remembered passphrase.
+/// When that read returns while the upgrade stores a newly typed passphrase, the launch waits
+/// for the upgrade, so the pre-migration backup uses the typed passphrase and the late read is
+/// dropped.
+#[test]
+fn a_late_keychain_read_at_launch_never_upgrades_with_a_replaced_passphrase() {
+    const NEW: &str = "synthetic passphrase typed for the upgrade";
+    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
+    fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.folder()),
+        remember: true,
+        ..BackupPlan::default()
+    });
+    let journal = fixture.paths().journal;
+    previous_journal(&journal);
+    // The first start fails, as when the file cannot be opened for a while.
+    fs::set_permissions(&journal, fs::Permissions::from_mode(0o000)).unwrap();
+    fixture.keychain.show_read_prompt();
+    let app = Arc::new(fixture.state());
+    let launching = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.launch(noon()))
+    };
+    fixture.keychain.wait_for_prompt();
+    assert_eq!(app.startup_status().state, StartupState::Failed);
+    fs::set_permissions(&journal, fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(
+        app.retry_startup(noon()).state,
+        StartupState::NeedsMigration
+    );
+
+    // The person types a new passphrase to remember, and Keychain asks before storing it.
+    fixture.keychain.show_prompt();
+    let upgrading = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.migrate_journal(Some(secret(NEW)), true, noon()))
+    };
+    fixture.keychain.wait_for_prompts(2);
+    // The launch's read is answered first, with the passphrase the upgrade replaces.
+    fixture.keychain.answer_read();
+    thread::sleep(Wait::from_millis(300));
+    fixture.keychain.answer();
+    let startup = upgrading.join().unwrap().unwrap();
+    launching.join().unwrap();
+    assert_eq!(startup.state, StartupState::Ready);
+
+    // One pre-migration backup, made with the typed passphrase that Keychain now remembers.
+    let backups = list_backups(&fixture.folder()).unwrap();
+    assert_eq!(backups.len(), 1);
+    verify_backup(&fixture.folder().join(&backups[0].name), NEW).unwrap();
+    assert_eq!(fixture.keychain.contents().item.as_deref(), Some(NEW));
+    let status = app.lock().backup_status(noon());
+    assert!(status.passphrase_available && status.remembered && !status.keychain_pending);
 }
 
 /// D-10: backup settings that cannot be read are reported, and kept as they are until the person

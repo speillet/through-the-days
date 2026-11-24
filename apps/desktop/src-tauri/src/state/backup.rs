@@ -59,25 +59,38 @@ pub fn backup_state(
 /// `KeychainWarning` in `api/types.ts`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(
+    clippy::enum_variant_names,
+    reason = "each variant names what Keychain did not do, as the renderer's names do"
+)]
 pub enum KeychainWarning {
     /// The passphrase could not be stored, so it lasts for this session only.
     NotRemembered,
+    /// The passphrase could not be stored in place of the one remembered before. It lasts for
+    /// this session only, and the earlier one may remain in Keychain, where the app no longer
+    /// reads it.
+    NotReplaced,
     /// The remembered passphrase could not be removed. It may remain in Keychain, where the app
     /// no longer reads it.
     NotRemoved,
 }
 
 impl KeychainWarning {
-    /// The warning after Keychain stored (`stored`) or deleted the item with the outcome
-    /// `keychain`.
-    fn after(keychain: Result<(), KeychainError>, stored: bool) -> Option<Self> {
-        keychain.err().map(|_| {
-            if stored {
-                Self::NotRemembered
+    /// The warning after Keychain stored a new passphrase with the outcome `stored`. A refused
+    /// store leaves a passphrase remembered before (`replacing`) where it was.
+    fn after_store(stored: Result<(), KeychainError>, replacing: bool) -> Option<Self> {
+        stored.err().map(|_| {
+            if replacing {
+                Self::NotReplaced
             } else {
-                Self::NotRemoved
+                Self::NotRemembered
             }
         })
+    }
+
+    /// The warning after Keychain deleted the item with the outcome `deleted`.
+    fn after_delete(deleted: Result<(), KeychainError>) -> Option<Self> {
+        deleted.err().map(|_| Self::NotRemoved)
     }
 }
 
@@ -130,7 +143,7 @@ impl AppState {
     ///
     /// Keychain is used without holding the journal. When it fails, the passphrase still works
     /// for this session and is recorded as not remembered, and the status returned says what
-    /// Keychain did not do.
+    /// Keychain did not do, including a passphrase remembered before that it may still hold.
     pub fn set_backup_passphrase(
         &self,
         passphrase: Zeroizing<String>,
@@ -145,9 +158,15 @@ impl AppState {
             self.keychain.delete()
         };
         let mut core = self.lock();
+        // Holding `secrets` kept the Keychain choice as it was before the operation.
+        let keychain_warning = if remember {
+            KeychainWarning::after_store(keychain, core.plan.remember)
+        } else {
+            KeychainWarning::after_delete(keychain)
+        };
         core.adopt_passphrase(passphrase, remember, keychain)?;
         Ok(BackupStatus {
-            keychain_warning: KeychainWarning::after(keychain, remember),
+            keychain_warning,
             ..core.backup_status(now)
         })
     }
@@ -164,7 +183,7 @@ impl AppState {
         let mut core = self.lock();
         core.forget_passphrase(deleted)?;
         Ok(BackupStatus {
-            keychain_warning: KeychainWarning::after(deleted, false),
+            keychain_warning: KeychainWarning::after_delete(deleted),
             ..core.backup_status(now)
         })
     }
@@ -510,6 +529,7 @@ mod tests {
             .unwrap_or_default();
         for (warning, name) in [
             (KeychainWarning::NotRemembered, "notRemembered"),
+            (KeychainWarning::NotReplaced, "notReplaced"),
             (KeychainWarning::NotRemoved, "notRemoved"),
         ] {
             assert_eq!(

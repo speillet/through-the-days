@@ -120,14 +120,21 @@ pub mod fake {
         pub failing: bool,
     }
 
-    /// Operations wait while `holding` is set, like a Keychain prompt nobody has answered yet.
+    /// What waits, like a Keychain prompt nobody has answered yet.
     #[derive(Debug, Default)]
     struct Prompt {
-        holding: bool,
-        /// Only reads wait for the prompt; stores and deletes go through.
-        reads_only: bool,
+        /// Reads wait for the prompt.
+        reads: bool,
+        /// Stores and deletes wait for the prompt.
+        changes: bool,
         /// Operations waiting for the prompt to be answered.
         waiting: usize,
+    }
+
+    impl Prompt {
+        fn holds(&self, reading: bool) -> bool {
+            if reading { self.reads } else { self.changes }
+        }
     }
 
     /// A shared handle: the test keeps one clone to inspect what the shell stored.
@@ -151,28 +158,42 @@ pub mod fake {
         /// Makes every later operation wait, as if macOS showed a prompt, until [`Self::answer`].
         pub fn show_prompt(&self) {
             let mut prompt = self.prompt();
-            prompt.holding = true;
-            prompt.reads_only = false;
+            prompt.reads = true;
+            prompt.changes = true;
         }
 
         /// Makes later reads wait until [`Self::answer`] while stores and deletes go through, as
         /// a prompt that only reading the item asks for.
         pub fn show_read_prompt(&self) {
             let mut prompt = self.prompt();
-            prompt.holding = true;
-            prompt.reads_only = true;
+            prompt.reads = true;
+            prompt.changes = false;
         }
 
         /// Answers the prompt: waiting operations continue.
         pub fn answer(&self) {
-            self.prompt().holding = false;
+            let mut prompt = self.prompt();
+            prompt.reads = false;
+            prompt.changes = false;
+            self.prompt.1.notify_all();
+        }
+
+        /// Answers the prompt that reads wait for: waiting reads continue, while stores and
+        /// deletes keep waiting until [`Self::answer`].
+        pub fn answer_read(&self) {
+            self.prompt().reads = false;
             self.prompt.1.notify_all();
         }
 
         /// Waits until an operation is waiting for the prompt.
         pub fn wait_for_prompt(&self) {
+            self.wait_for_prompts(1);
+        }
+
+        /// Waits until `count` operations are waiting for the prompt.
+        pub fn wait_for_prompts(&self, count: usize) {
             let mut prompt = self.prompt();
-            while prompt.waiting == 0 {
+            while prompt.waiting < count {
                 prompt = self
                     .prompt
                     .1
@@ -187,12 +208,12 @@ pub mod fake {
 
         fn pass_prompt(&self, reading: bool) {
             let mut prompt = self.prompt();
-            if prompt.reads_only && !reading {
+            if !prompt.holds(reading) {
                 return;
             }
             prompt.waiting += 1;
             self.prompt.1.notify_all();
-            while prompt.holding {
+            while prompt.holds(reading) {
                 prompt = self
                     .prompt
                     .1

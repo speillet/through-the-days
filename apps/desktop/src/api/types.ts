@@ -146,10 +146,12 @@ export type BackupState =
 /**
  * What macOS Keychain did not do after a passphrase change, which still applies to this
  * session: 'notRemembered' when it could not store the passphrase, so it lasts for this session
- * only; 'notRemoved' when it could not remove the remembered passphrase, which may remain in
- * Keychain although the app no longer reads it.
+ * only; 'notReplaced' when it could not store it in place of the one remembered before, which
+ * may remain in Keychain although the app no longer reads it; 'notRemoved' when it could not
+ * remove the remembered passphrase, which may remain in Keychain although the app no longer
+ * reads it.
  */
-export type KeychainWarning = 'notRemembered' | 'notRemoved';
+export type KeychainWarning = 'notRemembered' | 'notReplaced' | 'notRemoved';
 
 export interface BackupStatus {
   state: BackupState;

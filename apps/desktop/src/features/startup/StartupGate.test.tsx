@@ -87,8 +87,9 @@ describe('startup gate', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
+    // The status cannot tell when the prompt is answered, so the hint also covers the upgrade after it.
     expect(screen.getByText(/^Waiting for macOS Keychain: answer its prompt/)).toHaveTextContent(
-      'Waiting for macOS Keychain: answer its prompt, which may be behind this window, to use your remembered backup passphrase. The app continues once you answer it.',
+      'Waiting for macOS Keychain: answer its prompt, which may be behind this window, to use your remembered backup passphrase. After you answer it, the app may take a few more seconds to back up and upgrade your journal.',
     );
     expect(screen.getByText('Opening your journal…')).toBeInTheDocument();
   });

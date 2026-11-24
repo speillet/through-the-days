@@ -58,10 +58,15 @@ async function setUpBackups(user: User) {
 function keychainRefuses(api: JournalApi) {
   const setBackupPassphrase = api.setBackupPassphrase.bind(api);
   const forgetBackupPassphrase = api.forgetBackupPassphrase.bind(api);
-  vi.spyOn(api, 'setBackupPassphrase').mockImplementation(async (passphrase, remember) => ({
-    ...(await setBackupPassphrase(passphrase, false)),
-    keychainWarning: remember ? 'notRemembered' : 'notRemoved',
-  }));
+  vi.spyOn(api, 'setBackupPassphrase').mockImplementation(async (passphrase, remember) => {
+    // A refused store leaves a passphrase remembered before where it was.
+    const rememberedBefore = (await api.backupStatus()).remembered;
+    const warning = rememberedBefore ? 'notReplaced' : 'notRemembered';
+    return {
+      ...(await setBackupPassphrase(passphrase, false)),
+      keychainWarning: remember ? warning : 'notRemoved',
+    };
+  });
   vi.spyOn(api, 'forgetBackupPassphrase').mockImplementation(async () => ({
     ...(await forgetBackupPassphrase()),
     keychainWarning: 'notRemoved',
@@ -402,5 +407,29 @@ describe('Backups settings', () => {
     await user.click(screen.getByRole('button', { name: 'Change passphrase…' }));
     const dialog = screen.getByRole('dialog', { name: 'Change the backup passphrase' });
     expect(within(dialog).getByRole('checkbox', { name: 'Remember in macOS Keychain' })).toBeChecked();
+  });
+
+  it('says when macOS Keychain could not replace a remembered passphrase, and how to delete the earlier one', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE, true);
+    keychainRefuses(api);
+    await renderSection(api);
+    expect(facts()).toHaveTextContent('Remembered in macOS Keychain on this Mac.');
+    await user.click(screen.getByRole('button', { name: 'Change passphrase…' }));
+    // Remember stays ticked, so the app asks Keychain to replace the earlier passphrase.
+    await setPassphrase(user, NEW_PASSPHRASE);
+
+    expect(
+      await screen.findByText(
+        'Passphrase saved for this session, but macOS Keychain could not remember it. The app will ask for it again after it restarts. Keychain may still hold the passphrase it remembered before, which the app no longer uses. You can delete it yourself in the Keychain Access app: search for “throughthedays”.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('Passphrase saved and remembered in macOS Keychain.')).not.toBeInTheDocument();
+    expect(facts()).toHaveTextContent('Entered for this session only.');
+    expect(screen.getByRole('button', { name: 'Forget passphrase' })).toBeInTheDocument();
+    expect(api.setBackupPassphrase).toHaveBeenCalledWith(NEW_PASSPHRASE, true);
   });
 });

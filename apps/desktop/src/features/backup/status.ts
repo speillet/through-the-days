@@ -72,6 +72,8 @@ export function passphraseSavedWarning(warning: KeychainWarning | null): string 
   switch (warning) {
     case 'notRemembered':
       return 'Passphrase saved for this session, but macOS Keychain could not remember it. The app will ask for it again after it restarts.';
+    case 'notReplaced':
+      return `Passphrase saved for this session, but macOS Keychain could not remember it. The app will ask for it again after it restarts. Keychain may still hold the passphrase it remembered before, which the app no longer uses. ${KEYCHAIN_ACCESS_HINT}`;
     case 'notRemoved':
       return `Passphrase saved for this session, but macOS Keychain could not remove the passphrase it may have remembered before. The app no longer uses that one. ${KEYCHAIN_ACCESS_HINT}`;
     default:

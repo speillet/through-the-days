@@ -9,7 +9,7 @@ Status: not executed. This verification-only checklist supplements the original 
 
 ## 2. Native persistence and protection
 
-- [ ] 2.1 Exercise native folder/file dialogs and optional Keychain prompts, including cancellation and unavailable credentials, a refused store or delete, and a launch prompt left unanswered behind the window. Verify an error never appears as a successful backup, the app says what Keychain did not do or that it waits for Keychain, and existing writing remains readable; record results with synthetic records only.
+- [ ] 2.1 Exercise native folder/file dialogs and optional Keychain prompts, including cancellation and unavailable credentials, a refused store or delete, and a launch prompt left unanswered behind the window while a passphrase is entered or forgotten. Verify an error never appears as a successful backup, the app says what Keychain did not do or that it waits for Keychain, and existing writing remains readable; record whether that passphrase change completed before the launch prompt was answered, with synthetic records only.
 - [ ] 2.2 Disable networking at the operating-system level and verify native create/edit/save/restart/read, search, and weekly notes. Record the disabled-network environment and actual persistence results.
 - [ ] 2.3 Back up to an actual exFAT drive and restore into an isolated destination, comparing synthetic writing and reading metadata. Record device/filesystem details and any interruption or unsupported behaviour.
 
