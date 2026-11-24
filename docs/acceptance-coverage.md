@@ -116,3 +116,9 @@ The CI interface command bounds Vitest to two workers and 15 seconds per test af
 | 27, 33 / review corrections | `ReadingQueries.test.tsx` edits notes during deferred summary success/failure, navigates away and back, and verifies current and subsequent notes persist. A one-time source-list error has a visible retry and never claims an empty week. | Synthetic deferred responses exercise concurrency; no model adapter is involved. |
 
 All ten reading implementation slices have evidence. New task 5.1 retains the manual native reading acceptance explicitly (10/11 tasks complete); it does not transfer obligations from milestone 1 or the supplementary native checklist. Main specs now include the five verified reading capabilities. Both milestones remain active, with no archive. Worksheet counts and experiment outcomes are retained as unchecked Weekly Review integration in the subsequent CBT change.
+
+### November 24, 2026 post-merge verification
+
+Cases 3 and 22 cover a pause while editing a 400-paragraph Unicode entry. The post-merge run read revision 2 immediately after typing ` Fin.`. At that point the journal had saved the space. The revised component test waits for each expected document and compares all 400 paragraphs, the heading, list and quotation after reopening. [Initial CI failure](https://github.com/speillet/through-the-days/actions/runs/45349640722/job/138292568756)
+
+The macOS app reproduced the same sequence in a disposable SQLite journal. Revision 2 contained the space, revision 3 included `Fin.`, and a fresh process recovered the entire formatted entry. The five native writing and reading checks also passed with outbound IP connections denied to the test process. The system-wide offline and physical-input checks remain open.

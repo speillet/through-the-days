@@ -26,6 +26,11 @@ The system SHALL acknowledge a saved entry revision only after its writing and s
 
 The system SHALL progressively save from the first interaction, distinguish pending, saved, and failed states, and retain unsaved input for retry when persistence fails.
 
+#### Scenario: Resume writing after an autosave
+
+- **WHEN** the person pauses long enough for an autosave, continues writing in the same entry, and the app acknowledges the final edit
+- **THEN** reopening the journal restores the complete entry with the text written before and after the pause.
+
 #### Scenario: Disk or lock failure
 
 - **WHEN** a save fails while the person is writing
