@@ -68,12 +68,13 @@ for (const colorScheme of ['light', 'dark'] as const) {
   });
 }
 
-test('the manual dark theme has no serious accessibility violations on a light system', async ({ page }) => {
-  await page.emulateMedia({ colorScheme: 'light' });
-  await seedJournal(page, { preferences: { theme: 'dark' }, folderChosen: true });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.getByRole('group', { name: 'Backup status' })).toBeVisible();
-  await expectNoSeriousViolations(page, 'Today with the backup banner (manual dark)');
-  await openView(page, 'Settings');
-  await expectNoSeriousViolations(page, 'Settings (manual dark)');
-});
+for (const view of ['Today', 'Settings'] as const) {
+  test(`${view} with a manual dark theme on a light system`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await seedJournal(page, { preferences: { theme: 'dark' }, folderChosen: true });
+    await openView(page, view);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(page.getByRole('group', { name: 'Backup status' })).toBeVisible();
+    await expectNoSeriousViolations(page, `${view} (manual dark)`);
+  });
+}
