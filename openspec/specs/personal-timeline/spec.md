@@ -34,7 +34,7 @@ The Path So Far SHALL offer 7/30/90-day, one-year, and custom ranges with access
 
 #### Scenario: Range at the journal date limits
 
-- **WHEN** Earlier range or Later range would move the timeline before 1 January 0001 or after 31 December 9999, or a typed From or To date lies outside those dates
+- **WHEN** Earlier range or Later range would move a preset range's end date, or either date of a custom range, before 1 January 0001 or after 31 December 9999, or a typed From or To date lies outside those dates
 - **THEN** that control is unavailable or the typed date is ignored, and the timeline keeps its current range.
 
 ### Requirement: Optional available layers

@@ -224,7 +224,7 @@ it('stops day, week, range and month steps at 31 December 9999 and keeps that da
   expect(await screen.findByLabelText('Ending on')).toHaveValue('9999-12-31');
 });
 
-it('stops a one-year timeline and the weekly review at 1 January 0001', async () => {
+it('stops one-year and custom timelines and the weekly review at 1 January 0001', async () => {
   const api = await journal();
   render(<App api={api} initialView="trends" />);
   const user = userEvent.setup();
@@ -233,6 +233,18 @@ it('stops a one-year timeline and the weekly review at 1 January 0001', async ()
   await user.click(await screen.findByRole('button', { name: '1 year' }));
   expect(screen.getByRole('button', { name: 'Earlier range' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Later range' })).toBeEnabled();
+
+  // A custom range stops where its From date would pass 1 January 0001; a typed From with a
+  // fifth year digit is ignored.
+  await user.click(screen.getByRole('button', { name: 'Custom range' }));
+  fireEvent.change(screen.getByLabelText('From'), { target: { value: '0001-01-01' } });
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: '0001-01-10' } });
+  expect(screen.getByText(/^Monday 1 January 1 to Wednesday 10 January 1\./)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Earlier range' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Later range' })).toBeEnabled();
+  fireEvent.change(screen.getByLabelText('From'), { target: { value: '20261-11-24' } });
+  expect(screen.getByLabelText('From')).toHaveValue('0001-01-01');
+  expect(screen.getByRole('button', { name: 'Earlier range' })).toBeDisabled();
 
   await user.click(screen.getByRole('button', { name: 'Trends' }));
   fireEvent.change(await screen.findByLabelText('Ending on'), { target: { value: '0001-01-05' } });
