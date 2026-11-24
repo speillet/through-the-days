@@ -49,7 +49,7 @@ See [development status](../../../docs/milestone-1-status.md) for commands, actu
 - 3.3: `apps/desktop/src-tauri/src/single_instance.rs` runs an open copy under Tauri's mock runtime and launches the test binary again: the second copy hands over and exits before it opens its synthetic data folder, which a launch after the open copy quits does open. `crates/journal-core/tests/persistence.rs` holds another connection's write lock while an entry is saved, a trashed entry is restored, weekly notes and a summary are written and a milestone is saved; each waits and succeeds. The guard is registered in release builds only, so 3.3 stays unchecked until a native second launch of a release build is recorded.
 - 6.1–6.4: domain/check-in, WritingDepth, GentleView, Today and writing browser tests cover identity-preserving depth changes, nullable progress, explicit canonical wins and visibility without data loss. Later reading-surface combinations remain in that change's task 4.4.
 - 7.2: privacy guards and native diagnostics/migration tests cover metadata-only error reporting and protected migration failure.
-- 1.2, 5.1, 5.2 and 7.1 remain unchecked: native Skip/focus/assistive checks, all mapped acceptance, and the full derivative-removal audit have not been established by this audit.
+- 1.2, 3.3, 5.1, 5.2 and 7.1 remain unchecked: native Skip/focus/assistive checks, a native second launch of a release build, all mapped acceptance, and the full derivative-removal audit have not been established yet.
 
 ## Workflow follow-up
 

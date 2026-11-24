@@ -96,7 +96,9 @@ fn partially_answered_check_in_is_restored_without_requiring_completion() {
     );
 }
 
-/// local-persistence — Progressive autosave and errors / Disk or lock failure.
+/// local-persistence — Progressive autosave and errors (a lock released within the wait is not a
+/// save failure; a lock held past it still fails, as
+/// `stale_or_locked_save_keeps_the_last_acknowledged_aggregate` in `tests/journal.rs` checks).
 ///
 /// Another connection, such as a second copy of the app, holds the journal's write lock for a
 /// moment. Every operation that reads before it writes waits for that lock and succeeds, instead
