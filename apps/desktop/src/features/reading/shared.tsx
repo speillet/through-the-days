@@ -247,20 +247,24 @@ export function EntryPreview({
   const api = useApi();
   const { navigate } = useNavigation();
   const { filters, setBookId, setReturnView, setBookRequest } = useReading();
-  // A change belongs to the revision it replaces: it stays busy until the refreshed view shows
-  // the saved revision (so a second change cannot save over a stale one), and its error stays
-  // until the entry changes.
-  const [change, setChange] = useState<{ revision: number; error: string | null } | null>(null);
+  // A change belongs to the revision it replaces. Until the refreshed view shows the saved
+  // revision, the checkbox shows the requested value as busy and ignores further changes, so a
+  // second change cannot save over a stale revision. A failed save shows the saved value again
+  // and keeps its error until the entry changes or the person tries again.
+  const [change, setChange] = useState<{ revision: number; include: boolean; error: string | null } | null>(
+    null,
+  );
   const current = change?.revision === entry.revision ? change : null;
   const busy = current !== null && current.error === null;
+  const included = busy ? current.include : entry.includeInInsights !== false;
   const slot = SLOT_NAMES[entry.slot];
-  async function toggleInsights(includeInInsights: boolean) {
+  async function toggleInsights(include: boolean) {
     const { revision } = entry;
-    setChange({ revision, error: null });
+    setChange({ revision, include, error: null });
     try {
-      await api.saveEntry({ ...entry, includeInInsights });
+      await api.saveEntry({ ...entry, includeInInsights: include });
     } catch (caught) {
-      setChange({ revision, error: toCommandError(caught).message });
+      setChange({ revision, include, error: toCommandError(caught).message });
     }
   }
   return (
@@ -299,12 +303,13 @@ export function EntryPreview({
           Edit {slot} entry
         </Button>
       </div>
-      {/* Like a busy Button, the checkbox keeps keyboard focus while saving and ignores changes. */}
+      {/* Like a busy Button, the checkbox keeps keyboard focus while saving, looks busy (reading.css)
+          and ignores changes. */}
       <label className="reading-permission">
         <input
           type="checkbox"
           tabIndex={0}
-          checked={entry.includeInInsights !== false}
+          checked={included}
           aria-busy={busy || undefined}
           aria-disabled={busy || undefined}
           onChange={(e) => {

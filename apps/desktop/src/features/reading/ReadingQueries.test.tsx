@@ -297,19 +297,62 @@ it('keeps an insights checkbox focused and ignores it until its saved change is 
   await reads.waiting();
   const excluded = { includeInInsights: false, revision: saved.revision + 1 };
   expect(await journal.getEntry(saved.id)).toMatchObject(excluded);
+  // The requested value shows at once, marked busy, while the refreshed revision is on its way.
+  expect(include).not.toBeChecked();
   expect(include).toHaveFocus();
   expect(include).toBeEnabled();
+  expect(include).toHaveAttribute('aria-busy', 'true');
   expect(include).toHaveAttribute('aria-disabled', 'true');
   // Until the refreshed revision arrives, another change would be saved over a stale revision.
   await user.click(include);
+  expect(include).not.toBeChecked();
   await reads.answer();
   expect(save).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('region', { name: 'Morning entry from 22 November 2026' })).toBe(preview);
   expect(include).toHaveFocus();
   expect(include).not.toBeChecked();
+  expect(include).not.toHaveAttribute('aria-busy');
   expect(include).not.toHaveAttribute('aria-disabled');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   expect(await journal.getEntry(saved.id)).toMatchObject(excluded);
+});
+
+it('shows a failed insights change and accepts the next one', async () => {
+  const journal = syntheticJournal();
+  const saved = await journal.saveEntry(writing('morning', 'Synthetic source whose change fails once.'));
+  // Installed before heldReads copies the journal's methods, so the interface saves through it.
+  const save = vi.spyOn(journal, 'saveEntry').mockRejectedValueOnce({
+    code: 'storage',
+    message: 'Synthetic toggle failure.',
+  });
+  const reads = heldReads(journal);
+  render(<App api={reads.api} initialView="journal" />);
+  await opened(reads);
+  const user = userEvent.setup();
+  const preview = screen.getByRole('region', { name: 'Morning entry from 22 November 2026' });
+  const include = within(preview).getByRole('checkbox', { name: 'Include in insights and timelines' });
+  await user.click(include);
+  expect(await within(preview).findByRole('alert')).toHaveTextContent('Synthetic toggle failure.');
+  // The failed change frees the checkbox at once and shows the saved value again.
+  expect(include).toHaveFocus();
+  expect(include).toBeChecked();
+  expect(include).not.toHaveAttribute('aria-busy');
+  expect(include).not.toHaveAttribute('aria-disabled');
+  expect(await journal.getEntry(saved.id)).toMatchObject({ includeInInsights: true, revision: saved.revision });
+
+  await user.click(include);
+  expect(save).toHaveBeenCalledTimes(2);
+  await reads.waiting();
+  expect(within(preview).queryByRole('alert')).not.toBeInTheDocument();
+  expect(include).not.toBeChecked();
+  expect(include).toHaveAttribute('aria-disabled', 'true');
+  await reads.answer();
+  expect(screen.getByRole('region', { name: 'Morning entry from 22 November 2026' })).toBe(preview);
+  expect(include).toHaveFocus();
+  expect(include).not.toBeChecked();
+  expect(include).not.toHaveAttribute('aria-disabled');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(await journal.getEntry(saved.id)).toMatchObject({ includeInInsights: false, revision: saved.revision + 1 });
 });
 
 it('keeps The Path So Far sources in place when a milestone is saved', async () => {

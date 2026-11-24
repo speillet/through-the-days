@@ -73,9 +73,11 @@ export function useReadingSelection(request?: SearchRequest | null): SearchReque
  * stale text.
  */
 export function useReadingQuery<T>(read: () => Promise<T>) {
-  const [result, setResult] = useState<{ read: () => Promise<T>; data: T | null; error: string | null } | null>(
-    null,
-  );
+  const [result, setResult] = useState<{
+    read: () => Promise<T>;
+    data: T | null;
+    error: string | null;
+  } | null>(null);
   const [generation, setGeneration] = useState(0);
   const reload = useCallback(() => setGeneration((v) => v + 1), []);
   useEffect(() => {

@@ -266,12 +266,7 @@ export function PathView() {
                 </div>
                 {layers.scores
                   ? sources.map((entry) => (
-                      <EntryPreview
-                        key={entry.id}
-                        entry={entry}
-                        origin="path"
-                        bookRequest={sourceRequest}
-                      />
+                      <EntryPreview key={entry.id} entry={entry} origin="path" bookRequest={sourceRequest} />
                     ))
                   : null}
                 {layers.wins && wins.length ? (
