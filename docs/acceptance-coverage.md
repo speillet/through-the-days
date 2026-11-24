@@ -116,3 +116,17 @@ The CI interface command bounds Vitest to two workers and 15 seconds per test af
 | 27, 33 / review corrections | `ReadingQueries.test.tsx` edits notes during deferred summary success/failure, navigates away and back, and verifies current and subsequent notes persist. A one-time source-list error has a visible retry and never claims an empty week. | Synthetic deferred responses exercise concurrency; no model adapter is involved. |
 
 All ten reading implementation slices have evidence. New task 5.1 retains the manual native reading acceptance explicitly (10/11 tasks complete); it does not transfer obligations from milestone 1 or the supplementary native checklist. Main specs now include the five verified reading capabilities. Both milestones remain active, with no archive. Worksheet counts and experiment outcomes are retained as unchecked Weekly Review integration in the subsequent CBT change.
+
+### November 24, 2026 post-merge verification
+
+Cases 3 and 22 cover a pause while editing a 400-paragraph Unicode entry. The post-merge run read revision 2 immediately after typing ` Fin.`. At that point the journal had saved the space. The revised component test waits for each expected document and compares all 400 paragraphs, the heading, list and quotation after reopening. [Initial CI failure](https://github.com/speillet/through-the-days/actions/runs/45349640722/job/138292568756)
+
+The macOS app reproduced the same sequence in a disposable SQLite journal. Revision 2 contained the space, revision 3 included `Fin.`, and a fresh process recovered the entire formatted entry. The five native writing and reading checks also passed with outbound IP connections denied to the test process. The system-wide offline and physical-input checks remain open.
+
+For case 8, the WebKit rerun reached the 30-second test deadline while scanning six surfaces together in each appearance. Playwright now reports Today, Trash, Settings, and the permanent deletion, passphrase and erasure dialogs individually in both appearances and both engines. Each of these 24 cases runs the same axe WCAG A/AA checks for serious and critical findings within its own 30-second test. [WebKit timeout on main](https://github.com/speillet/through-the-days/actions/runs/45349640722/job/138649740712)
+
+### November 25, 2026 browser follow-up
+
+All 24 individual audits passed on the PR. Another editor scenario recovered the full Morning text after switching slots, in revision 3. Its assertion expected revision 2. A deliberate pause reproduced this in WebKit. The scenario now checks that the same entry keeps all its text and its revision advances. [Browser run and assertion](https://github.com/speillet/through-the-days/actions/runs/45455001538/job/138661934764)
+
+Cases 8 and 12 now give each reading view, minimum-window view, manual dark appearance and recovery screen its own accessibility audit. Separate restoration tests still create the backup through the interface, exercise the warning about a failed safety backup and check the recovered entry. Playwright serves the compiled frontend. A cold WebKit load of Today made three local requests for the bundle, compared with 124 from the development server.
