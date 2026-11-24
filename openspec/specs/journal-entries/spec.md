@@ -43,8 +43,8 @@ The system SHALL default new entries to the current civil date in the configured
 
 #### Scenario: Shown again after midnight
 
-- **WHEN** Today shows the current date with no entry open, and its window is hidden across midnight, for example while the Mac sleeps, then shown again without regaining focus
-- **THEN** Today moves on to the new date as soon as the window is shown, so the first answer or keystroke starts the entry on that date.
+- **WHEN** Today shows the current date with no entry open, and its window is reported hidden across midnight, then reported visible again without regaining focus
+- **THEN** Today moves on to the new date as soon as the window is reported visible, so the first answer or keystroke starts the entry on that date.
 
 #### Scenario: Travel
 
