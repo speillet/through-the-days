@@ -218,4 +218,49 @@ describe('Settings', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('The journal could not be saved.');
     expect(within(section('Gentle view')).getByRole('switch', { name: 'Gentle view' })).not.toBeChecked();
   });
+
+  it('keeps display settings it cannot read until the person resets them', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    const defaults = await api.getPreferences();
+    await api.setPreferences({ ...defaults, timeZone: 'America/New_York', theme: 'dark' });
+    // What the journal reports for stored settings this version cannot read, such as a newer version's.
+    const read = vi.spyOn(api, 'getPreferences').mockRejectedValue({
+      code: 'document',
+      message: 'The journal document has an unsupported structure.',
+    });
+    const write = vi.spyOn(api, 'setPreferences');
+    await renderSettings(api);
+    const notice = screen.getByRole('alert');
+    expect(notice).toHaveTextContent('Display settings could not be read');
+    expect(notice).toHaveTextContent('The journal document has an unsupported structure.');
+    expect(notice).toHaveTextContent(
+      'Until they can be read, the app shows the defaults and does not save changes, so the stored settings are kept.',
+    );
+    expect(notice).toHaveTextContent('Resetting replaces them with these defaults, including the time zone');
+
+    // A change is not saved over the stored settings.
+    await user.click(within(section('Appearance')).getByRole('radio', { name: /Light/ }));
+    expect(write).not.toHaveBeenCalled();
+    expect(within(section('Appearance')).getByRole('radio', { name: /System/ })).toBeChecked();
+
+    // A reset that fails says why and stays available.
+    write.mockRejectedValueOnce({
+      code: 'storage',
+      message: 'The journal could not be saved. Check available disk space and try again.',
+    });
+    await user.click(within(notice).getByRole('button', { name: 'Reset display settings' }));
+    expect(await within(notice).findByText(/^The journal could not be saved\./)).toBeInTheDocument();
+
+    await user.click(within(notice).getByRole('button', { name: 'Reset display settings' }));
+    const confirmation = await screen.findByText('Display settings were reset to the defaults.');
+    expect(confirmation.closest('.settings__status')).toHaveFocus();
+    expect(screen.queryByText('Display settings could not be read')).not.toBeInTheDocument();
+    read.mockRestore();
+    await expect(api.getPreferences()).resolves.toEqual(defaults);
+
+    // Changes are saved again.
+    await user.click(within(section('Appearance')).getByRole('radio', { name: /Light/ }));
+    await expect(api.getPreferences()).resolves.toMatchObject({ theme: 'light' });
+  });
 });

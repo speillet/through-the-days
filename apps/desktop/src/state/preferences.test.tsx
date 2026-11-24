@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiProvider, type JournalApi } from '../api/client';
 import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES } from '../api/memory';
+import type { Preferences } from '../api/types';
 import { DEFAULT_PREFERENCES } from '../domain/preferences';
 import { applyAppearance, restoreCachedAppearance } from './appearance';
 import { PreferencesProvider, usePreferences, type PreferencesContextValue } from './preferences';
@@ -23,6 +24,20 @@ function renderPreferences(api: JournalApi) {
 }
 
 const html = document.documentElement;
+
+/** Synthetic stored preferences whose time zone, theme, Gentle view, text size and timeline differ from the defaults. */
+const STORED_PREFERENCES: Preferences = {
+  ...DEFAULT_PREFERENCES,
+  timeZone: 'America/New_York',
+  theme: 'dark',
+  gentle: true,
+  textScale: 130,
+  timelineDays: 30,
+  timelineMetrics: ['mood'],
+};
+
+/** What the journal reports for a stored row this build cannot read, such as one with an unknown field. */
+const UNREADABLE = { code: 'document', message: ERROR_MESSAGES.document } as const;
 
 describe('PreferencesProvider', () => {
   it('waits for the journal’s preferences before rendering', async () => {
@@ -79,6 +94,75 @@ describe('PreferencesProvider', () => {
     const current = renderPreferences(api);
     expect(await screen.findByText('Theme: system')).toBeInTheDocument();
     expect(current.value?.error?.code).toBe('storage');
+    expect(current.value?.unreadable).toBe(true);
+  });
+
+  it('never saves the defaults over preferences it could not read', async () => {
+    const storage = createMemoryStorage();
+    const stored = await createMemoryApi({ storage }).setPreferences(STORED_PREFERENCES);
+    const api = createMemoryApi({ storage });
+    vi.spyOn(api, 'getPreferences').mockRejectedValue(UNREADABLE);
+    const setPreferences = vi.spyOn(api, 'setPreferences');
+    const current = renderPreferences(api);
+    await screen.findByText('Theme: system');
+
+    let saved = true;
+    await act(async () => {
+      saved = (await current.value?.update({ sidebarOpen: false })) ?? true;
+    });
+    expect(saved).toBe(false);
+    expect(setPreferences).not.toHaveBeenCalled();
+    expect(current.value?.error).toEqual(UNREADABLE);
+    expect(current.value?.unreadable).toBe(true);
+    expect(current.value?.preferences).toEqual(DEFAULT_PREFERENCES);
+    await expect(createMemoryApi({ storage }).getPreferences()).resolves.toEqual(stored);
+  });
+
+  it('reads the stored preferences again before saving a change after a failed read', async () => {
+    const storage = createMemoryStorage();
+    const stored = await createMemoryApi({ storage }).setPreferences(STORED_PREFERENCES);
+    const api = createMemoryApi({ storage });
+    vi.spyOn(api, 'getPreferences').mockRejectedValueOnce({ code: 'storage', message: ERROR_MESSAGES.storage });
+    const current = renderPreferences(api);
+    await screen.findByText('Theme: system');
+
+    let saved = false;
+    await act(async () => {
+      saved = (await current.value?.update({ sidebarOpen: false })) ?? false;
+    });
+    expect(saved).toBe(true);
+    expect(current.value?.preferences).toEqual({ ...stored, sidebarOpen: false });
+    expect(current.value?.error).toBeNull();
+    expect(current.value?.unreadable).toBe(false);
+    expect(screen.getByText('Theme: dark')).toBeInTheDocument();
+    await expect(createMemoryApi({ storage }).getPreferences()).resolves.toEqual({ ...stored, sidebarOpen: false });
+  });
+
+  it('replaces preferences it could not read with the defaults only when asked', async () => {
+    const storage = createMemoryStorage();
+    await createMemoryApi({ storage }).setPreferences(STORED_PREFERENCES);
+    const api = createMemoryApi({ storage });
+    vi.spyOn(api, 'getPreferences').mockRejectedValue(UNREADABLE);
+    const current = renderPreferences(api);
+    await screen.findByText('Theme: system');
+
+    let reset = false;
+    await act(async () => {
+      reset = (await current.value?.reset()) ?? false;
+    });
+    expect(reset).toBe(true);
+    expect(current.value?.unreadable).toBe(false);
+    expect(current.value?.error).toBeNull();
+    await expect(createMemoryApi({ storage }).getPreferences()).resolves.toEqual(DEFAULT_PREFERENCES);
+
+    // Later changes are saved as usual.
+    await act(async () => {
+      await current.value?.update({ theme: 'dark' });
+    });
+    await expect(createMemoryApi({ storage }).getPreferences()).resolves.toEqual({
+      ...DEFAULT_PREFERENCES,
+      theme: 'dark',
+    });
   });
 
   it('applies the theme and reduced-motion overrides to the document', async () => {

@@ -145,7 +145,7 @@ The upgrade from version 2 to version 3 adds `weekly_reviews` and `timeline_mile
 
 ## Restoring
 
-Restoring replaces the entire journal (entries, trash and preferences) with the content of the backup. The backup plan and the Keychain item are not part of the journal, so they are unchanged.
+Restoring replaces the entire journal (entries, trash and preferences) with the content of the backup. The backup plan and the Keychain item are not part of the journal, so they are unchanged. In the desktop app, no display preference can be changed while the restore dialog is open, so the restored journal keeps the backup's preferences.
 
 1. The backup is decrypted, validated and rebuilt with this build's schema in memory (see [Validation](#validation)). Any failure stops the restore here, and the live journal is unchanged.
 2. The rebuilt copy replaces the live database through SQLite's online backup API. The replacement is committed as a whole or rolled back. It copies every page, so it also replaces a live journal with damaged pages (see [Damaged journal files](#damaged-journal-files)).
