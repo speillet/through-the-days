@@ -45,6 +45,11 @@ The system SHALL provide local full-text search and combinable journal filters w
 - **WHEN** the person searches synthetic non-English journal text offline
 - **THEN** matching saved text is found under the documented search rules and opens its source entry.
 
+#### Scenario: Punctuation beside searched words
+
+- **WHEN** the person searches saved words together with punctuation or an emoji that search does not index, such as "pourquoi ?", "« journée »" or "paisible 🌿"
+- **THEN** My Journal, Calendar, Book View, Trends and The Path So Far include every entry containing all the searched words, and a search made only of such characters matches no entry.
+
 #### Scenario: Edit invalidates search
 
 - **WHEN** an entry is edited so that a previous match disappears

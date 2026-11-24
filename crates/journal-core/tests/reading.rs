@@ -33,6 +33,63 @@ fn local_search_combines_filters_and_never_returns_edited_or_trashed_text() {
     assert!(journal.search(&clouds).unwrap().is_empty());
 }
 
+/// Ids of the entries a plain text search returns.
+fn search_ids(journal: &Journal, text: &str) -> Vec<String> {
+    let request = SearchRequest {
+        text: text.into(),
+        ..Default::default()
+    };
+    journal
+        .search(&request)
+        .unwrap()
+        .into_iter()
+        .map(|entry| entry.id)
+        .collect()
+}
+
+#[test]
+fn search_ignores_punctuation_and_emoji_beside_words_but_still_requires_every_word() {
+    let directory = tempfile::tempdir().unwrap();
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    let mut morning = Entry::draft("2026-11-22", Slot::Morning);
+    // Deliberate multilingual synthetic search fixture.
+    morning.document = json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Synthetic journée paisible 🌿"}]}]});
+    let saved = journal.save(morning).unwrap();
+    // French typography puts a space before "?"; the tokenizer indexes no word for "?", "«" or "🌿".
+    for text in ["journee ?", "paisible 🌿", "« journee »"] {
+        assert_eq!(search_ids(&journal, text), [saved.id.as_str()], "{text}");
+    }
+    assert!(search_ids(&journal, "journee ? absent").is_empty());
+    assert!(search_ids(&journal, "?").is_empty());
+    let report = journal
+        .reading_report(&SearchRequest {
+            text: "paisible 🌿".into(),
+            from: Some("2026-11-22".into()),
+            to: Some("2026-11-22".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!((report.entries, report.recorded_days), (1, 1));
+    assert_eq!(report.days[0].observations[0].id, saved.id);
+}
+
+#[test]
+fn search_keeps_the_words_of_each_query_part_together_and_folds_only_latin_accents() {
+    let directory = tempfile::tempdir().unwrap();
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    // Deliberate multilingual synthetic search fixtures; the browser preview mirrors these rules.
+    let mut together = Entry::draft("2026-11-21", Slot::Morning);
+    together.document = json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Synthetic l’amour du matin, καλημέρα"}]}]});
+    let together = journal.save(together).unwrap();
+    let mut apart = Entry::draft("2026-11-22", Slot::Morning);
+    apart.document = json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Synthetic amour de l'été"}]}]});
+    let apart = journal.save(apart).unwrap();
+    assert_eq!(search_ids(&journal, "l'amour"), [together.id.as_str()]);
+    assert_eq!(search_ids(&journal, "ete amour"), [apart.id.as_str()]);
+    assert_eq!(search_ids(&journal, "ΚΑΛΗΜΈΡΑ"), [together.id.as_str()]);
+    assert!(search_ids(&journal, "καλημερα").is_empty());
+}
+
 #[test]
 fn weekly_notes_and_milestones_survive_restart_and_source_changes_invalidate_summaries() {
     let directory = tempfile::tempdir().unwrap();

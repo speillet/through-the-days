@@ -1,7 +1,7 @@
 // Synthetic browser-preview counterparts of the native reading queries. Production uses Rust.
 import type { Entry, ReadingReport, SearchRequest, ScoreMetric, WeeklyReview } from './types';
 import { addDays, isIsoDate, weekdayIndex } from '../domain/dates';
-import { documentText } from '../domain/entry';
+import { documentText, isBlank } from '../domain/entry';
 
 export const METRICS: readonly ScoreMetric[] = ['mood', 'energy', 'pride', 'progress'];
 export interface PreviewReview {
@@ -11,7 +11,29 @@ export interface PreviewReview {
   summary: string | null;
   fingerprint: string | null;
 }
-const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+// Native search indexes with SQLite FTS5's unicode61 tokenizer (remove_diacritics 2), approximated here.
+// Words are runs of letters, numbers and private-use characters. Case folds, and only letters with an
+// ASCII base lose their accents: an accented Latin e matches e, while a Greek letter keeps its accent.
+const searchWords = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/([a-z])[\u0300-\u036f]+/g, '$1')
+    .normalize('NFC')
+    .match(/[\p{L}\p{N}\p{Co}]+/gu) ?? [];
+// Each space-separated part of the query must appear as consecutive words, so "well-being" finds
+// "well being" but not "being well". A part without a word, such as "?" or an emoji, is ignored,
+// and a query without any word finds nothing.
+const queryPhrases = (text: string) =>
+  text
+    .split(/\p{White_Space}+/u)
+    .map(searchWords)
+    .filter((phrase) => phrase.length > 0);
+const containsEveryPhrase = (words: string[], phrases: string[][]) =>
+  phrases.length > 0 &&
+  phrases.every((phrase) =>
+    words.some((_, start) => phrase.every((word, offset) => words[start + offset] === word)),
+  );
 
 export function filterPreviewEntries(entries: Entry[], request: SearchRequest): Entry[] {
   if (
@@ -20,11 +42,10 @@ export function filterPreviewEntries(entries: Entry[], request: SearchRequest): 
     (request.from && request.to && request.from > request.to)
   )
     throw { code: 'date', message: 'Choose a valid date range.' };
-  const terms: string[] = fold(request.text ?? '').match(/[\p{L}\p{N}]+/gu) ?? [];
-  return entries.filter((entry) => {
-    const words: string[] =
-      fold(`${entry.title}\n${documentText(entry.document)}`).match(/[\p{L}\p{N}]+/gu) ?? [];
-    return (
+  const text = request.text ?? '';
+  const phrases = isBlank(text) ? null : queryPhrases(text);
+  return entries.filter(
+    (entry) =>
       (!request.from || entry.date >= request.from) &&
       (!request.to || entry.date <= request.to) &&
       (!request.slot || entry.slot === request.slot) &&
@@ -34,9 +55,9 @@ export function filterPreviewEntries(entries: Entry[], request: SearchRequest): 
       (!request.metric ||
         request.minimum == null ||
         (entry[request.metric] != null && entry[request.metric]! >= request.minimum)) &&
-      (!(request.text ?? '').trim() || (terms.length > 0 && terms.every((term) => words.includes(term))))
-    );
-  });
+      (!phrases ||
+        containsEveryPhrase(searchWords(`${entry.title}\n${documentText(entry.document)}`), phrases)),
+  );
 }
 
 export function previewReport(entries: Entry[], request: SearchRequest): ReadingReport {
