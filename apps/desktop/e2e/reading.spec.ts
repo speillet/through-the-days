@@ -126,7 +126,7 @@ test('historical timelines keep both slots, gaps, hidden-series preferences and 
   );
 });
 
-test('finds a typed word whose middle was made bold with Command-B by the whole word only', async ({ page }) => {
+test('finds a typed word partly made bold with Command-B by the whole word only', async ({ page }) => {
   await page.goto('/');
   const editor = page.getByRole('textbox', { name: /^Morning journal, Sunday 22 November 2026/ });
   await editor.click();

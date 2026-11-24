@@ -408,7 +408,14 @@ export const DOCUMENT_NODE_TYPES: ReadonlySet<string> = new Set([
 ]);
 export const DOCUMENT_MARK_TYPES: ReadonlySet<string> = new Set(['bold', 'italic', 'strike', 'code', 'underline']);
 
-/** Only documents the editor can open again: known nodes and marks, no empty text, bounded nesting. */
+/**
+ * Mirrors journal-core's validate_node: every node has a node type of the editor schema and every
+ * mark a mark type of it (so no links), each text node has non-empty text, `marks` and `content`
+ * are arrays, and nesting stays within MAX_DOCUMENT_DEPTH levels. Like it, this checks neither
+ * which nodes the schema allows inside which nor attributes, so it does not prove that the editor
+ * can show a document exactly: canEditExactly (features/editor/content.ts) guards that fidelity,
+ * and the editor opens any other document read-only.
+ */
 function validateNode(node: unknown, depth: number): void {
   if (depth > MAX_DOCUMENT_DEPTH) throw failure('document');
   if (!isRecord(node) || typeof node.type !== 'string' || !DOCUMENT_NODE_TYPES.has(node.type)) throw failure('document');
