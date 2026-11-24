@@ -1,12 +1,14 @@
 // Application shell: the startup gate until the journal is open, then the
-// workspace (navigation rail, status area and the current view).
+// workspace (navigation rail, status area and the current view). A view that fails
+// while rendering is replaced by a recoverable message; the rest stays mounted.
 
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { ApiProvider, isTauri, useApi, type JournalApi } from './api/client';
 import { Button } from './components/Button';
 import { NavigationRail } from './components/NavigationRail';
 import { Notice } from './components/Notice';
+import { ViewErrorBoundary } from './components/ViewErrorBoundary';
 import { classNames } from './components/classNames';
 import { TAB_STOP } from './components/keyboard';
 import { BackupBanner } from './features/backup/BackupBanner';
@@ -80,6 +82,9 @@ function Shell() {
     if (focusMode && view !== 'today') setFocusMode(false);
   }, [focusMode, view, setFocusMode]);
 
+  // A failed view also ends focus mode, so the navigation is there to leave it.
+  const leaveFocusMode = useCallback(() => setFocusMode(false), [setFocusMode]);
+
   return (
     <div className={classNames('app-shell', focusMode && 'app-shell--focus')}>
       <a
@@ -110,23 +115,25 @@ function Shell() {
           ) : null}
           <BackupBanner />
         </div>
-        {view === 'today' ? (
-          <TodayView key={requestId} initialDate={target?.date} initialSlot={target?.slot} />
-        ) : view === 'trash' ? (
-          <TrashView />
-        ) : view === 'settings' ? (
-          <SettingsView />
-        ) : view === 'book' ? (
-          <BookView />
-        ) : view === 'trends' ? (
-          <TrendsView />
-        ) : view === 'weekly' ? (
-          <WeeklyView />
-        ) : view === 'path' ? (
-          <PathView />
-        ) : (
-          <CalendarView journal={view === 'journal'} />
-        )}
+        <ViewErrorBoundary resetKey={requestId} onError={leaveFocusMode}>
+          {view === 'today' ? (
+            <TodayView key={requestId} initialDate={target?.date} initialSlot={target?.slot} />
+          ) : view === 'trash' ? (
+            <TrashView />
+          ) : view === 'settings' ? (
+            <SettingsView />
+          ) : view === 'book' ? (
+            <BookView />
+          ) : view === 'trends' ? (
+            <TrendsView />
+          ) : view === 'weekly' ? (
+            <WeeklyView />
+          ) : view === 'path' ? (
+            <PathView />
+          ) : (
+            <CalendarView journal={view === 'journal'} />
+          )}
+        </ViewErrorBoundary>
       </main>
     </div>
   );

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useApi, toCommandError } from '../../api/client';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
-import { addDays, formatLongDate } from '../../domain/dates';
+import { formatLongDate, stepDays } from '../../domain/dates';
 import { useToday } from '../../state/clock';
 import { usePreferences } from '../../state/preferences';
 import { EntryPreview } from './shared';
@@ -46,6 +46,9 @@ export function WeeklyView() {
     (entry) =>
       data && entry.date >= data.weekStart && entry.date <= data.weekEnd && entry.includeInInsights !== false,
   );
+  // Null at 1 January 0001 and 31 December 9999: the week buttons stop there.
+  const previousWeek = stepDays(selected, -7);
+  const nextWeek = stepDays(selected, 7);
   return (
     <div className="view reading-view">
       <header className="reading-heading">
@@ -54,9 +57,13 @@ export function WeeklyView() {
           <p>A few recorded moments, and your own reflection.</p>
         </div>
         <div className="reading-actions">
-          <Button onClick={() => setDate(addDays(selected, -7))}>Previous week</Button>
+          <Button disabled={previousWeek === null} onClick={() => previousWeek && setDate(previousWeek)}>
+            Previous week
+          </Button>
           <Button onClick={() => setDate(today)}>This week</Button>
-          <Button onClick={() => setDate(addDays(selected, 7))}>Next week</Button>
+          <Button disabled={nextWeek === null} onClick={() => nextWeek && setDate(nextWeek)}>
+            Next week
+          </Button>
         </div>
       </header>
       {readError ? (

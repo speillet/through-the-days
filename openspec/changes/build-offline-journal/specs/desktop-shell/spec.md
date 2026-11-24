@@ -10,7 +10,7 @@ Sources: README_THROUGH_THE_DAYS.md §§3, 10, 13 phases 0–1; D-001.
 
 ### Requirement: Native personal workspace
 
-The application SHALL launch as a macOS desktop application and provide a collapsible sidebar, Today view, and settings without requiring an account.
+The application SHALL launch as a macOS desktop application and provide a collapsible sidebar, Today view, and settings without requiring an account. A failure in one view SHALL leave the rest of the workspace usable.
 
 #### Scenario: First launch offline
 
@@ -21,6 +21,11 @@ The application SHALL launch as a macOS desktop application and provide a collap
 
 - **WHEN** a later milestone has not been implemented
 - **THEN** navigation identifies its unavailable state without presenting placeholder features as working.
+
+#### Scenario: View failure
+
+- **WHEN** the current view fails while it is shown
+- **THEN** only that view is replaced by an English message offering Try again; navigation, the status area and the protection of unsaved input on close and quit remain, and Try again or choosing a view shows it again.
 
 ### Requirement: Appearance and navigation
 

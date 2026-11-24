@@ -46,6 +46,11 @@ The system SHALL default new entries to the current civil date in the configured
 - **WHEN** the configured time zone changes after entries were saved
 - **THEN** those entries retain their journal dates and slot identities.
 
+#### Scenario: First and last journal dates
+
+- **WHEN** the person moves Today's date by day or with the date picker to 1 January 0001 or 31 December 9999
+- **THEN** the step past that date is unavailable and the open date remains a valid journal date.
+
 ### Requirement: Partial drafts
 
 The system SHALL persist partial entries without requiring scores, reflection answers, or non-empty writing, and allow the person to reopen them later.

@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useApi } from '../../api/client';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
-import { addDays, formatLongDate } from '../../domain/dates';
+import { addDays, formatLongDate, isJournalDate } from '../../domain/dates';
 import { useToday } from '../../state/clock';
 import { useNavigation } from '../../state/navigation';
 import { usePreferences } from '../../state/preferences';
@@ -36,7 +36,8 @@ export function TrendsView() {
             tabIndex={0}
             value={selected}
             onChange={(e) => {
-              if (e.target.value) setDate(e.target.value);
+              // An empty field, or a year outside 0001–9999 (date fields take six digits), keeps the date.
+              if (isJournalDate(e.target.value)) setDate(e.target.value);
             }}
           />
         </label>

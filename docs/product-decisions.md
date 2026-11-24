@@ -41,6 +41,7 @@ Implementation choices adopted in milestone 1, also engineering proposals rather
 - Daily backups are attempted at launch, every 10 minutes and when the window regains focus while the app is open. After a failed automatic attempt they pause for an hour unless the folder or passphrase changes; Back up now always runs.
 - Gentle view hides score panels, suggested durations and the completion control. Drafts remain complete records of what was written, and leaving Gentle view restores every control.
 - Interface text size can be set to 100, 115, 130 or 150%, independently of layout spacing.
+- Journal dates run from 1 January 0001, the first date a date field accepts, to 31 December 9999, the last with a four-digit year. Day, week, month and range steps stop at those limits, and a typed date outside them is ignored. A view that fails is replaced by a recoverable message while navigation and save protection remain.
 - Development builds use a separate com.throughthedays.app.dev data folder and Keychain item.
 - Supported window close and application Quit wait for acknowledged saves. A missing renderer reply, timeout, event failure or timer failure keeps the app open and permits retry rather than approving exit.
 - Known limit: quits started by macOS itself (Dock, app switcher, logout or shutdown) skip the flush-before-quit request. Acknowledged revisions are durable, and the interface saves pending input when the window loses focus.

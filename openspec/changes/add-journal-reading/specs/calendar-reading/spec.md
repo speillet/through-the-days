@@ -27,6 +27,11 @@ The calendar SHALL provide previous/next month, Today, Monday-first dates, zero/
 - **WHEN** the person moves with arrows and activates a date
 - **THEN** the same date and saved entries open as with pointer selection.
 
+#### Scenario: First and last months
+
+- **WHEN** the calendar shows January 0001 or December 9999
+- **THEN** every date of that month is shown, no date before 1 January 0001 or after 31 December 9999 is offered, and month paging and keyboard moves stop at that limit.
+
 ### Requirement: Consistent saved observations
 
 The calendar SHALL show the same current saved entry content and check-in values as the editor and other reading views.

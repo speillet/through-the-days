@@ -32,6 +32,11 @@ The Path So Far SHALL offer 7/30/90-day, one-year, and custom ranges with access
 - **WHEN** the person activates Zoom out for a 22-day custom range, then Zoom in
 - **THEN** the range widens to 30 days and narrows to 7 days, preserving its end date and visible source links.
 
+#### Scenario: Range at the journal date limits
+
+- **WHEN** Earlier range or Later range would move the timeline before 1 January 0001 or after 31 December 9999, or a typed From or To date lies outside those dates
+- **THEN** that control is unavailable or the typed date is ignored, and the timeline keeps its current range.
+
 ### Requirement: Optional available layers
 
 The timeline SHALL offer hideable layers for check-ins, approved wins and manual milestones, respect insight permissions in every available layer, and identify unavailable later layers without invented data. Later experiments, tags, goals and imports remain owned by their respective changes.
