@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useApi, toCommandError } from '../../api/client';
+import { useApi, toCommandError, type JournalApi } from '../../api/client';
 import type { Entry, ReadingReport, ScoreMetric, SearchRequest } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { formatLongDate } from '../../domain/dates';
 import { documentText } from '../../domain/entry';
 import { EMOTIONS, emotionById } from '../../domain/emotions';
+import { findSaver } from '../../state/autosave';
 import { useNavigation } from '../../state/navigation';
 import { usePreferences } from '../../state/preferences';
 import { useReading, type ReadingOrigin } from './state';
@@ -235,6 +236,30 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
   );
 }
 
+/**
+ * Saves an entry's insights choice. When Today left the same entry with input it has not saved
+ * (after a failed save, for example), the choice joins that input and both are saved together.
+ * Saving the listed version on its own would replace the revision that input builds on, so its
+ * next save would conflict and could only offer to reload without it. If that save fails, the
+ * choice is withdrawn again and the input keeps waiting for its retry.
+ */
+async function saveInsightsChoice(api: JournalApi, entry: Entry, includeInInsights: boolean) {
+  const saver = findSaver(entry.date, entry.slot);
+  const local = saver?.getSnapshot();
+  if (!saver || !local?.entry || local.entry.id !== entry.id || local.needsReload) {
+    await api.saveEntry({ ...entry, includeInInsights });
+    return;
+  }
+  const choose = (value: Entry['includeInInsights']) => (current: Entry) =>
+    current.includeInInsights === value ? current : { ...current, includeInInsights: value };
+  const previous = local.entry.includeInInsights;
+  saver.update(choose(includeInInsights));
+  if (await saver.flush()) return;
+  const { error } = saver.getSnapshot();
+  saver.update(choose(previous));
+  throw error;
+}
+
 export function EntryPreview({
   entry,
   origin = 'calendar',
@@ -254,7 +279,7 @@ export function EntryPreview({
     setBusy(true);
     setError(null);
     try {
-      await api.saveEntry({ ...entry, includeInInsights });
+      await saveInsightsChoice(api, entry, includeInInsights);
     } catch (caught) {
       setError(toCommandError(caught).message);
     } finally {

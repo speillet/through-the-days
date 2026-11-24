@@ -69,12 +69,15 @@ pub struct WeeklyReview {
     pub report: ReadingReport,
 }
 
+/// The Monday that starts the ISO week of `date`. A week must also have its Sunday, so a notes
+/// save checks the whole week before it commits rather than failing afterwards.
 fn week_start(date: &str) -> Result<String, Error> {
     let date = parse_date(date)?;
-    Ok(date
+    let monday = date
         .checked_sub_days(Days::new(u64::from(date.weekday().num_days_from_monday())))
-        .ok_or(Error::Date)?
-        .to_string())
+        .ok_or(Error::Date)?;
+    monday.checked_add_days(Days::new(6)).ok_or(Error::Date)?;
+    Ok(monday.to_string())
 }
 
 impl Journal {

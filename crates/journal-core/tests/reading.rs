@@ -251,3 +251,152 @@ fn insight_win_filters_use_only_included_wins_while_original_search_keeps_owned_
     assert_eq!(without_included_win.days[0].observations[0].id, morning.id);
     assert!(journal.search(&request).unwrap().is_empty());
 }
+
+/// weekly-reviews — Local weekly reflection / Week that ends in year 10000: the ISO week of
+/// Monday 27 December 9999 ends on Sunday 2 January 10000, written `+10000-01-02`. Dates are
+/// compared as dates, not as text, so that week reports, searches and keeps notes like any other.
+#[test]
+fn the_week_that_ends_in_year_10000_reports_its_entries_and_keeps_notes() {
+    let directory = tempfile::tempdir().unwrap();
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    let mut friday = Entry::draft("9999-12-31", Slot::Evening);
+    friday.mood = Some(6);
+    let friday = journal.save(friday).unwrap();
+
+    let review = journal.weekly_review("9999-12-31").unwrap();
+    assert_eq!(
+        (review.week_start.as_str(), review.week_end.as_str()),
+        ("9999-12-27", "+10000-01-02")
+    );
+    let report = &review.report;
+    assert_eq!(
+        (report.calendar_days, report.entries, report.recorded_days),
+        (7, 1, 1)
+    );
+    assert_eq!(report.mood.mean, Some(6.0));
+    assert_eq!(report.days[4].date, "9999-12-31");
+    assert_eq!(report.days[4].observations[0].id, friday.id);
+    assert_eq!(report.days[6].date, "+10000-01-02");
+    let sources = journal
+        .search(&SearchRequest {
+            from: Some(review.week_start.clone()),
+            to: Some(review.week_end.clone()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0].id, friday.id);
+
+    let notes = journal
+        .save_weekly_notes("9999-12-31", "Synthetic notes for the last week.", 0)
+        .unwrap();
+    assert_eq!(
+        (notes.revision, notes.notes.as_str()),
+        (1, "Synthetic notes for the last week.")
+    );
+    let summary = journal
+        .generate_weekly_summary(&notes.week_start, notes.revision)
+        .unwrap();
+    assert!(summary.summary.is_some());
+    assert_eq!(
+        journal.weekly_review("9999-12-27").unwrap().notes,
+        "Synthetic notes for the last week."
+    );
+}
+
+/// weekly-reviews — Authorship and source freshness / Failed notes save: a notes save checks its
+/// whole week before committing. When the week would end after the last date the journal can
+/// represent, the save is refused and stores nothing, rather than committing and then reporting a
+/// date error that a retry on the same revision would turn into a conflict.
+#[test]
+fn a_notes_save_for_a_week_without_a_last_day_stores_nothing() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.sqlite");
+    let journal = Journal::open(&path).unwrap();
+    // The last representable date is a Monday, so its week has no Sunday.
+    let last = chrono::NaiveDate::MAX;
+    assert_eq!(chrono::Datelike::weekday(&last), chrono::Weekday::Mon);
+    let date = last.to_string();
+    assert_eq!(
+        journal
+            .save_weekly_notes(&date, "Synthetic notes.", 0)
+            .unwrap_err(),
+        journal_core::Error::Date
+    );
+    let stored: i64 = rusqlite::Connection::open(&path)
+        .unwrap()
+        .query_row("SELECT COUNT(*) FROM weekly_reviews", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(stored, 0);
+}
+
+/// progress-insights / personal-timeline: a 100-year report over ten years of Morning and Evening
+/// entries places each observation on its own date, Morning first. Entries are grouped by date
+/// once rather than scanned again for each of the 36,525 days: scanning made about 267 million
+/// date comparisons and took about 2 s in a debug build, grouping about 0.1 s. The 1 s bound
+/// leaves room for slower machines.
+#[test]
+fn a_century_report_over_ten_years_of_entries_groups_observations_by_date() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.sqlite");
+    drop(Journal::open(&path).unwrap());
+    // Saving entries one at a time flushes each commit to disk; one synthetic transaction is quicker.
+    let mut expected = std::collections::HashMap::new();
+    let mut connection = rusqlite::Connection::open(&path).unwrap();
+    let transaction = connection.transaction().unwrap();
+    let first = chrono::NaiveDate::from_ymd_opt(2016, 11, 23).unwrap();
+    for offset in 0..3_652 {
+        let date = (first + chrono::Days::new(offset)).to_string();
+        let mut ids = Vec::new();
+        for (slot, name, mood) in [(Slot::Morning, "morning", 3), (Slot::Evening, "evening", 7)] {
+            let mut entry = Entry::draft(&date, slot);
+            entry.mood = Some(mood);
+            entry.revision = 1;
+            transaction
+                .execute(
+                    "INSERT INTO journal_entries(id,entry_date,slot,revision,payload) VALUES(?1,?2,?3,1,?4)",
+                    rusqlite::params![entry.id, date, name, serde_json::to_string(&entry).unwrap()],
+                )
+                .unwrap();
+            ids.push((entry.id, slot));
+        }
+        expected.insert(date, ids);
+    }
+    transaction.commit().unwrap();
+    drop(connection);
+
+    let journal = Journal::open(&path).unwrap();
+    let request = SearchRequest {
+        from: Some("1926-11-23".into()),
+        to: Some("2026-11-22".into()),
+        ..Default::default()
+    };
+    let started = std::time::Instant::now();
+    let report = journal.reading_report(&request).unwrap();
+    let elapsed = started.elapsed();
+    assert_eq!(
+        (report.calendar_days, report.entries, report.recorded_days),
+        (36_525, 7_304, 3_652)
+    );
+    assert_eq!(report.mood.mean, Some(5.0));
+    let mut recorded = 0;
+    for day in &report.days {
+        let observed: Vec<_> = day
+            .observations
+            .iter()
+            .map(|observation| (observation.id.clone(), observation.slot))
+            .collect();
+        match expected.get(&day.date) {
+            Some(ids) => {
+                assert_eq!(&observed, ids, "{}", day.date);
+                recorded += 1;
+            }
+            None => assert!(observed.is_empty(), "{}", day.date),
+        }
+    }
+    assert_eq!(recorded, 3_652);
+    assert!(
+        elapsed < std::time::Duration::from_secs(1),
+        "a century report took {elapsed:?}"
+    );
+}

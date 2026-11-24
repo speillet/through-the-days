@@ -27,6 +27,11 @@ The Path So Far SHALL offer 7/30/90-day, one-year, and custom ranges with access
 - **WHEN** the person changes or pans a custom timeline range and later opens My Journal
 - **THEN** the timeline keeps its own date bounds without replacing My Journal's date filters.
 
+#### Scenario: One-year pages
+
+- **WHEN** the person pages a one-year range with Earlier range or Later range, including across 29 February
+- **THEN** each page covers the 365 dates ending on its end date, and consecutive pages neither repeat nor skip a date.
+
 #### Scenario: Keyboard zoom from a custom range
 
 - **WHEN** the person activates Zoom out for a 22-day custom range, then Zoom in
@@ -63,6 +68,11 @@ Timeline measures SHALL reuse the progress-insights inclusion rules, preserve se
 ### Requirement: User-owned milestones
 
 The system SHALL allow editable, removable private dated milestones without deriving them from a model or implying a clinical outcome.
+
+#### Scenario: Milestone without a title
+
+- **WHEN** the person saves a milestone whose title is empty or blank
+- **THEN** the dialog asks for a title and nothing is saved.
 
 #### Scenario: Milestone removed
 

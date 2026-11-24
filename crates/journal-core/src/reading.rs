@@ -2,10 +2,10 @@
 
 use crate::model::parse_date;
 use crate::{Entry, Error, Journal, Slot, document_text};
-use chrono::Days;
+use chrono::{Days, NaiveDate};
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -84,31 +84,41 @@ pub struct SearchRequest {
     pub minimum: Option<i32>,
 }
 
+/// Inclusive date bounds of a request, compared as dates: as text, `+10000-01-02`, the Sunday
+/// that ends the week of Monday 27 December 9999, would sort before `9999-12-27`.
+#[derive(Clone, Copy)]
+pub(crate) struct DateBounds {
+    from: Option<NaiveDate>,
+    to: Option<NaiveDate>,
+}
+
+impl DateBounds {
+    fn contains(self, date: &str) -> bool {
+        if self.from.is_none() && self.to.is_none() {
+            return true;
+        }
+        parse_date(date).is_ok_and(|date| {
+            self.from.is_none_or(|from| date >= from) && self.to.is_none_or(|to| date <= to)
+        })
+    }
+}
+
 impl SearchRequest {
-    pub(crate) fn validate(&self) -> Result<(), Error> {
-        if let Some(from) = &self.from {
-            parse_date(from)?;
-        }
-        if let Some(to) = &self.to {
-            parse_date(to)?;
-        }
-        if self
-            .from
-            .as_ref()
-            .zip(self.to.as_ref())
-            .is_some_and(|(a, b)| a > b)
-        {
+    /// Checks the request and returns its date bounds.
+    pub(crate) fn validate(&self) -> Result<DateBounds, Error> {
+        let from = self.from.as_deref().map(parse_date).transpose()?;
+        let to = self.to.as_deref().map(parse_date).transpose()?;
+        if from.zip(to).is_some_and(|(from, to)| from > to) {
             return Err(Error::Date);
         }
         if self.minimum.is_some_and(|v| !(0..=10).contains(&v)) {
             return Err(Error::Score);
         }
-        Ok(())
+        Ok(DateBounds { from, to })
     }
 
-    fn matches(&self, entry: &Entry) -> bool {
-        self.from.as_ref().is_none_or(|from| &entry.date >= from)
-            && self.to.as_ref().is_none_or(|to| &entry.date <= to)
+    fn matches(&self, entry: &Entry, dates: DateBounds) -> bool {
+        dates.contains(&entry.date)
             && self.slot.is_none_or(|slot| entry.slot == slot)
             && self
                 .complete
@@ -175,15 +185,21 @@ impl Journal {
                 },
             }
         };
+        // Grouped once, so a long range costs one pass over its days and one over its entries.
+        let mut by_date: HashMap<&str, Vec<&Entry>> = HashMap::new();
+        for entry in &entries {
+            by_date.entry(entry.date.as_str()).or_default().push(entry);
+        }
         let mut days = Vec::with_capacity(count as usize);
         for offset in 0..count {
             let date = start
                 .checked_add_days(Days::new(offset as u64))
                 .ok_or(Error::Date)?
                 .to_string();
-            let mut observations: Vec<_> = entries
-                .iter()
-                .filter(|e| e.date == date)
+            let mut observations: Vec<_> = by_date
+                .get(date.as_str())
+                .into_iter()
+                .flatten()
                 .map(|e| Observation {
                     id: e.id.clone(),
                     slot: e.slot,
@@ -221,11 +237,11 @@ impl Journal {
     /// Literal-token search: Unicode case folding and accent folding, no FTS operators or stemming.
     /// Every query indexes the current active records, so edits/trash cannot leave stale excerpts.
     pub fn search(&self, request: &SearchRequest) -> Result<Vec<Entry>, Error> {
-        request.validate()?;
+        let dates = request.validate()?;
         let entries: Vec<_> = self
             .list()?
             .into_iter()
-            .filter(|entry| request.matches(entry))
+            .filter(|entry| request.matches(entry, dates))
             .collect();
         if request.text.trim().is_empty() {
             return Ok(entries);

@@ -2,7 +2,9 @@ import { fireEvent, render, screen, within, waitFor } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
 import { App } from '../../App';
-import { createMemoryApi, createMemoryStorage } from '../../api/memory';
+import type { JournalApi } from '../../api/client';
+import type { WeeklyReview } from '../../api/types';
+import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES } from '../../api/memory';
 import { newDraft, promotePride } from '../../domain/entry';
 
 it('opens both calendar slots and reads a complete long entry once in Book View', async () => {
@@ -205,4 +207,84 @@ it('reviews three scored drafts on two dates as two days and keeps weekly notes 
   expect(screen.getByText(/No recorded entries in this week/)).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Next week' }));
   expect(await screen.findByRole('textbox', { name: 'Your notes' })).toHaveValue('Synthetic weekly notes.');
+});
+
+it('asks for a title instead of saving a milestone without one', async () => {
+  const api = createMemoryApi({
+    storage: createMemoryStorage(),
+    now: () => new Date('2026-11-22T12:00:00Z'),
+  });
+  const save = vi.spyOn(api, 'saveMilestone');
+  render(<App api={api} initialView="path" />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: 'Add milestone' }));
+  const dialog = screen.getByRole('dialog', { name: 'Add milestone' });
+  const title = within(dialog).getByRole('textbox', { name: 'Title' });
+  for (const blank of ['', '   ']) {
+    await user.clear(title);
+    if (blank) await user.type(title, blank);
+    await user.click(within(dialog).getByRole('button', { name: 'Save milestone' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Add a title before saving this milestone.');
+    expect(title).toHaveFocus();
+  }
+  expect(screen.queryByText(ERROR_MESSAGES.document)).not.toBeInTheDocument();
+  expect(save).not.toHaveBeenCalled();
+  expect(await api.listMilestones()).toEqual([]);
+
+  await user.type(title, 'Synthetic titled milestone');
+  await user.click(within(dialog).getByRole('button', { name: 'Save milestone' }));
+  expect(await screen.findByRole('heading', { name: 'Synthetic titled milestone' })).toBeInTheDocument();
+  expect(save).toHaveBeenCalledTimes(1);
+});
+
+it('lists the sources of the week of 27 December 9999, which the journal ends on +10000-01-02', async () => {
+  const journal = createMemoryApi({
+    storage: createMemoryStorage(),
+    now: () => new Date('9999-12-31T12:00:00Z'),
+  });
+  const saved = await journal.saveEntry({
+    ...newDraft('9999-12-31', 'evening', 'Europe/Paris'),
+    mood: 6,
+    document: {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Synthetic last-week source.' }] }],
+    },
+  });
+  // The native journal's review of that week: the browser preview writes no five-digit year.
+  const week = ['9999-12-27', '9999-12-28', '9999-12-29', '9999-12-30', '9999-12-31'];
+  const none = { observations: 0, recordedDays: 0, mean: null };
+  const review = vi.fn(async (): Promise<WeeklyReview> => ({
+    weekStart: '9999-12-27',
+    weekEnd: '+10000-01-02',
+    notes: '',
+    revision: 0,
+    summary: null,
+    stale: false,
+    report: {
+      from: '9999-12-27',
+      to: '+10000-01-02',
+      calendarDays: 7,
+      recordedDays: 1,
+      entries: 1,
+      wins: 0,
+      actions: 0,
+      mood: { observations: 1, recordedDays: 1, mean: 6 },
+      energy: none,
+      pride: none,
+      progress: none,
+      days: [...week, '+10000-01-01', '+10000-01-02'].map((date) => ({
+        date,
+        observations:
+          date === saved.date
+            ? [{ id: saved.id, slot: saved.slot, mood: 6, energy: null, pride: null, progress: null }]
+            : [],
+      })),
+    },
+  }));
+  const api: JournalApi = { ...journal, weeklyReview: review };
+  render(<App api={api} initialView="weekly" />);
+  expect(await screen.findByText(/^1 recorded day of 7; 1 saved entry/)).toBeInTheDocument();
+  expect(await screen.findByText('Synthetic last-week source.')).toBeInTheDocument();
+  expect(screen.queryByText(/No recorded entries in this week/)).not.toBeInTheDocument();
+  expect(review).toHaveBeenCalledWith('9999-12-27');
 });

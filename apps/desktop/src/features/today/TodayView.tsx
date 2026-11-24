@@ -67,8 +67,9 @@ export function TodayView({ autosaveDelayMs, initialDate, initialSlot }: TodayVi
   const { navigate: openView } = useNavigation();
   const panelId = useId();
   const [date, setDate] = useState(initialDate ?? today);
-  // True while the open date is today's, reached without choosing another date.
-  const [followsToday, setFollowsToday] = useState(!initialDate);
+  // True while the open date is today's, reached without choosing another date. Another view
+  // opening today's date (Calendar's Edit, Open day…) opens Today as the navigation rail does.
+  const [followsToday, setFollowsToday] = useState(!initialDate || initialDate === today);
   const [slot, setSlot] = useState<Slot>(initialSlot ?? 'morning');
   const [generation, setGeneration] = useState(0);
   const [loaded, setLoaded] = useState<Loaded | null>(null);

@@ -36,6 +36,11 @@ The system SHALL default new entries to the current civil date in the configured
 - **WHEN** the person starts at 00:30 and explicitly selects the previous date
 - **THEN** the entry belongs to that selected date and chosen slot.
 
+#### Scenario: Today's date opened from a reading view
+
+- **WHEN** a reading view such as Calendar or The Path So Far opens Today on the current date, and the clock then passes midnight
+- **THEN** Today follows the new date as when opened from the navigation: with no entry open it moves on, and an empty slot chosen after midnight starts its entry on the new date.
+
 #### Scenario: Open entry crosses midnight
 
 - **WHEN** an entry remains open when the clock crosses midnight

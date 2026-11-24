@@ -80,6 +80,50 @@ it('saves newer authored notes when a summary finishes after another edit', asyn
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
+it('keeps the week, focus and text of notes written while the clock passes into the next week', async () => {
+  // 23:58 in Paris on Saturday 28 November 2026.
+  let now = new Date('2026-11-28T22:58:00Z');
+  const api = createMemoryApi({ storage: createMemoryStorage(), now: () => now });
+  // Only the clock's minute refresh is simulated; saves and typing keep real timers.
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    render(<App api={api} initialView="weekly" />);
+    const user = userEvent.setup();
+    const week = 'Monday 23 November 2026 to Sunday 29 November 2026';
+    expect(await screen.findByRole('heading', { name: week })).toBeInTheDocument();
+    const notes = screen.getByRole('textbox', { name: 'Your notes' });
+    const passMinute = async (next: Date) => {
+      now = next;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+    };
+    await user.type(notes, 'Synthetic notes begun on Saturday');
+    await passMinute(new Date('2026-11-28T23:00:30Z')); // 00:00 on Sunday 29 November, the same week.
+    await user.type(notes, ', continued on Sunday');
+    await passMinute(new Date('2026-11-29T23:00:30Z')); // 00:00 on Monday 30 November.
+    // Today has moved on; waitFor polls with real timers again.
+    vi.useRealTimers();
+    await user.type(notes, ' and after midnight.');
+    const text = 'Synthetic notes begun on Saturday, continued on Sunday and after midnight.';
+    expect(screen.getByRole('textbox', { name: 'Your notes' })).toBe(notes);
+    expect(notes).toHaveFocus();
+    expect(notes).toHaveValue(text);
+    expect(screen.getByRole('heading', { name: week })).toBeInTheDocument();
+    await waitFor(async () => expect((await api.weeklyReview('2026-11-29')).notes).toBe(text));
+    expect((await api.weeklyReview('2026-11-30')).revision).toBe(0);
+
+    // Once the saved notes are left, the review follows today into the new week.
+    act(() => notes.blur());
+    expect(
+      await screen.findByRole('heading', { name: 'Monday 30 November 2026 to Sunday 6 December 2026' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Your notes' })).toHaveValue('');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it('reports a weekly source load error and retries without claiming the week is empty', async () => {
   const api = createMemoryApi({
     storage: createMemoryStorage(),
