@@ -22,9 +22,11 @@ Milestone 1 has separate native-fix, browser-isolation, specification and quit-r
 | 2: reading and reviews | Calendar, My Journal search and filters, complete scrolling Book View, per-slot 7/14/30-day timelines, Trends, weekly notes and optional local summaries, The Path So Far with private milestones and source navigation. Reading records are included in schema-3 migrations and encrypted backup/restore. Cross-view edits, filters, privacy and return context have automated coverage; native authored-record recovery passes. | Manual native accessibility and physical input acceptance (task 5.1). The change remains active. |
 | 3 and later | Planning artifacts only for CBT, optional AI, tags, goals, source-backed exploration, ChatGPT imports, portability, and wider distribution. | Implementation. Their navigation items remain unavailable. |
 
-Saved scored drafts contribute to metrics with explicit observation and day coverage (D-010). Morning/Evening markers remain separate, numeric 5 is neutral, and emotion labels stay independent (D-011). Book View renders one whole entry per page, with selectable scrolling text and retained position (D-012).
+Saved scored drafts contribute to metrics with explicit observation and day coverage (D-010). Each metric reports its own distinct scored dates: mood n=3 across two dates does not imply that a single pride observation covers both dates. Morning/Evening markers remain separate, numeric 5 is neutral, and emotion labels stay independent (D-011). Book View renders one whole entry per page, with selectable scrolling text and retained position (D-012).
 
 Weekly summaries are deterministic local text. No chatbot, model adapter, or remote request is implemented. Authored notes and milestones remain separate from generated summaries.
+
+Weekly note saves and summary revisions are serialised per week. Editing and navigation during generation preserve the latest notes; a failed summary still permits saving current and subsequent edits. A source-list failure has a retry state instead of an empty-week message.
 
 Book View retains its source selection without replacing the parent's filters. Timeline and weekly selections retain insight eligibility; original Calendar/Book reading still exposes the person's own records. Custom timeline dates are independent of My Journal dates. Gentle view suspends hidden numeric filters while preserving the saved choices, and an excluded win cannot affect insight win filters or denominators.
 
@@ -35,7 +37,7 @@ All checks use synthetic data. The audit ran against the reading implementation 
 | Command | Actual result |
 |---|---|
 | `npm run check` | TypeScript passes. |
-| `npm test` | 431 tests pass across 39 files. |
+| `npm test` | 434 tests pass across 39 files. |
 | `TTD_E2E_PORT=1435 npm run test:e2e -- --workers=2` | 70 tests pass across WebKit and Chromium, using a separate server to avoid another worktree's preview. |
 | `cargo test --workspace --locked -- --test-threads=2` | 152 Rust tests pass. |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | Passes. |
@@ -48,6 +50,8 @@ The native smoke runner creates and removes a temporary development journal. It 
 All ten implementation slices have evidence. A separate manual native acceptance task stays unchecked (10/11 tasks complete). Coverage includes 200-paragraph rendered text, selection and scroll retention, keyboard and horizontal-wheel navigation, Unicode search invalidation, late-query rejection, cross-view edits and denominators, 7/30/90-day/year/custom timeline context, Gentle-view combinations, source/win permissions, weekly-note retry/restart, summary staleness, milestones, and encrypted backup/restore of authored reading data. Accessibility scans found no serious or critical violations on the six reading views in both appearances; they do not establish VoiceOver usability.
 
 Local command logs are kept in the ignored `.reference/verification/` directory. Reproducible tests live in `apps/desktop/e2e/reading*.spec.ts`, `apps/desktop/src/features/reading/Reading*.test.tsx`, `crates/journal-core/tests/reading.rs`, `apps/desktop/native-smoke/`, and the existing journal/native suites.
+
+Independent standards and specification reviews were repeated after corrections. The notes/summary revision race, false empty-week error state and duplicated source-eligibility logic were addressed; neither review reports a remaining concrete finding. This does not replace the outstanding native manual checks.
 
 ## Open acceptance and delivery work
 

@@ -26,9 +26,13 @@ Use SQLite FTS5 for local journal text search as required by the brief. The curr
 
 The native Tauri adapter delegates search, reports, notes and milestone operations to the Rust journal authority. Browser tests use the explicit synthetic memory adapter. React reading state retains filters, selected sources and per-entry scroll positions; source mutations invalidate dependent queries. Weekly authored-note autosave survives navigation and retries failures independently of summary generation.
 
+Weekly note saves and summary generation share one ordered per-week operation stream, because both advance the stored review revision. Generation adopts its acknowledged revision before saving edits made while it was pending. A failed summary does not stop authored-note saves. Source-list loading/errors are reported independently from successful weekly counts and never masquerade as an empty week.
+
 Book selections snapshot the originating query independently from shared filters. Weekly sources use their own ISO-week bounds and return to Weekly Review; timeline sources retain range and layers. Custom timeline bounds are separate from My Journal's date filters. Losing a selected source shows an explicit recovery action instead of silently widening the selection.
 
 All reading views derive an effective selection from shared display preferences: hidden numeric controls suspend score filters while retaining the original choices. The report authority applies win filters only to insight-included wins; original search still finds all owned records. Timeline source cards use report eligibility, and insight cards omit excluded wins while original Calendar/Book reading remains intact.
+
+Each derived metric carries its own observation count and distinct scored-date count, displayed against the shared civil-date span. Two slots on one day add two observations and one recorded date. An absent pride value contributes to neither denominator. This query contract does not alter the authoritative schema-3 backup format.
 
 ### Weekly reviews and The Path So Far
 
