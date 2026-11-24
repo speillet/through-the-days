@@ -105,7 +105,7 @@ Later-milestone acceptance cases remain unimplemented. Passing tests above do no
 
 The continuation passes 435 interface tests (39 files), 152 Rust tests and 70 browser scenarios across WebKit and Chromium. TypeScript, Clippy, frontend and macOS debug builds pass. Five native launches now include Calendar/Book/report queries, weekly-note/summary and private-milestone creation, and exact authored-record recovery in a fresh process. See [commands and limits](development-status.md#verification-performed).
 
-The CI interface command bounds Vitest to two workers and 15 seconds per test after three multi-step scenarios hit the default five-second deadline on the GitHub runner. The identical 435 tests pass with those settings locally; no assertion or acceptance requirement was removed or relaxed. Product specifications are unchanged by this scheduling adjustment.
+The CI interface command bounds Vitest to two workers and 15 seconds per test after three multi-step scenarios hit the default five-second deadline on the GitHub runner. The root npm script explicitly forwards those options to Vitest, verified in its invoked command. The identical 435 tests pass with those settings locally; no assertion or acceptance requirement was removed or relaxed. Product specifications are unchanged by this scheduling adjustment.
 
 | Cases / tasks | Observable evidence | Limits |
 |---|---|---|

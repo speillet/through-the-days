@@ -52,7 +52,7 @@ All ten implementation slices have evidence. A separate manual native acceptance
 
 Local command logs are kept in the ignored `.reference/verification/` directory. Reproducible tests live in `apps/desktop/e2e/reading*.spec.ts`, `apps/desktop/src/features/reading/Reading*.test.tsx`, `crates/journal-core/tests/reading.rs`, `apps/desktop/native-smoke/`, and the existing journal/native suites.
 
-The first PR #5 interface run reached the default five-second timeout in three multi-step check-in/Gentle-view tests; 432 tests passed and no assertion failure was reported. CI now runs at most two Vitest workers with a bounded 15-second test timeout. The same assertions, synthetic data and real autosave waits remain in place. This changes verification scheduling only, with no application or product-requirement change.
+The first PR #5 interface run reached the default five-second timeout in three multi-step check-in/Gentle-view tests; 432 tests passed and no assertion failure was reported. A follow-up showed that nested npm scripts consumed the new CLI options, so the root test script now explicitly forwards them. CI runs at most two Vitest workers with a bounded 15-second test timeout; its invoked Vitest command is checked in the log. The same assertions, synthetic data and real autosave waits remain in place. This changes verification scheduling only, with no application or product-requirement change.
 
 Independent standards and specification reviews were repeated after corrections. The notes/summary revision race, false empty-week error state and duplicated source-eligibility logic were addressed; neither review reports a remaining concrete finding. This does not replace the outstanding native manual checks.
 
