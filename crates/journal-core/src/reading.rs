@@ -139,10 +139,20 @@ impl Journal {
         if !(1..=36600).contains(&count) {
             return Err(Error::Date);
         }
+        // Original search can find any owned win; insight filters may only use included wins.
+        let candidates = SearchRequest {
+            has_win: None,
+            ..request.clone()
+        };
         let entries: Vec<_> = self
-            .search(request)?
+            .search(&candidates)?
             .into_iter()
             .filter(|entry| entry.include_in_insights)
+            .filter(|entry| {
+                request.has_win.is_none_or(|required| {
+                    entry.wins.iter().any(|win| win.include_in_insights) == required
+                })
+            })
             .collect();
         let measure = |metric: ScoreMetric| {
             let scores: Vec<_> = entries

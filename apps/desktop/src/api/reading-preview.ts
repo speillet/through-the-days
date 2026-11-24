@@ -44,8 +44,10 @@ export function previewReport(entries: Entry[], request: SearchRequest): Reading
   const to = request.to;
   if (!from || !to || !isIsoDate(from) || !isIsoDate(to) || from > to)
     throw { code: 'date', message: 'Choose a valid date range.' };
-  const selected = filterPreviewEntries(entries, request).filter(
-    (entry) => entry.includeInInsights !== false,
+  const selected = filterPreviewEntries(entries, { ...request, hasWin: null }).filter(
+    (entry) =>
+      entry.includeInInsights !== false &&
+      (request.hasWin == null || entry.wins.some((win) => win.includeInInsights) === request.hasWin),
   );
   const days: ReadingReport['days'] = [];
   for (let date = from; date <= to; date = addDays(date, 1)) {

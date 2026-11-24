@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, reason = "a failed unwrap is a failed test")]
 
-use journal_core::{Action, Entry, Journal, SearchRequest, Slot};
+use journal_core::{Action, Entry, Journal, SearchRequest, Slot, Win};
 use serde_json::json;
 
 #[test]
@@ -209,4 +209,40 @@ fn weekly_counts_use_distinct_dates_and_do_not_count_authored_notes_or_pride_twi
     let empty = journal.weekly_review("2026-11-15").unwrap();
     assert_eq!((empty.report.entries, empty.report.recorded_days), (0, 0));
     assert_eq!(empty.report.mood.mean, None);
+}
+
+#[test]
+fn insight_win_filters_use_only_included_wins_while_original_search_keeps_owned_records() {
+    let directory = tempfile::tempdir().unwrap();
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    let mut morning = Entry::draft("2026-11-22", Slot::Morning);
+    morning.mood = Some(8);
+    let mut private_win = Win::manual("Synthetic excluded win.");
+    private_win.include_in_insights = false;
+    morning.wins.push(private_win);
+    let morning = journal.save(morning).unwrap();
+    let mut evening = Entry::draft("2026-11-22", Slot::Evening);
+    evening.mood = Some(2);
+    evening.wins.push(Win::manual("Synthetic included win."));
+    let evening = journal.save(evening).unwrap();
+    let mut request = SearchRequest {
+        from: Some("2026-11-22".into()),
+        to: Some("2026-11-22".into()),
+        has_win: Some(true),
+        ..Default::default()
+    };
+    let report = journal.reading_report(&request).unwrap();
+    assert_eq!((report.entries, report.wins), (1, 1));
+    assert_eq!(report.mood.mean, Some(2.0));
+    assert_eq!(report.days[0].observations[0].id, evening.id);
+    assert_eq!(journal.search(&request).unwrap().len(), 2);
+    request.has_win = Some(false);
+    let without_included_win = journal.reading_report(&request).unwrap();
+    assert_eq!(
+        (without_included_win.entries, without_included_win.wins),
+        (1, 0)
+    );
+    assert_eq!(without_included_win.mood.mean, Some(8.0));
+    assert_eq!(without_included_win.days[0].observations[0].id, morning.id);
+    assert!(journal.search(&request).unwrap().is_empty());
 }
