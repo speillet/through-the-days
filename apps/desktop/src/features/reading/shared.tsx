@@ -246,7 +246,7 @@ export function EntryPreview({
 }) {
   const api = useApi();
   const { navigate } = useNavigation();
-  const { setBookId, setReturnView, setBookRequest } = useReading();
+  const { filters, setBookId, setReturnView, setBookRequest } = useReading();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const slot = SLOT_NAMES[entry.slot];
@@ -282,7 +282,7 @@ export function EntryPreview({
           onClick={() => {
             setBookId(entry.id);
             setReturnView(origin);
-            setBookRequest(bookRequest ?? null);
+            setBookRequest(bookRequest ?? filters);
             navigate('book');
           }}
         >

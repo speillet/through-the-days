@@ -103,7 +103,7 @@ Later-milestone acceptance cases remain unimplemented. Passing tests above do no
 
 ### November 24, 2026 reading verification
 
-The continuation passes 434 interface tests (39 files), 152 Rust tests and 70 browser scenarios across WebKit and Chromium. TypeScript, Clippy, frontend and macOS debug builds pass. Five native launches now include Calendar/Book/report queries, weekly-note/summary and private-milestone creation, and exact authored-record recovery in a fresh process. See [commands and limits](development-status.md#verification-performed).
+The continuation passes 435 interface tests (39 files), 152 Rust tests and 70 browser scenarios across WebKit and Chromium. TypeScript, Clippy, frontend and macOS debug builds pass. Five native launches now include Calendar/Book/report queries, weekly-note/summary and private-milestone creation, and exact authored-record recovery in a fresh process. See [commands and limits](development-status.md#verification-performed).
 
 | Cases / tasks | Observable evidence | Limits |
 |---|---|---|

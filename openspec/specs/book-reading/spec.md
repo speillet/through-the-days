@@ -59,6 +59,11 @@ Book View SHALL retain the originating selection separately from shared filters,
 - **WHEN** the person reads a source from a weekly review or a win-filtered timeline
 - **THEN** previous/next navigation uses the originating insight-eligible sources, including the same win permissions, without silently widening to the full owned journal.
 
+#### Scenario: Shared filters changed elsewhere
+
+- **WHEN** the person opens a Book selection from My Journal, changes search filters elsewhere, then resumes Book View
+- **THEN** Book retains its original selection and returning to My Journal preserves the explicitly changed filters.
+
 #### Scenario: Selected sources removed
 
 - **WHEN** the last source in a Book selection is removed

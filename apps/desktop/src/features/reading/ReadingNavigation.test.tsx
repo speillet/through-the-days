@@ -151,3 +151,27 @@ it('offers an explicit new reading selection when all scoped sources have been t
     'Synthetic scoped older writing.',
   );
 });
+
+it('retains a journal Book selection when shared filters change elsewhere', async () => {
+  const api = await journal();
+  render(<App api={api} initialView="journal" />);
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole('searchbox', { name: 'Search journal' }), 'morning');
+  await user.click(await screen.findByRole('button', { name: 'Read Morning in Book View' }));
+  expect(await screen.findByRole('article', { name: 'Morning journal entry' })).toHaveTextContent(
+    'Synthetic scoped morning.',
+  );
+  await user.click(screen.getByRole('button', { name: 'My Journal' }));
+  const search = await screen.findByRole('searchbox', { name: 'Search journal' });
+  await user.clear(search);
+  await user.type(search, 'evening');
+  expect(await screen.findByText('Synthetic scoped evening.')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Book View' }));
+  expect(await screen.findByRole('article', { name: 'Morning journal entry' })).toHaveTextContent(
+    'Synthetic scoped morning.',
+  );
+  expect(screen.getByRole('button', { name: 'Next entry' })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: 'Return to My Journal' }));
+  expect(await screen.findByRole('searchbox', { name: 'Search journal' })).toHaveValue('evening');
+  expect(await screen.findByText('Synthetic scoped evening.')).toBeInTheDocument();
+});

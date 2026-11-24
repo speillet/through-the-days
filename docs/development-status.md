@@ -37,7 +37,7 @@ All checks use synthetic data. The audit ran against the reading implementation 
 | Command | Actual result |
 |---|---|
 | `npm run check` | TypeScript passes. |
-| `npm test` | 434 tests pass across 39 files. |
+| `npm test` | 435 tests pass across 39 files. |
 | `TTD_E2E_PORT=1435 npm run test:e2e -- --workers=2` | 70 tests pass across WebKit and Chromium, using a separate server to avoid another worktree's preview. |
 | `cargo test --workspace --locked -- --test-threads=2` | 152 Rust tests pass. |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | Passes. |
