@@ -5,6 +5,7 @@ import { newDraft } from '../../domain/entry';
 import { useNavigation, type NavigationContextValue } from '../../state/navigation';
 import { createTestApi, renderWithProviders } from '../../test/render';
 import { SettingsView } from './SettingsView';
+import { timeZoneLabel } from './TimeZoneSection';
 
 async function renderSettings(api = createTestApi()) {
   const navigation: { value: NavigationContextValue | null } = { value: null };
@@ -201,6 +202,15 @@ describe('Settings', () => {
     await user.type(within(timeZone).getByRole('searchbox', { name: 'Search time zones' }), 'GMT-4');
     const list = within(timeZone).getByRole('listbox', { name: 'Time zone' });
     expect(within(list).getByRole('option', { name: 'America/New York (GMT-4)' })).toBeInTheDocument();
+  });
+
+  it('shows a new offset from the moment it applies, even when that falls at half past the hour', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    // St John's, Newfoundland, moves from GMT-3:30 to GMT-2:30 at 05:30 UTC on 8 March 2026.
+    vi.setSystemTime(new Date('2026-03-08T05:29:59Z'));
+    expect(timeZoneLabel('America/St_Johns')).toBe('America/St Johns (GMT-3:30)');
+    vi.setSystemTime(new Date('2026-03-08T05:30:00Z'));
+    expect(timeZoneLabel('America/St_Johns')).toBe('America/St Johns (GMT-2:30)');
   });
 
   it('explains Gentle view and keeps the per-surface choices while it is on', async () => {

@@ -11,24 +11,40 @@ import { formatLongDate, supportedTimeZones } from '../../domain/dates';
 import { useToday } from '../../state/clock';
 import { usePreferences } from '../../state/preferences';
 
-/** Each zone's offset formatter, slow to build, or null when the zone cannot be formatted. */
-const offsetFormats = new Map<string, Intl.DateTimeFormat | null>();
+/**
+ * Current time-zone rules change offsets only on a quarter hour of UTC time (some,
+ * such as St John's and Adelaide, at half past), so an offset read during one
+ * quarter hour holds until the next.
+ */
+const OFFSET_PERIOD_MS = 15 * 60 * 1000;
+const offsetCache = new Map<string, string>();
+let offsetCachePeriod = -1;
 
 /**
- * "GMT+1" for a zone at the current moment. Only the formatter is kept: daylight
- * saving can change a zone's offset at any hour, so the offset is read each time.
+ * "GMT+1" for a zone at the current moment, kept until the next quarter hour.
+ * Only the offsets are kept: a formatter for each of several hundred zones would
+ * hold megabytes for the rest of the session.
  */
 function currentOffset(zone: string): string {
-  let format = offsetFormats.get(zone);
-  if (format === undefined) {
-    try {
-      format = new Intl.DateTimeFormat('en-GB', { timeZone: zone, timeZoneName: 'shortOffset' });
-    } catch {
-      format = null;
-    }
-    offsetFormats.set(zone, format);
+  const now = Date.now();
+  const period = Math.floor(now / OFFSET_PERIOD_MS);
+  if (period !== offsetCachePeriod) {
+    offsetCache.clear();
+    offsetCachePeriod = period;
   }
-  return format?.formatToParts(new Date()).find((part) => part.type === 'timeZoneName')?.value ?? '';
+  let offset = offsetCache.get(zone);
+  if (offset === undefined) {
+    try {
+      offset =
+        new Intl.DateTimeFormat('en-GB', { timeZone: zone, timeZoneName: 'shortOffset' })
+          .formatToParts(now)
+          .find((part) => part.type === 'timeZoneName')?.value ?? '';
+    } catch {
+      offset = '';
+    }
+    offsetCache.set(zone, offset);
+  }
+  return offset;
 }
 
 export function timeZoneLabel(zone: string): string {
