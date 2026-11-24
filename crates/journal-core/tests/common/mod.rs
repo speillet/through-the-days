@@ -95,6 +95,14 @@ pub fn contains(haystack: &[u8], needle: &[u8]) -> bool {
         .any(|window| window == needle)
 }
 
+/// Names of the files in `folder` whose bytes contain `needle`, sorted.
+pub fn files_containing(folder: &Path, needle: &[u8]) -> Vec<String> {
+    names_in(folder)
+        .into_iter()
+        .filter(|name| contains(&fs::read(folder.join(name)).unwrap(), needle))
+        .collect()
+}
+
 pub fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }

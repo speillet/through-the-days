@@ -69,6 +69,11 @@ The system SHALL allow editable, removable private dated milestones without deri
 - **WHEN** the person deletes a manual milestone
 - **THEN** it no longer appears in timeline layers or derived insight results.
 
+#### Scenario: Deleted milestone text leaves the live journal files
+
+- **WHEN** the person deletes a manual milestone
+- **THEN** the live journal files in the application data folder no longer contain its title or notes once the deletion completes, without waiting for the application to quit.
+
 #### Scenario: Restore private milestones
 
 - **WHEN** a validated encrypted journal backup containing private milestones is restored

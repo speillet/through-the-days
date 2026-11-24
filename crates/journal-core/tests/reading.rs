@@ -1,6 +1,9 @@
 #![allow(clippy::unwrap_used, reason = "a failed unwrap is a failed test")]
 
-use journal_core::{Action, Entry, Journal, SearchRequest, Slot, Win};
+mod common;
+
+use common::files_containing;
+use journal_core::{Action, Entry, Journal, Milestone, SearchRequest, Slot, Win};
 use serde_json::json;
 
 #[test]
@@ -104,6 +107,44 @@ fn weekly_notes_and_milestones_survive_restart_and_source_changes_invalidate_sum
         .delete_milestone(&milestone.id, milestone.revision)
         .unwrap();
     assert!(journal.milestones().unwrap().is_empty());
+}
+
+/// personal-timeline — User-owned milestones / Deleted milestone text leaves the live journal
+/// files: the title and notes leave the database file and its write-ahead log as soon as the
+/// deletion returns, while the journal stays open.
+#[test]
+fn deleting_a_milestone_removes_its_title_and_notes_from_the_open_journal_files() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.sqlite");
+    let title = "Synthetic milestone 3a6f";
+    let notes = "Synthetic marker 3a6f: fictional private milestone notes";
+    let journal = Journal::open(&path).unwrap();
+    let mut milestone = Milestone::new("2026-11-20", title);
+    milestone.notes = notes.into();
+    let milestone = journal.save_milestone(milestone).unwrap();
+    let kept = journal
+        .save_milestone(Milestone::new("2026-11-22", "Synthetic milestone kept"))
+        .unwrap();
+    drop(journal);
+    for marker in [title, notes] {
+        assert_eq!(
+            files_containing(directory.path(), marker.as_bytes()),
+            ["journal.sqlite"],
+            "{marker} reaches the file first"
+        );
+    }
+
+    let journal = Journal::open(&path).unwrap();
+    journal
+        .delete_milestone(&milestone.id, milestone.revision)
+        .unwrap();
+    assert_eq!(journal.milestones().unwrap(), vec![kept]);
+    for marker in [title, notes] {
+        assert!(
+            files_containing(directory.path(), marker.as_bytes()).is_empty(),
+            "{marker}"
+        );
+    }
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 Encrypted backups are how a person gets their journal back after losing a Mac, damaging a disk or making a mistake. This contract specifies what a backup contains, how it is written, validated, kept and restored, and what stays unencrypted. It is written for people who maintain the backup code and for anyone who needs to trust it.
 
-The behaviour described here is implemented in `crates/journal-core` (`recovery.rs`, `registry.rs`, `plan.rs`, `schema.rs` and `store.rs`) and covered by the tests listed under [Verification](#verification). The desktop shell in `apps/desktop/src-tauri` adds the native dialogs, Keychain storage and scheduling. Sections that describe desktop behaviour say so.
+The behaviour described here is implemented in `crates/journal-core` (`recovery.rs`, `registry.rs`, `plan.rs`, `schema.rs`, `store.rs` and, for milestone deletion, `reviews.rs`) and covered by the tests listed under [Verification](#verification). The desktop shell in `apps/desktop/src-tauri` adds the native dialogs, Keychain storage and scheduling. Sections that describe desktop behaviour say so.
 
 ## Decisions
 
@@ -242,6 +242,12 @@ Errors contain fixed English messages and stable codes. They never contain journ
 
 Each acknowledged commit of the live journal, and each checkpoint of its write-ahead log, is flushed past the drive's cache. The journal's connections use `synchronous=FULL` with `fullfsync=ON` and `checkpoint_fullfsync=ON`, so SQLite issues `F_FULLFSYNC` on macOS instead of a plain `fsync`. A power cut or kernel panic just after "Saved" then keeps the acknowledged revision, as it keeps backups, the registry and the backup plan, which are flushed with `F_FULLFSYNC` as well. The commit that upgrades an older journal is flushed the same way. These settings are connection options: they never change the database file.
 
+## Deleted content in the live journal
+
+Permanently deleting an entry, purging trash after its 30 days and deleting a milestone remove the text from the live journal's files, not only from what the app shows. The journal's connections use `secure_delete=ON`, so SQLite overwrites deleted content with zeros. In WAL mode those zeroed pages first reach only the write-ahead log, `journal.sqlite-wal`: `journal.sqlite` keeps the old pages, and the log keeps earlier copies of them, until a checkpoint. Each of these deletions therefore runs `PRAGMA wal_checkpoint(TRUNCATE)` before it returns, which copies the log into `journal.sqlite` and empties it. Opening the journal runs the same checkpoint, so a log that a crash left with deleted text is folded in at the next launch.
+
+The checkpoint is best effort. The deletion stands even when another process keeps the journal busy or the checkpoint fails; the text then leaves at a later checkpoint: the next deletion, the next launch or a clean quit. Removing text from these files is not forensic erasure: the file system and its snapshots, Time Machine and other copies of the disk can still hold earlier versions, and backups keep their content until they are pruned (see [Retention](#retention)).
+
 ## What is not encrypted
 
 - **The live journal**, `journal.sqlite` in the application data folder (`~/Library/Application Support/com.throughthedays.app`), is not encrypted by the application. It relies on macOS account and disk protections, including FileVault if the person has turned it on ([D-004](product-decisions.md)).
@@ -280,6 +286,7 @@ The `journal-core` tests exercise this contract with real temporary SQLite datab
 | Migration of frozen version-1 content, and frozen version-2 content still loading | `migration.rs`: `existing_journal_waits_for_recovery_then_migrates_with_nullable_progress`, `frozen_current_version_payload_still_loads_with_every_field` |
 | Damaged pages, headers and schemas reported as `damaged`, never changed, and replaceable from a backup | `damaged.rs` |
 | Trash past its 30 days cannot be restored before the purge | `journal.rs`: `trash_past_its_thirty_days_cannot_be_restored_before_the_purge` |
+| Permanently deleted, purged and deleted-milestone text leaves the open journal's database file and write-ahead log; a log that a crash left is folded in when the journal opens | `journal.rs`: `permanent_deletion_removes_the_entry_text_from_the_live_database_file`, `purging_expired_trash_removes_the_entry_text_from_the_open_journal_files`, `opening_folds_in_a_log_that_still_holds_deleted_text_after_a_crash`; `reading.rs`: `deleting_a_milestone_removes_its_title_and_notes_from_the_open_journal_files` |
 | Live journal and upgrade connections request full flushes | `src/store.rs`: `journal_connections_request_full_flushes_for_commits_and_checkpoints`, `the_upgrade_connection_requests_full_flushes_without_changing_the_file` |
 | Backup plan atomic storage and corrupt-file reporting | `plan.rs` |
 
