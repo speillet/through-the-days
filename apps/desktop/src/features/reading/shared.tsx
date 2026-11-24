@@ -247,18 +247,20 @@ export function EntryPreview({
   const api = useApi();
   const { navigate } = useNavigation();
   const { filters, setBookId, setReturnView, setBookRequest } = useReading();
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // A change belongs to the revision it replaces: it stays busy until the refreshed view shows
+  // the saved revision (so a second change cannot save over a stale one), and its error stays
+  // until the entry changes.
+  const [change, setChange] = useState<{ revision: number; error: string | null } | null>(null);
+  const current = change?.revision === entry.revision ? change : null;
+  const busy = current !== null && current.error === null;
   const slot = SLOT_NAMES[entry.slot];
   async function toggleInsights(includeInInsights: boolean) {
-    setBusy(true);
-    setError(null);
+    const { revision } = entry;
+    setChange({ revision, error: null });
     try {
       await api.saveEntry({ ...entry, includeInInsights });
     } catch (caught) {
-      setError(toCommandError(caught).message);
-    } finally {
-      setBusy(false);
+      setChange({ revision, error: toCommandError(caught).message });
     }
   }
   return (
@@ -297,17 +299,21 @@ export function EntryPreview({
           Edit {slot} entry
         </Button>
       </div>
+      {/* Like a busy Button, the checkbox keeps keyboard focus while saving and ignores changes. */}
       <label className="reading-permission">
         <input
           type="checkbox"
           tabIndex={0}
           checked={entry.includeInInsights !== false}
-          disabled={busy}
-          onChange={(e) => void toggleInsights(e.target.checked)}
+          aria-busy={busy || undefined}
+          aria-disabled={busy || undefined}
+          onChange={(e) => {
+            if (!busy) void toggleInsights(e.target.checked);
+          }}
         />
         Include in insights and timelines
       </label>
-      {error ? <Notice tone="error">{error}</Notice> : null}
+      {current?.error ? <Notice tone="error">{current.error}</Notice> : null}
     </section>
   );
 }

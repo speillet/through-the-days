@@ -267,7 +267,7 @@ export function PathView() {
                 {layers.scores
                   ? sources.map((entry) => (
                       <EntryPreview
-                        key={`${entry.id}:${entry.revision}`}
+                        key={entry.id}
                         entry={entry}
                         origin="path"
                         bookRequest={sourceRequest}

@@ -129,7 +129,7 @@ export function WeeklyView() {
             ) : sources.length ? (
               sources.map((entry) => (
                 <EntryPreview
-                  key={`${entry.id}:${entry.revision}`}
+                  key={entry.id}
                   entry={entry}
                   origin="weekly"
                   bookRequest={{ from: data.weekStart, to: data.weekEnd }}
