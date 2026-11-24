@@ -60,9 +60,15 @@ export function Coverage({ report }: { report: ReadingReport }) {
           <div key={metric}>
             <dt>{METRIC_LABELS[metric]}</dt>
             <dd>
-              {report[metric].mean == null
-                ? 'No observations'
-                : `Mean ${report[metric].mean.toLocaleString('en-GB', { maximumFractionDigits: 1 })}/10, n=${report[metric].observations}`}
+              <span>
+                {report[metric].mean == null
+                  ? 'No observations'
+                  : `Mean ${report[metric].mean.toLocaleString('en-GB', { maximumFractionDigits: 1 })}/10, n=${report[metric].observations}`}
+              </span>{' '}
+              <span className="reading-meta">
+                {report[metric].recordedDays} recorded {report[metric].recordedDays === 1 ? 'day' : 'days'} of{' '}
+                {report.calendarDays}
+              </span>
             </dd>
           </div>
         ))}

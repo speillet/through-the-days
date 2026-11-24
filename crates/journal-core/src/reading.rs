@@ -11,6 +11,7 @@ use std::collections::HashSet;
 #[serde(rename_all = "camelCase")]
 pub struct Measure {
     pub observations: usize,
+    pub recorded_days: usize,
     pub mean: Option<f64>,
 }
 
@@ -161,6 +162,12 @@ impl Journal {
                 .collect();
             Measure {
                 observations: scores.len(),
+                recorded_days: entries
+                    .iter()
+                    .filter(|entry| metric.value(entry).is_some())
+                    .map(|entry| &entry.date)
+                    .collect::<HashSet<_>>()
+                    .len(),
                 mean: if scores.is_empty() {
                     None
                 } else {

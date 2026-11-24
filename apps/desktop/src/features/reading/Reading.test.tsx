@@ -190,6 +190,8 @@ it('reviews three scored drafts on two dates as two days and keeps weekly notes 
   expect(await screen.findByText(/2 recorded days of 7; 3 saved entries/)).toBeInTheDocument();
   expect(screen.getByText('Mean 5/10, n=3')).toBeInTheDocument();
   expect(screen.getByText('Mean 6/10, n=2')).toBeInTheDocument();
+  expect(screen.getByText('Mean 5/10, n=3').closest('dd')).toHaveTextContent('2 recorded days of 7');
+  expect(screen.getByText('Mean 9/10, n=1').closest('dd')).toHaveTextContent('1 recorded day of 7');
   expect(screen.getByText(/1 approved small win and 1 reported action/)).toBeInTheDocument();
   expect(screen.getByText(/CBT exercises are not available yet and are not counted/)).toBeInTheDocument();
   await user.type(screen.getByRole('textbox', { name: 'Your notes' }), 'Synthetic weekly notes.');

@@ -188,6 +188,10 @@ fn weekly_counts_use_distinct_dates_and_do_not_count_authored_notes_or_pride_twi
     );
     assert_eq!(review.report.pride.observations, 1);
     assert_eq!(review.report.progress.observations, 1);
+    assert_eq!(review.report.mood.recorded_days, 2);
+    assert_eq!(review.report.energy.recorded_days, 2);
+    assert_eq!(review.report.pride.recorded_days, 1);
+    assert_eq!(review.report.progress.recorded_days, 1);
     let notes = journal
         .save_weekly_notes(
             &review.week_start,
@@ -209,6 +213,7 @@ fn weekly_counts_use_distinct_dates_and_do_not_count_authored_notes_or_pride_twi
     let empty = journal.weekly_review("2026-11-15").unwrap();
     assert_eq!((empty.report.entries, empty.report.recorded_days), (0, 0));
     assert_eq!(empty.report.mood.mean, None);
+    assert_eq!(empty.report.mood.recorded_days, 0);
 }
 
 #[test]

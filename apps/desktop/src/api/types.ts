@@ -205,6 +205,7 @@ export interface SearchRequest {
 }
 export interface Measure {
   observations: number;
+  recordedDays: number;
   mean: number | null;
 }
 export interface Observation {

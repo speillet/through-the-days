@@ -63,6 +63,7 @@ export function previewReport(entries: Entry[], request: SearchRequest): Reading
     const values = selected.flatMap((entry) => (entry[metric] == null ? [] : [entry[metric]!]));
     return {
       observations: values.length,
+      recordedDays: new Set(selected.filter((entry) => entry[metric] != null).map((entry) => entry.date)).size,
       mean: values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null,
     };
   };

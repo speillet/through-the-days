@@ -45,6 +45,11 @@ The system SHALL include saved scored drafts and completed entries (D-010), omit
 - **WHEN** a selected range contains a draft and a completed entry
 - **THEN** the statistic states its inclusion rule and count rather than silently changing the population.
 
+#### Scenario: Different coverage per metric
+
+- **WHEN** three saved drafts on two dates contain three mood values but pride only on one date
+- **THEN** mood shows n=3 across two recorded days and pride shows n=1 across one recorded day, each within the same civil-date range.
+
 #### Scenario: Only insight-visible wins affect filters
 
 - **WHEN** one entry has only an excluded win and another has an included win
