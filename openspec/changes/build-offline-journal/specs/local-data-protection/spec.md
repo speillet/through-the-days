@@ -71,7 +71,7 @@ The system SHALL validate a backup before making it active and SHALL preserve th
 
 ### Requirement: Portable backup recovery
 
-Backups SHALL be recoverable on another Mac with a dedicated backup passphrase and SHALL offer optional passphrase storage in macOS Keychain without requiring it.
+Backups SHALL be recoverable on another Mac with a dedicated backup passphrase and SHALL offer optional passphrase storage in macOS Keychain without requiring it. A Keychain failure SHALL NOT undo a passphrase change made in the app, and the app SHALL say what Keychain did not do. Reading a remembered passphrase at launch SHALL NOT hold up a passphrase change, and the app SHALL say when that read waits for an answer to a Keychain prompt.
 
 #### Scenario: New Mac restoration
 
@@ -82,6 +82,16 @@ Backups SHALL be recoverable on another Mac with a dedicated backup passphrase a
 
 - **WHEN** the person declines to remember the backup passphrase
 - **THEN** the passphrase is not retained for future sessions and journal writing remains available.
+
+#### Scenario: Keychain refuses a passphrase change
+
+- **WHEN** macOS Keychain refuses to store or remove the backup passphrase while the person sets, changes or forgets it
+- **THEN** the change still applies to the current session, a due backup proceeds with a newly entered passphrase, and the app explains that the passphrase was not remembered or may remain in Keychain, including how to delete it there.
+
+#### Scenario: Keychain prompt unanswered at launch
+
+- **WHEN** reading the remembered passphrase at launch waits for an answer to a macOS Keychain prompt, which may open behind the window
+- **THEN** the app says that it waits for Keychain, journal writing remains available, and a passphrase entered or forgotten meanwhile applies at once and is never replaced by the late answer.
 
 ### Requirement: Protected secrets and logs
 

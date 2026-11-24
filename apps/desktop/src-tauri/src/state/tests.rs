@@ -12,7 +12,7 @@
 
 use super::{
     AppState, ERASE_CONFIRMATION, OPEN_FAILED, RestoreOutcome, RestoreSource, StartupState,
-    backup::BackupState,
+    backup::{BackupState, KeychainWarning},
 };
 use crate::{error::CommandError, keychain::fake::FakeKeychain, paths::DataPaths};
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -276,7 +276,8 @@ fn first_launch_opens_an_empty_journal_and_asks_for_a_backup_folder() {
         serde_json::to_value(core.backup_status(noon())).unwrap(),
         json!({
             "state": "needsFolder", "folderName": null, "folderPath": null,
-            "passphraseAvailable": false, "remembered": false, "lastSuccessDate": null,
+            "passphraseAvailable": false, "remembered": false, "keychainPending": false,
+            "keychainWarning": null, "lastSuccessDate": null,
             "lastSuccessAt": null, "lastError": null, "retentionWarning": false, "backupCount": 0
         })
     );
@@ -1028,33 +1029,60 @@ fn the_passphrase_is_remembered_only_when_asked() {
     assert!(!fixture.stored_plan().remember);
 }
 
+/// local-data-protection — Keychain refuses a passphrase change: the change still applies to
+/// the session, and its reply says what Keychain did not do, so the due backup can run.
 #[test]
 fn a_keychain_failure_keeps_the_session_passphrase_and_writing_available() {
     let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
     fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.folder()),
         remember: true,
         ..BackupPlan::default()
     });
     fixture.keychain.contents().failing = true;
     let app = fixture.launch();
     assert_eq!(app.startup_status().state, StartupState::Ready);
-    assert!(!app.lock().backup_status(noon()).passphrase_available);
-
-    let error = app
-        .set_backup_passphrase(secret(PASSPHRASE), true, noon())
-        .unwrap_err();
-    assert_eq!(error, CommandError::keychain());
     let status = app.lock().backup_status(noon());
-    assert!(status.passphrase_available);
-    assert!(!status.remembered);
-    assert!(!fixture.stored_plan().remember);
+    // A refused read is over: nothing is pending any more.
+    assert!(status.remembered && !status.passphrase_available && !status.keychain_pending);
 
-    let error = app.forget_backup_passphrase(noon()).unwrap_err();
-    assert_eq!(error, CommandError::keychain());
-    assert!(!app.lock().backup_status(noon()).passphrase_available);
+    let status = app
+        .set_backup_passphrase(secret(PASSPHRASE), true, noon())
+        .unwrap();
+    assert_eq!(
+        status.keychain_warning,
+        Some(KeychainWarning::NotRemembered)
+    );
+    assert_eq!(status.state, BackupState::Due);
+    assert!(status.passphrase_available && !status.remembered);
+    assert!(!fixture.stored_plan().remember);
+    // The warning belongs to that reply only.
+    assert_eq!(app.lock().backup_status(noon()).keychain_warning, None);
+
+    // Neither a passphrase kept for this session only nor forgetting it can remove the item.
+    let status = app
+        .set_backup_passphrase(secret("another synthetic passphrase"), false, noon())
+        .unwrap();
+    assert_eq!(status.keychain_warning, Some(KeychainWarning::NotRemoved));
+    assert!(status.passphrase_available && !status.remembered);
+    let status = app.forget_backup_passphrase(noon()).unwrap();
+    assert_eq!(status.keychain_warning, Some(KeychainWarning::NotRemoved));
+    assert_eq!(status.state, BackupState::NeedsPassphrase);
+    assert!(!status.passphrase_available && !status.remembered);
+    assert!(!fixture.stored_plan().remember);
     app.lock()
         .save_entry(draft("2026-11-22", Slot::Evening, "Synthetic note."))
         .unwrap();
+
+    // The item Keychain kept is never read again, even once Keychain works.
+    assert_eq!(
+        fixture.keychain.contents().item.as_deref(),
+        Some(PASSPHRASE)
+    );
+    drop(app);
+    fixture.keychain.contents().failing = false;
+    let status = fixture.launch().lock().backup_status(noon());
+    assert!(!status.passphrase_available && !status.remembered);
 }
 
 #[test]
@@ -1093,10 +1121,13 @@ fn a_keychain_prompt_at_launch_never_keeps_the_journal_from_opening_or_saving() 
         .unwrap();
     let status = app.lock().backup_status(noon());
     assert!(status.remembered && !status.passphrase_available);
+    // The interface can say that the app waits for Keychain.
+    assert!(status.keychain_pending);
 
     fixture.keychain.answer();
     launching.join().unwrap();
-    assert!(app.lock().backup_status(noon()).passphrase_available);
+    let status = app.lock().backup_status(noon());
+    assert!(status.passphrase_available && !status.keychain_pending);
 }
 
 #[test]
@@ -1118,6 +1149,112 @@ fn a_keychain_prompt_while_remembering_the_passphrase_never_blocks_saving() {
     fixture.keychain.answer();
     let status = remembering.join().unwrap().unwrap();
     assert!(status.passphrase_available && status.remembered);
+}
+
+/// A Keychain prompt at launch can wait unanswered behind the window. A passphrase entered
+/// meanwhile applies at once, even when Keychain refuses to store it, and the late answer to the
+/// launch's read never replaces it.
+#[test]
+fn a_keychain_prompt_at_launch_never_holds_up_a_new_passphrase() {
+    const NEW: &str = "synthetic passphrase typed during the prompt";
+    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
+    fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.folder()),
+        remember: true,
+        ..BackupPlan::default()
+    });
+    fixture.keychain.show_read_prompt();
+    let app = Arc::new(fixture.state());
+    let launching = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.launch(noon()))
+    };
+    fixture.keychain.wait_for_prompt();
+    let status = app.lock().backup_status(noon());
+    assert_eq!(status.state, BackupState::NeedsPassphrase);
+    assert!(status.keychain_pending);
+
+    // Keychain refuses to store the new passphrase, then lets the launch read the earlier one.
+    fixture.keychain.contents().failing = true;
+    let (sent, reply) = mpsc::channel();
+    let setting = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || {
+            sent.send(app.set_backup_passphrase(secret(NEW), true, noon()))
+                .unwrap();
+        })
+    };
+    let changed = reply.recv_timeout(Wait::from_secs(5));
+    fixture.keychain.contents().failing = false;
+    fixture.keychain.answer();
+    launching.join().unwrap();
+    setting.join().unwrap();
+    let status = changed
+        .expect("the new passphrase waited for the launch's Keychain prompt")
+        .unwrap();
+    assert_eq!(status.state, BackupState::Due);
+    assert_eq!(
+        status.keychain_warning,
+        Some(KeychainWarning::NotRemembered)
+    );
+    // The launch's read no longer matters once a passphrase was entered.
+    assert!(!status.keychain_pending);
+
+    // The earlier passphrase read late is discarded: the day's backup uses the new one.
+    let status = app.lock().run_daily_backup(noon()).unwrap();
+    assert_eq!(status.state, BackupState::UpToDate);
+    assert!(!status.remembered && !status.keychain_pending);
+    let backup = app.lock().list_backups().unwrap().remove(0);
+    app.lock()
+        .restore_backup(
+            RestoreSource::Registered { name: backup.name },
+            NEW,
+            false,
+            noon(),
+        )
+        .unwrap();
+}
+
+/// Forgetting the passphrase during a Keychain prompt at launch does not wait for that prompt,
+/// even when Keychain cannot remove the item, and the late answer never brings it back.
+#[test]
+fn a_keychain_prompt_at_launch_never_holds_up_forgetting_the_passphrase() {
+    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
+    fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.folder()),
+        remember: true,
+        ..BackupPlan::default()
+    });
+    fixture.keychain.show_read_prompt();
+    let app = Arc::new(fixture.state());
+    let launching = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.launch(noon()))
+    };
+    fixture.keychain.wait_for_prompt();
+
+    fixture.keychain.contents().failing = true;
+    let (sent, reply) = mpsc::channel();
+    let forgetting = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || sent.send(app.forget_backup_passphrase(noon())).unwrap())
+    };
+    let forgotten = reply.recv_timeout(Wait::from_secs(5));
+    fixture.keychain.contents().failing = false;
+    fixture.keychain.answer();
+    launching.join().unwrap();
+    forgetting.join().unwrap();
+    let status = forgotten
+        .expect("forgetting waited for the launch's Keychain prompt")
+        .unwrap();
+    assert_eq!(status.keychain_warning, Some(KeychainWarning::NotRemoved));
+    assert!(!status.passphrase_available && !status.remembered && !status.keychain_pending);
+
+    // Keychain still held the passphrase when the launch read it, but it stays forgotten.
+    let status = app.lock().backup_status(noon());
+    assert_eq!(status.state, BackupState::NeedsPassphrase);
+    assert!(!status.passphrase_available && !status.remembered && !status.keychain_pending);
+    assert!(!fixture.stored_plan().remember);
 }
 
 /// An older journal that the remembered passphrase can upgrade at launch is not reported as
@@ -1144,11 +1281,10 @@ fn an_older_journal_waits_for_the_remembered_passphrase_before_its_status_is_rep
         thread::spawn(move || reported.send(app.startup_status()).unwrap())
     };
     assert!(startup.recv_timeout(Wait::from_millis(300)).is_err());
-    // Backup settings stay available meanwhile.
-    assert_eq!(
-        app.lock().backup_status(noon()).state,
-        BackupState::NeedsPassphrase
-    );
+    // Backup settings stay available meanwhile, so the opening screen can say what it waits for.
+    let status = app.lock().backup_status(noon());
+    assert_eq!(status.state, BackupState::NeedsPassphrase);
+    assert!(status.keychain_pending);
 
     fixture.keychain.answer();
     assert_eq!(startup.recv().unwrap().state, StartupState::Ready);

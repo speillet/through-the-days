@@ -77,9 +77,13 @@ pub struct AppState {
     /// Held by the launch while its startup outcome can still change, so the startup status is
     /// never reported before it is final.
     launch: Mutex<()>,
-    /// The Keychain store. Its lock keeps each Keychain operation and the session change that
-    /// follows it together, without holding the journal.
-    secrets: Mutex<Box<dyn SecretStore>>,
+    /// Held through each change to the Keychain item and the session change that follows it,
+    /// so they reach Keychain and the session in the same order, without holding the journal.
+    /// The launch reads Keychain without it: a prompt nobody answers then holds up no change,
+    /// and a read that a change overtook is discarded (see [`Core::adopt_remembered`]).
+    secrets: Mutex<()>,
+    /// The Keychain store.
+    keychain: Box<dyn SecretStore>,
     core: Mutex<Core>,
 }
 
@@ -92,10 +96,11 @@ pub struct PendingLaunch<'a> {
 }
 
 impl AppState {
-    pub fn new(paths: DataPaths, secrets: Box<dyn SecretStore>) -> Self {
+    pub fn new(paths: DataPaths, keychain: Box<dyn SecretStore>) -> Self {
         Self {
             launch: Mutex::new(()),
-            secrets: Mutex::new(secrets),
+            secrets: Mutex::new(()),
+            keychain,
             core: Mutex::new(Core::new(paths)),
         }
     }
@@ -105,7 +110,8 @@ impl AppState {
         recover(&self.core)
     }
 
-    fn secrets(&self) -> MutexGuard<'_, Box<dyn SecretStore>> {
+    /// Waits for any other change to the Keychain item and the session passphrase.
+    fn secrets(&self) -> MutexGuard<'_, ()> {
         recover(&self.secrets)
     }
 
@@ -128,6 +134,7 @@ impl AppState {
         core.load_plan();
         core.open_journal(now);
         let keychain_read = core.plan.remember.then_some(core.secret_generation);
+        core.launch_read = keychain_read;
         let unsettled =
             keychain_read.is_some() && core.startup.state == StartupState::NeedsMigration;
         PendingLaunch {
@@ -139,10 +146,12 @@ impl AppState {
     /// Reads a remembered passphrase from Keychain without holding the journal, so writing goes
     /// on while a Keychain prompt waits for an answer. Then an older journal can be upgraded
     /// with it, if its encrypted pre-migration backup can be made.
+    ///
+    /// The read does not wait for `secrets` either, so entering or forgetting a passphrase
+    /// meanwhile never waits for that prompt; the newer choice then wins over the read.
     pub fn finish_launch(&self, pending: PendingLaunch<'_>, now: DateTime<Utc>) {
         if let Some(generation) = pending.keychain_read {
-            let secrets = self.secrets();
-            let remembered = secrets.read();
+            let remembered = self.keychain.read();
             self.lock().adopt_remembered(generation, remembered, now);
         }
     }
@@ -179,7 +188,7 @@ impl AppState {
         remember: bool,
         now: DateTime<Utc>,
     ) -> Result<StartupStatus, CommandError> {
-        let secrets = self.secrets();
+        let _changing = self.secrets();
         let session_to_remember = {
             let core = self.lock();
             if core.startup.state != StartupState::NeedsMigration {
@@ -204,9 +213,9 @@ impl AppState {
         };
         // Keychain changes happen without holding the journal.
         let keychain = match (&passphrase, &session_to_remember) {
-            (Some(new), _) if remember => secrets.store(new),
-            (Some(_), _) => secrets.delete(),
-            (None, Some(session)) => secrets.store(session),
+            (Some(new), _) if remember => self.keychain.store(new),
+            (Some(_), _) => self.keychain.delete(),
+            (None, Some(session)) => self.keychain.store(session),
             (None, None) => Ok(()),
         };
         let mut core = self.lock();
@@ -236,8 +245,8 @@ impl AppState {
         if confirmation != ERASE_CONFIRMATION {
             return Err(CommandError::confirmation());
         }
-        let secrets = self.secrets();
-        let keychain = secrets.delete();
+        let _changing = self.secrets();
+        let keychain = self.keychain.delete();
         self.lock().erase(keychain, now)
     }
 
@@ -267,6 +276,8 @@ pub struct Core {
     /// Changes whenever the session passphrase or the Keychain choice changes, so a Keychain
     /// read that started earlier never replaces a newer choice.
     secret_generation: u64,
+    /// The generation of the remembered passphrase's read started at launch, until it returns.
+    launch_read: Option<u64>,
     /// The last failed backup attempt since the last success.
     last_error: Option<CommandError>,
     /// When the last automatic daily backup failed; automatic attempts pause after it.
@@ -291,6 +302,7 @@ impl Core {
             plan_unreadable: false,
             passphrase: None,
             secret_generation: 0,
+            launch_read: None,
             last_error: None,
             automatic_failure_at: None,
             picked: None,
@@ -388,6 +400,7 @@ impl Core {
         remembered: Result<Option<Zeroizing<String>>, KeychainError>,
         now: DateTime<Utc>,
     ) {
+        self.launch_read = None;
         if generation == self.secret_generation {
             match remembered {
                 Ok(Some(passphrase)) => {

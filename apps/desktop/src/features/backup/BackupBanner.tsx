@@ -1,9 +1,10 @@
 // The backup banner in the status area of every view. Gentle view never hides it.
-// It asks for what a due backup needs (a folder or the passphrase), reports a
-// failed backup with what to do next, says when the backup settings of this Mac
-// could not be read, and confirms a backup only after the journal reports it. A
-// passphrase request, unreadable settings or a failure cannot be dismissed; in focus
-// mode only those stay visible.
+// It asks for what a due backup needs (a folder or the passphrase), says when it
+// still waits for macOS Keychain, reports a failed backup with what to do next, says
+// when the backup settings of this Mac could not be read, and confirms a backup only
+// after the journal reports it. A passphrase request, unreadable settings or a
+// failure cannot be dismissed; in focus mode only those, and the outcome of a
+// passphrase just entered, stay visible.
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { toCommandError, useApi } from '../../api/client';
@@ -14,7 +15,7 @@ import { useBackup } from '../../state/backup';
 import { useFocusMode } from '../../state/focus';
 import { useNavigation } from '../../state/navigation';
 import { PassphraseDialog } from './PassphraseDialog';
-import { RETENTION_WARNING, SETTINGS_UNREADABLE_TEXT } from './status';
+import { KEYCHAIN_PENDING_TEXT, passphraseSavedWarning, RETENTION_WARNING, SETTINGS_UNREADABLE_TEXT } from './status';
 import './backup.css';
 
 type Phase = 'idle' | 'backingUp' | 'done';
@@ -31,6 +32,8 @@ export function BackupBanner() {
   const [choosingFolder, setChoosingFolder] = useState(false);
   const [setupPostponed, setSetupPostponed] = useState(false);
   const [retentionDismissed, setRetentionDismissed] = useState(false);
+  /** What macOS Keychain did not do with the passphrase just entered. */
+  const [keychainNotice, setKeychainNotice] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const focusBanner = useRef(false);
 
@@ -133,7 +136,9 @@ export function BackupBanner() {
           </Button>
         }
       >
-        Enter your backup passphrase to make today’s encrypted backup. You can keep writing in the meantime.
+        {status.keychainPending
+          ? `${KEYCHAIN_PENDING_TEXT} You can also enter the passphrase yourself, and keep writing in the meantime.`
+          : 'Enter your backup passphrase to make today’s encrypted backup. You can keep writing in the meantime.'}
       </Notice>,
     );
   } else if (status?.state === 'settingsUnreadable') {
@@ -230,6 +235,22 @@ export function BackupBanner() {
     );
   }
 
+  if (keychainNotice) {
+    notices.push(
+      <Notice
+        key="keychain"
+        tone="warning"
+        actions={
+          <Button variant="quiet" size="small" onClick={() => setKeychainNotice(null)}>
+            Dismiss
+          </Button>
+        }
+      >
+        {keychainNotice}
+      </Notice>,
+    );
+  }
+
   if (status?.retentionWarning && !retentionDismissed && !focusMode) {
     notices.push(
       <Notice
@@ -267,6 +288,8 @@ export function BackupBanner() {
         onSaved={(next) => {
           focusBanner.current = true;
           setDialogOpen(false);
+          // The passphrase applies to this session even when macOS Keychain did not follow.
+          setKeychainNotice(passphraseSavedWarning(next.keychainWarning));
           void backUpAfterPassphrase(next);
         }}
       />

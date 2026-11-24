@@ -143,6 +143,14 @@ export interface StartupStatus {
 export type BackupState =
   'settingsUnreadable' | 'needsFolder' | 'needsPassphrase' | 'due' | 'upToDate' | 'failed';
 
+/**
+ * What macOS Keychain did not do after a passphrase change, which still applies to this
+ * session: 'notRemembered' when it could not store the passphrase, so it lasts for this session
+ * only; 'notRemoved' when it could not remove the remembered passphrase, which may remain in
+ * Keychain although the app no longer reads it.
+ */
+export type KeychainWarning = 'notRemembered' | 'notRemoved';
+
 export interface BackupStatus {
   state: BackupState;
   /** Display-only folder name and path. Never sent back to native code. */
@@ -152,6 +160,13 @@ export interface BackupStatus {
   passphraseAvailable: boolean;
   /** The passphrase is stored in macOS Keychain. */
   remembered: boolean;
+  /**
+   * The launch is still reading the remembered passphrase from macOS Keychain, for example
+   * while its prompt waits for an answer, and no passphrase change has replaced it since.
+   */
+  keychainPending: boolean;
+  /** Set only in the reply to setBackupPassphrase or forgetBackupPassphrase. */
+  keychainWarning: KeychainWarning | null;
   /** Journal date of the last successful backup. */
   lastSuccessDate: string | null;
   /** Unix seconds of the last successful backup. */

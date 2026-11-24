@@ -190,6 +190,7 @@ Choosing another folder leaves earlier backups where they are. Listing and pruni
 - **Rule:** at least 12 characters, counted as Unicode scalar values, so `é` counts as one. There are no composition rules. `journal-core` uses the passphrase exactly as given, without trimming or Unicode normalisation.
 - **Portable:** the backup file and its passphrase are enough to restore on another Mac. No device key is involved.
 - **Keychain (desktop app):** remembering the passphrase in macOS Keychain is optional. The item uses service `com.throughthedays.app.backup` (`com.throughthedays.app.dev.backup` in development builds) and account `backup-passphrase`. A passphrase that is not remembered is kept in memory for the current session only.
+- **Keychain failures (desktop app):** when Keychain refuses to store or remove the item, a passphrase entered or forgotten in the app still applies to the session, and the app no longer reads the item at launch. The app says that the passphrase was not remembered, or that a passphrase may remain in Keychain and how to delete it with Keychain Access. The launch reads a remembered passphrase without holding up a passphrase change, which wins over that read; while a Keychain prompt waits for an answer, the app says so.
 - **Changes:** a new passphrase applies to future backups only. Existing backups keep the passphrase they were created with; the app does not re-encrypt them.
 - **Loss:** a forgotten passphrase makes the backups created with it unrecoverable. There is no recovery key and no reset.
 
