@@ -125,7 +125,12 @@ export function WeeklyView() {
             <h2>Recorded moments</h2>
             {sources.length ? (
               sources.map((entry) => (
-                <EntryPreview key={`${entry.id}:${entry.revision}`} entry={entry} origin="journal" />
+                <EntryPreview
+                  key={`${entry.id}:${entry.revision}`}
+                  entry={entry}
+                  origin="weekly"
+                  bookRequest={{ from: data.weekStart, to: data.weekEnd }}
+                />
               ))
             ) : (
               <p>No recorded entries in this week. Your notes are still yours to write.</p>

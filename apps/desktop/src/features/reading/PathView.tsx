@@ -12,7 +12,7 @@ import { useToday } from '../../state/clock';
 import { useNavigation } from '../../state/navigation';
 import { usePreferences } from '../../state/preferences';
 import { EntryPreview, Filters } from './shared';
-import { useReading, useReadingQuery } from './state';
+import { useReading, useReadingQuery, useReadingSelection } from './state';
 
 const RANGES = [7, 30, 90, 365];
 export function PathView() {
@@ -20,32 +20,80 @@ export function PathView() {
   const { today } = useToday();
   const { navigate } = useNavigation();
   const { visibility } = usePreferences();
-  const { date, setDate, filters, setFilters, range, setRange, layers, setLayers, setBookId, setReturnView } =
-    useReading();
+  const {
+    date,
+    setDate,
+    filters,
+    pathCustomRange,
+    setPathCustomRange,
+    range,
+    setRange,
+    layers,
+    setLayers,
+    setBookId,
+    setReturnView,
+    setBookRequest,
+  } = useReading();
   const selected = date ?? today;
   const from =
     range === 0
-      ? filters.from || addDays(selected, -29)
+      ? pathCustomRange?.from || addDays(selected, -29)
       : range === 365
         ? addDays(addMonths(selected, -12), 1)
         : addDays(selected, 1 - range);
-  const to = range === 0 ? filters.to || selected : selected;
-  const request = { ...filters, from, to };
+  const to = range === 0 ? pathCustomRange?.to || selected : selected;
+  const span = Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000) + 1;
+  const validRange = Number.isFinite(span) && span > 0;
+  const sourceRequest = { ...filters, from, to };
+  const request = useReadingSelection(sourceRequest);
   const key = JSON.stringify(request);
-  const entries = useReadingQuery(useCallback(() => api.searchEntries(JSON.parse(key)), [api, key]));
+  // The report decides eligibility using insight-visible wins; original search includes all owned wins.
+  const entries = useReadingQuery(
+    useCallback(() => api.searchEntries({ ...JSON.parse(key), hasWin: null }), [api, key]),
+  );
   const report = useReadingQuery(useCallback(() => api.readingReport(JSON.parse(key)), [api, key]));
   const milestones = useReadingQuery(useCallback(() => api.listMilestones(), [api]));
   const [editing, setEditing] = useState<Milestone | null>(null);
   const [deleting, setDeleting] = useState<Milestone | null>(null);
-  const records = (entries.data ?? []).filter((entry) => entry.includeInInsights !== false);
+  const includedIds = new Set(report.data?.days.flatMap((day) => day.observations.map((entry) => entry.id)));
+  const records = (entries.data ?? []).filter(
+    (entry) => entry.includeInInsights !== false && includedIds.has(entry.id),
+  );
   const moments = (milestones.data ?? []).filter(
     (milestone) => milestone.date >= from && milestone.date <= to,
   );
   const days = report.data?.days ?? [];
+  function chooseRange(next: number) {
+    if (range === 0) setDate(to);
+    setRange(next);
+  }
+  function zoom(direction: -1 | 1) {
+    if (range === 0) {
+      const options = direction < 0 ? [...RANGES].reverse() : RANGES;
+      const next = options.find((days) => (direction < 0 ? days < span : days > span));
+      chooseRange(next ?? (direction < 0 ? 7 : 365));
+    } else {
+      chooseRange(RANGES[Math.max(0, Math.min(RANGES.length - 1, RANGES.indexOf(range) + direction))]);
+    }
+  }
+  function pan(direction: -1 | 1) {
+    if (range === 0) {
+      setPathCustomRange({
+        from: addDays(from, direction * span),
+        to: addDays(to, direction * span),
+      });
+    } else {
+      setDate(range === 365 ? addMonths(selected, direction * 12) : addDays(selected, direction * range));
+    }
+  }
+  function endToday() {
+    if (range === 0) setPathCustomRange({ from: addDays(today, 1 - span), to: today });
+    else setDate(today);
+  }
   function openBook(id: string) {
     setBookId(id);
     setReturnView('path');
-    setFilters(request);
+    setBookRequest(sourceRequest);
     navigate('book');
   }
   return (
@@ -69,7 +117,7 @@ export function PathView() {
               key={days}
               aria-pressed={range === days}
               variant={range === days ? 'primary' : 'quiet'}
-              onClick={() => setRange(days)}
+              onClick={() => chooseRange(days)}
             >
               {days === 365 ? '1 year' : `${days} days`}
             </Button>
@@ -77,7 +125,7 @@ export function PathView() {
           <Button
             aria-pressed={range === 0}
             onClick={() => {
-              setFilters({ ...filters, from, to });
+              setPathCustomRange({ from, to });
               setRange(0);
             }}
           >
@@ -87,15 +135,15 @@ export function PathView() {
         <div className="reading-actions">
           <Button
             aria-label="Zoom in"
-            disabled={range === 7}
-            onClick={() => setRange(RANGES[Math.max(0, RANGES.indexOf(range) - 1)])}
+            disabled={!validRange || (range === 0 ? span <= 7 : range === 7)}
+            onClick={() => zoom(-1)}
           >
             Zoom in
           </Button>
           <Button
             aria-label="Zoom out"
-            disabled={range === 365}
-            onClick={() => setRange(RANGES[Math.min(3, RANGES.indexOf(range) + 1)])}
+            disabled={!validRange || (range === 0 ? span >= 365 : range === 365)}
+            onClick={() => zoom(1)}
           >
             Zoom out
           </Button>
@@ -111,7 +159,7 @@ export function PathView() {
               lang="en-GB"
               value={from}
               onChange={(e) => {
-                if (e.target.value) setFilters({ ...filters, from: e.target.value });
+                if (e.target.value) setPathCustomRange({ from: e.target.value, to });
               }}
             />
           </label>
@@ -123,18 +171,23 @@ export function PathView() {
               lang="en-GB"
               value={to}
               onChange={(e) => {
-                if (e.target.value) setFilters({ ...filters, to: e.target.value });
+                if (e.target.value) setPathCustomRange({ from, to: e.target.value });
               }}
             />
           </label>
         </div>
-      ) : (
-        <div className="reading-actions">
-          <Button onClick={() => setDate(addDays(selected, -range))}>Earlier range</Button>
-          <Button onClick={() => setDate(addDays(selected, range))}>Later range</Button>
-          <Button onClick={() => setDate(today)}>End today</Button>
-        </div>
-      )}
+      ) : null}
+      <div className="reading-actions">
+        <Button onClick={() => pan(-1)} disabled={!validRange}>
+          Earlier range
+        </Button>
+        <Button onClick={() => pan(1)} disabled={!validRange}>
+          Later range
+        </Button>
+        <Button onClick={endToday} disabled={!validRange}>
+          End today
+        </Button>
+      </div>
       <fieldset className="series-controls">
         <legend>Timeline layers</legend>
         <label>
@@ -220,7 +273,7 @@ export function PathView() {
                         key={`${entry.id}:${entry.revision}`}
                         entry={entry}
                         origin="path"
-                        bookRequest={request}
+                        bookRequest={sourceRequest}
                       />
                     ))
                   : null}

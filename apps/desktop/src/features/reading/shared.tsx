@@ -8,7 +8,7 @@ import { documentText } from '../../domain/entry';
 import { EMOTIONS, emotionById } from '../../domain/emotions';
 import { useNavigation } from '../../state/navigation';
 import { usePreferences } from '../../state/preferences';
-import { useReading } from './state';
+import { useReading, type ReadingOrigin } from './state';
 
 export const METRIC_LABELS: Record<ScoreMetric, string> = {
   mood: 'Mood',
@@ -27,7 +27,26 @@ export function numericFamily(entry: Pick<Entry, 'mood' | 'energy'>): string {
   return `${entry.mood > 5 ? 'pleasant' : 'unpleasant'}-${entry.energy > 5 ? 'high' : 'low'}`;
 }
 
-export function CheckInReading({ entry }: { entry: Entry }) {
+export function EntryValues({ entry }: { entry: Entry }) {
+  const { visibility } = usePreferences();
+  return (
+    <>
+      {visibility.scores ? (
+        <div className="entry-scores">
+          {METRICS.map((metric) =>
+            entry[metric] == null ? null : <span key={metric}>{scoreLabel(metric, entry[metric]!)}</span>,
+          )}
+        </div>
+      ) : null}
+      {entry.emotion || entry.anotherEmotion ? (
+        <p>{entry.anotherEmotion || emotionById(entry.emotion)?.label}</p>
+      ) : null}
+    </>
+  );
+}
+
+export function CheckInReading({ entry, insights = false }: { entry: Entry; insights?: boolean }) {
+  const wins = insights ? entry.wins.filter((win) => win.includeInInsights) : entry.wins;
   const labels = {
     intention: "Today's intention",
     proudOf: "What I'm proud of",
@@ -53,11 +72,11 @@ export function CheckInReading({ entry }: { entry: Entry }) {
           ) : null;
         })}
       </dl>
-      {entry.wins.length ? (
+      {wins.length ? (
         <>
           <h4>Small wins you recognised</h4>
           <ul>
-            {entry.wins.map((win) => (
+            {wins.map((win) => (
               <li key={win.id}>{win.text}</li>
             ))}
           </ul>
@@ -69,6 +88,7 @@ export function CheckInReading({ entry }: { entry: Entry }) {
 
 export function Filters({ includeDates = true }: { includeDates?: boolean }) {
   const { filters, setFilters } = useReading();
+  const { visibility } = usePreferences();
   return (
     <form className="reading-filters" role="search" onSubmit={(e) => e.preventDefault()}>
       <label className="reading-search">
@@ -168,38 +188,42 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
           <Button size="small" variant="quiet" onClick={() => setFilters({ text: '' })}>
             Clear filters
           </Button>
-          <label>
-            Measure
-            <select
-              tabIndex={0}
-              value={filters.metric ?? ''}
-              onChange={(e) =>
-                setFilters({ ...filters, metric: (e.target.value as ScoreMetric) || null, minimum: null })
-              }
-            >
-              <option value="">Any measure</option>
-              {METRICS.map((metric) => (
-                <option key={metric} value={metric}>
-                  {METRIC_LABELS[metric]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Minimum score
-            <input
-              tabIndex={0}
-              type="number"
-              min={filters.metric === 'pride' || filters.metric === 'progress' ? 1 : 0}
-              max={10}
-              step={1}
-              disabled={!filters.metric}
-              value={filters.minimum ?? ''}
-              onChange={(e) =>
-                setFilters({ ...filters, minimum: e.target.value === '' ? null : Number(e.target.value) })
-              }
-            />
-          </label>
+          {visibility.scores ? (
+            <>
+              <label>
+                Measure
+                <select
+                  tabIndex={0}
+                  value={filters.metric ?? ''}
+                  onChange={(e) =>
+                    setFilters({ ...filters, metric: (e.target.value as ScoreMetric) || null, minimum: null })
+                  }
+                >
+                  <option value="">Any measure</option>
+                  {METRICS.map((metric) => (
+                    <option key={metric} value={metric}>
+                      {METRIC_LABELS[metric]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Minimum score
+                <input
+                  tabIndex={0}
+                  type="number"
+                  min={filters.metric === 'pride' || filters.metric === 'progress' ? 1 : 0}
+                  max={10}
+                  step={1}
+                  disabled={!filters.metric}
+                  value={filters.minimum ?? ''}
+                  onChange={(e) =>
+                    setFilters({ ...filters, minimum: e.target.value === '' ? null : Number(e.target.value) })
+                  }
+                />
+              </label>
+            </>
+          ) : null}
         </div>
       </details>
     </form>
@@ -212,13 +236,12 @@ export function EntryPreview({
   bookRequest,
 }: {
   entry: Entry;
-  origin?: 'calendar' | 'journal' | 'path';
+  origin?: ReadingOrigin;
   bookRequest?: SearchRequest;
 }) {
   const api = useApi();
   const { navigate } = useNavigation();
-  const { setBookId, setReturnView, setFilters } = useReading();
-  const { visibility } = usePreferences();
+  const { setBookId, setReturnView, setBookRequest } = useReading();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const slot = SLOT_NAMES[entry.slot];
@@ -242,28 +265,19 @@ export function EntryPreview({
       <p className="reading-meta">
         {formatLongDate(entry.date)} · {slot}
       </p>
-      {visibility.scores ? (
-        <div className="entry-scores">
-          {METRICS.map((metric) =>
-            entry[metric] == null ? null : <span key={metric}>{scoreLabel(metric, entry[metric]!)}</span>,
-          )}
-        </div>
-      ) : null}
-      {entry.emotion || entry.anotherEmotion ? (
-        <p>{entry.anotherEmotion || emotionById(entry.emotion)?.label}</p>
-      ) : null}
+      <EntryValues entry={entry} />
       <p className="entry-excerpt">
         {Array.from(documentText(entry.document)).slice(0, 240).join('') ||
           'A saved check-in, ready to revisit.'}
       </p>
-      <CheckInReading entry={entry} />
+      <CheckInReading entry={entry} insights={origin === 'weekly' || origin === 'path'} />
       <div className="reading-actions">
         <Button
           size="small"
           onClick={() => {
             setBookId(entry.id);
             setReturnView(origin);
-            if (bookRequest) setFilters(bookRequest);
+            setBookRequest(bookRequest ?? null);
             navigate('book');
           }}
         >

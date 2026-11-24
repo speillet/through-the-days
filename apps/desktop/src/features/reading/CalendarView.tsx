@@ -7,14 +7,15 @@ import { formatLongDate } from '../../domain/dates';
 import { useToday } from '../../state/clock';
 import { usePreferences } from '../../state/preferences';
 import { EntryPreview, Filters, numericFamily, SLOT_NAMES } from './shared';
-import { useReading, useReadingQuery } from './state';
+import { useReading, useReadingQuery, useReadingSelection } from './state';
 
 export function CalendarView({ journal = false }: { journal?: boolean }) {
   const api = useApi();
   const { today } = useToday();
-  const { date, setDate, filters } = useReading();
+  const { date, setDate } = useReading();
+  const filters = useReadingSelection();
   const selected = date ?? today;
-  const { visibility } = usePreferences();
+  const { visibility, preferences } = usePreferences();
   const key = JSON.stringify(filters);
   const read = useCallback(() => api.searchEntries(JSON.parse(key)), [api, key]);
   const { data, error, loading, reload } = useReadingQuery(read);
@@ -40,8 +41,12 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
       ) : journal ? (
         <>
           <p className="reading-meta">
-            {entries.length} saved {entries.length === 1 ? 'entry' : 'entries'}. Search matches words in
-            titles and writing, ignoring letter case and Latin accents.
+            {preferences.gentle ? null : (
+              <>
+                {entries.length} saved {entries.length === 1 ? 'entry' : 'entries'}.{' '}
+              </>
+            )}
+            Search matches words in titles and writing, ignoring letter case and Latin accents.
           </p>
           {entries.length ? (
             entries.map((entry) => (

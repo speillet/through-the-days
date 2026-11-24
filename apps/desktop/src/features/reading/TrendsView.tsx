@@ -8,13 +8,14 @@ import { useNavigation } from '../../state/navigation';
 import { usePreferences } from '../../state/preferences';
 import { Filters } from './shared';
 import { Coverage, DayTimeline, SeriesControls } from './Timeline';
-import { useReading, useReadingQuery } from './state';
+import { useReading, useReadingQuery, useReadingSelection } from './state';
 
 export function TrendsView() {
   const api = useApi();
   const { today } = useToday();
   const { navigate } = useNavigation();
-  const { date, setDate, filters } = useReading();
+  const { date, setDate } = useReading();
+  const filters = useReadingSelection();
   const selected = date ?? today;
   const { preferences, update } = usePreferences();
   const days = preferences.timelineDays ?? 14;

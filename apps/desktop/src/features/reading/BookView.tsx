@@ -1,21 +1,43 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { useApi } from '../../api/client';
+import type { SearchRequest } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { formatLongDate } from '../../domain/dates';
 import { useToday } from '../../state/clock';
 import { useNavigation } from '../../state/navigation';
 import { JournalDocument } from './Document';
-import { SLOT_NAMES, CheckInReading } from './shared';
-import { useReading, useReadingQuery } from './state';
+import { SLOT_NAMES, CheckInReading, EntryValues } from './shared';
+import { useReading, useReadingQuery, useReadingSelection } from './state';
+
+const RETURN_LABELS = {
+  calendar: 'Calendar',
+  journal: 'My Journal',
+  weekly: 'Weekly Review',
+  path: 'The Path So Far',
+};
 
 export function BookView() {
   const api = useApi();
   const { today } = useToday();
   const { navigate } = useNavigation();
-  const { date, filters, bookId, setBookId, returnView, bookPositions } = useReading();
-  const key = JSON.stringify(filters);
-  const { data, error } = useReadingQuery(useCallback(() => api.searchEntries(JSON.parse(key)), [api, key]));
+  const { date, bookRequest, setBookRequest, bookId, setBookId, returnView, bookPositions } = useReading();
+  const selection = useReadingSelection(bookRequest);
+  const key = JSON.stringify(selection);
+  const insightSelection =
+    (returnView === 'path' || returnView === 'weekly') && Boolean(bookRequest?.from && bookRequest?.to);
+  const { data, error } = useReadingQuery(
+    useCallback(async () => {
+      const request: SearchRequest = JSON.parse(key);
+      if (!insightSelection) return api.searchEntries(request);
+      const [sources, report] = await Promise.all([
+        api.searchEntries({ ...request, hasWin: null }),
+        api.readingReport(request),
+      ]);
+      const includedIds = new Set(report.days.flatMap((day) => day.observations.map((entry) => entry.id)));
+      return sources.filter((entry) => entry.includeInInsights !== false && includedIds.has(entry.id));
+    }, [api, key, insightSelection]),
+  );
   const entries = [...(data ?? [])].sort(
     (a, b) => a.date.localeCompare(b.date) || (a.slot === b.slot ? 0 : a.slot === 'morning' ? -1 : 1),
   );
@@ -82,10 +104,7 @@ export function BookView() {
     <div className="view reading-view book-view">
       <header className="reading-heading">
         <h1>Book View</h1>
-        <Button onClick={() => navigate(returnView)}>
-          Return to{' '}
-          {returnView === 'journal' ? 'My Journal' : returnView === 'path' ? 'The Path So Far' : 'Calendar'}
-        </Button>
+        <Button onClick={() => navigate(returnView)}>Return to {RETURN_LABELS[returnView]}</Button>
       </header>
       {error ? (
         <Notice tone="error">{error}</Notice>
@@ -99,9 +118,20 @@ export function BookView() {
           The selected entry is no longer available in this selection.
         </Notice>
       ) : !entry ? (
-        <p>
-          No entries match this reading selection. Choose another date or clear the filters in My Journal.
-        </p>
+        <section aria-label="Empty reading selection">
+          <p>
+            No entries match this reading selection. Return to its source view to change it, or read the whole
+            journal.
+          </p>
+          <Button
+            onClick={() => {
+              setBookRequest({});
+              setBookId(null);
+            }}
+          >
+            Read all entries
+          </Button>
+        </section>
       ) : (
         <>
           <div className="reading-row book-controls">
@@ -129,6 +159,7 @@ export function BookView() {
                 <p className="reading-meta">
                   {SLOT_NAMES[entry.slot]} · {entry.complete ? 'Completed' : 'Draft'}
                 </p>
+                <EntryValues entry={entry} />
               </header>
               <JournalDocument document={entry.document} />
               <CheckInReading entry={entry} />

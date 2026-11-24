@@ -2,7 +2,10 @@ import { createContext, useContext, useState, useRef, useEffect, useCallback, ty
 import type { SearchRequest } from '../../api/types';
 import { toCommandError, useApi } from '../../api/client';
 import { registerFlusher } from '../../state/flush';
+import { usePreferences } from '../../state/preferences';
 import { WeeklyNotesStore } from './notes';
+
+export type ReadingOrigin = 'calendar' | 'journal' | 'weekly' | 'path';
 
 function useReadingState() {
   const api = useApi();
@@ -16,9 +19,11 @@ function useReadingState() {
   }, [notes]);
   const [date, setDate] = useState<string | null>(null);
   const [bookId, setBookId] = useState<string | null>(null);
-  const [returnView, setReturnView] = useState<'calendar' | 'journal' | 'path'>('calendar');
+  const [bookRequest, setBookRequest] = useState<SearchRequest | null>(null);
+  const [returnView, setReturnView] = useState<ReadingOrigin>('calendar');
   const [filters, setFilters] = useState<SearchRequest>({ text: '' });
   const [range, setRange] = useState(30);
+  const [pathCustomRange, setPathCustomRange] = useState<{ from: string; to: string } | null>(null);
   const [layers, setLayers] = useState({ scores: true, wins: true, milestones: true });
   const bookPositions = useRef(new Map<string, number>());
   return {
@@ -26,12 +31,16 @@ function useReadingState() {
     setDate,
     bookId,
     setBookId,
+    bookRequest,
+    setBookRequest,
     returnView,
     setReturnView,
     filters,
     setFilters,
     range,
     setRange,
+    pathCustomRange,
+    setPathCustomRange,
     layers,
     setLayers,
     bookPositions,
@@ -46,6 +55,14 @@ export function useReading() {
   const context = useContext(ReadingContext);
   if (!context) throw new Error('ReadingProvider is required.');
   return context;
+}
+
+/** Hidden numeric controls never silently filter a reading surface; retain the person's choices. */
+export function useReadingSelection(request?: SearchRequest | null): SearchRequest {
+  const { filters } = useReading();
+  const { visibility } = usePreferences();
+  const selected = request ?? filters;
+  return visibility.scores ? selected : { ...selected, metric: null, minimum: null };
 }
 
 /** Discards old results immediately on query/source changes; late requests cannot restore stale text. */
