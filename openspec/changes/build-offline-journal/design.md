@@ -22,7 +22,7 @@ README_THROUGH_THE_DAYS.md §§0–5, 10–14, 19–22; decisions D-001–D-007.
 
 `crates/journal-core` owns validation, SQLite and recovery behind the Rust/Tauri commands. One validated entry aggregate contains the canonical Tiptap JSON document, answers, actions and wins; indexed identity/date/slot/revision columns enforce conflict-safe saves (ADR 0003). React never supplies arbitrary filesystem paths or SQL. Markdown is derived from the canonical document.
 
-The native adapter uses system dialogs, a device-local backup plan and optional Keychain storage. Waiting for a Keychain prompt or testing a backup folder does not hold the journal lock. Startup status is finalised before it is reported; protected upgrades, failed opens and damaged-journal recovery have distinct states. A damaged journal and its companions are kept aside before a validated replacement is installed. Explicit application erasure also removes those managed set-aside files, leaving independent backup copies alone.
+The native adapter uses system dialogs, a device-local backup plan and optional Keychain storage. Waiting for a Keychain prompt or testing a backup folder does not hold the journal lock. Startup status is finalised before it is reported; protected upgrades, failed opens and damaged-journal recovery have distinct states. A damaged journal and its companions stay in place until a validated replacement is complete in a separate file; they are then kept aside, and a durable marker lets the next launch finish or undo an interrupted replacement, so no launch opens an empty journal in its place. Explicit application erasure also removes those managed set-aside files and the marker, leaving independent backup copies alone.
 
 ### Appendix refinements
 

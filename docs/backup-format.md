@@ -154,6 +154,14 @@ Restoring replaces the entire journal (entries, trash and preferences) with the 
 
 Restored trash entries keep their original deletion time. Those whose 30 days have passed are removed by the next trash purge, at launch or while the app is open. Until then they cannot be restored from the trash: `journal-core` refuses to restore any trashed entry whose 30 days have passed, as if it were already gone (`notFound`).
 
+**Journal that cannot be opened (desktop app).** When the journal cannot be opened at launch, for example because it is damaged or was made by a newer version, the startup screen restores a backup by replacing the journal file. That file stays untouched until the replacement is complete:
+
+1. The backup is verified, then restored into a new journal file in the data folder, named with the `.ttd-restore-staging-` prefix. That journal is closed, so the file alone holds it.
+2. A marker, `restore-in-progress.json`, is written and flushed. It names the restored file and the name under which the journal will be kept aside.
+3. The journal database and its companions are renamed `journal.unreadable-<seconds>.sqlite`, with the same suffixes, and are kept, never deleted. The restored file is then renamed `journal.sqlite`, the folder is flushed and the marker is removed.
+
+If the app quits, crashes or loses power during these steps, the next launch settles the marker before anything else. Until the restored file has the journal's name, the journal's files go back to their names and the journal opens as it was; after that, the restored journal opens. Leftover staging files are removed next, so a launch never opens an empty journal in place of the one being replaced. While a marker cannot be settled, the start fails instead. Erasing all app data removes the marker.
+
 The passphrase rule is not applied when restoring, so every backup stays restorable with the passphrase it was created with.
 
 ## Damaged journal files
@@ -216,6 +224,7 @@ If the backup cannot be made, the journal stays at its earlier version, unchange
 | Header demands a work factor above 2^22 | Refused before key derivation; restore fails and the journal is unchanged. |
 | Backup with weakened table definitions | Its rows are restored into this build's schema; rows that break its constraints fail the restore. |
 | Backup interrupted by a crash or power loss | Only a `.ttd-incomplete-*` file can remain. It is never listed and is removed by the next backup; earlier backups are intact. |
+| Restore from the startup screen interrupted by a quit, crash or power loss (desktop app) | The next launch opens the journal as it was or the complete restored journal, never an empty one, and removes the staging files. |
 | Folder missing, not a folder or read-only | `backupFolder` before any snapshot; no success is recorded and earlier backups are intact. |
 | File system without exclusive renames (exFAT) | Published with a plain rename to its new, unused name. |
 | Disk full | `backup`; no success is recorded and earlier backups are intact. |
@@ -246,6 +255,7 @@ Each acknowledged commit of the live journal, and each checkpoint of its write-a
 
 - **The live journal**, `journal.sqlite` in the application data folder (`~/Library/Application Support/com.throughthedays.app`), is not encrypted by the application. It relies on macOS account and disk protections, including FileVault if the person has turned it on ([D-004](product-decisions.md)).
 - **The backup plan** holds the folder path, the last success and two settings, without journal text.
+- **A restore from the startup screen** writes the restored journal, unencrypted like the live journal, to a staging file in the data folder before it takes the journal's name. Its marker, `restore-in-progress.json`, holds two file names, without journal text.
 - **The registry** holds file names, times and digests, without journal text.
 - **File names** reveal when each backup was made. The age header reveals the scrypt salt and work factor, as in every age file.
 
@@ -286,6 +296,8 @@ The `journal-core` tests exercise this contract with real temporary SQLite datab
 Scrypt calibration makes each published backup take about two seconds in tests: one second to encrypt and one to verify. Retention tests therefore register synthetic stand-in files with known digests instead of publishing 30 real backups. Crafted backups in the validation tests use a low work factor so they decrypt quickly. Published backups always use the calibrated work factor.
 
 The desktop behaviour described above (dialogs, Keychain, the safety backup and scheduling) and recovery with the `age` command-line tool are not exercised by these tests. The decryption limit of 2^22 is the same in every build, so a development build, which may calibrate a lower work factor, still restores backups made by a release build.
+
+The desktop shell's own tests cover the restore from the startup screen. `a_restore_from_the_startup_screen_that_stops_at_any_moment_never_opens_an_empty_journal`, in `apps/desktop/src-tauri/src/state/tests.rs`, copies the data folder at every point where that restore, or the launch that settles it, could stop, and checks what the next launch opens. Each copy is what a quit or a crash at that point leaves; the flushes that keep it so after a power cut are not tested.
 
 Two checks are manual:
 

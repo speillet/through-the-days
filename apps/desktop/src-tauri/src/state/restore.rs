@@ -7,7 +7,7 @@ use super::{Core, StartupState};
 use crate::{
     diagnostics,
     error::CommandError,
-    paths::{self, STAGING_PREFIX, SetAside},
+    paths::{self, STAGING_PREFIX},
 };
 use chrono::{DateTime, Utc};
 use journal_core::{Error, Journal, erase_journal_files, list_backups, verify_backup};
@@ -127,9 +127,12 @@ impl Core {
     /// Restores when no journal is open because the start failed or found a journal this
     /// version cannot open.
     ///
-    /// Once the backup is verified, the journal file and its SQLite companions are moved aside
-    /// in the data folder, never deleted, and a new journal created in their place receives the
-    /// backup. If that fails, the new journal is removed and the files are moved back.
+    /// The journal file is left as it is until the verified backup has been restored completely
+    /// into a new file in the data folder. Only then are the journal file and its SQLite
+    /// companions moved aside, never deleted, and the restored file renamed into their place
+    /// (see [`paths::replace_journal`]). Whenever the app stops, the next launch opens either
+    /// the journal as it was or the complete restored journal, never an empty one. A failed
+    /// restore leaves the journal's files where they were.
     fn restore_at_startup(
         &mut self,
         source: &RestoreSource,
@@ -140,30 +143,23 @@ impl Core {
         let source = self.restore_source(source)?;
         let staged = StagedCopy::of(&source, &self.paths.data_dir).map_err(|_| Error::Restore)?;
         verify_backup(staged.path(), passphrase)?;
+        paths::interruption_point();
+        let restored = staged.journal_path();
+        if let Err(error) = restore_into_new_file(&restored, staged.path(), passphrase) {
+            diagnostics::record("restore at startup", error.code());
+            let _ = erase_journal_files(&restored);
+            return Err(error.into());
+        }
+        drop(staged);
         let set_aside =
-            SetAside::move_journal(&self.paths.journal, now.timestamp()).map_err(|_| {
-                diagnostics::record("set journal aside", Error::Storage.code());
+            paths::replace_journal(&self.paths, &restored, now.timestamp()).map_err(|_| {
+                diagnostics::record("replace journal file", Error::Storage.code());
                 Error::Storage
             })?;
-        let restored = Journal::open(&self.paths.journal).and_then(|mut journal| {
-            journal.restore_from(staged.path(), passphrase)?;
-            Ok(journal)
-        });
-        let journal = match restored {
-            Ok(journal) => journal,
-            Err(error) => {
-                diagnostics::record("restore at startup", error.code());
-                // Only the new, empty journal is removed; the original files go back in place.
-                let _ = erase_journal_files(&self.paths.journal);
-                if let Some(set_aside) = set_aside
-                    && set_aside.put_back().is_err()
-                {
-                    diagnostics::record("put journal back", Error::Storage.code());
-                }
-                return Err(error.into());
-            }
-        };
-        drop(staged);
+        let journal = Journal::open(&self.paths.journal).inspect_err(|error| {
+            diagnostics::record("open restored journal", error.code());
+        })?;
+        paths::interruption_point();
         let entries = journal.list()?.len();
         self.journal = Some(journal);
         self.startup = self.status(StartupState::Ready, None, None);
@@ -172,7 +168,7 @@ impl Core {
         Ok(RestoreOutcome {
             entries,
             safety_backup: false,
-            set_aside: set_aside.map(|set_aside| set_aside.name().to_owned()),
+            set_aside,
         })
     }
 
@@ -286,12 +282,30 @@ impl StagedCopy {
     fn path(&self) -> &Path {
         &self.0
     }
+
+    /// Where a restore from the startup screen builds the journal restored from this copy:
+    /// beside it, under its name with `.sqlite`, so launch also removes it after a crash.
+    fn journal_path(&self) -> PathBuf {
+        let mut path = self.0.clone().into_os_string();
+        path.push(".sqlite");
+        path.into()
+    }
 }
 
 impl Drop for StagedCopy {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.0);
     }
+}
+
+/// Restores the backup at `backup` into a new journal at `path`, then closes it, which folds its
+/// write-ahead log into the file: the file alone then holds the complete restored journal.
+fn restore_into_new_file(path: &Path, backup: &Path, passphrase: &str) -> Result<(), Error> {
+    let mut journal = Journal::open(path)?;
+    paths::interruption_point();
+    journal.restore_from(backup, passphrase)?;
+    paths::interruption_point();
+    Ok(())
 }
 
 #[cfg(test)]
