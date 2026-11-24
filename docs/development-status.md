@@ -38,6 +38,7 @@ All checks use synthetic data. The audit ran against the reading implementation 
 |---|---|
 | `npm run check` | TypeScript passes. |
 | `npm test` | 435 tests pass across 39 files. |
+| `CI=true npm test -- --maxWorkers=2 --testTimeout=15000` | The same 435 tests pass with the CI resource limits. |
 | `TTD_E2E_PORT=1435 npm run test:e2e -- --workers=2` | 70 tests pass across WebKit and Chromium, using a separate server to avoid another worktree's preview. |
 | `cargo test --workspace --locked -- --test-threads=2` | 152 Rust tests pass. |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | Passes. |
@@ -50,6 +51,8 @@ The native smoke runner creates and removes a temporary development journal. It 
 All ten implementation slices have evidence. A separate manual native acceptance task stays unchecked (10/11 tasks complete). Coverage includes 200-paragraph rendered text, selection and scroll retention, keyboard and horizontal-wheel navigation, Unicode search invalidation, late-query rejection, cross-view edits and denominators, 7/30/90-day/year/custom timeline context, Gentle-view combinations, source/win permissions, weekly-note retry/restart, summary staleness, milestones, and encrypted backup/restore of authored reading data. Accessibility scans found no serious or critical violations on the six reading views in both appearances; they do not establish VoiceOver usability.
 
 Local command logs are kept in the ignored `.reference/verification/` directory. Reproducible tests live in `apps/desktop/e2e/reading*.spec.ts`, `apps/desktop/src/features/reading/Reading*.test.tsx`, `crates/journal-core/tests/reading.rs`, `apps/desktop/native-smoke/`, and the existing journal/native suites.
+
+The first PR #5 interface run reached the default five-second timeout in three multi-step check-in/Gentle-view tests; 432 tests passed and no assertion failure was reported. CI now runs at most two Vitest workers with a bounded 15-second test timeout. The same assertions, synthetic data and real autosave waits remain in place. This changes verification scheduling only, with no application or product-requirement change.
 
 Independent standards and specification reviews were repeated after corrections. The notes/summary revision race, false empty-week error state and duplicated source-eligibility logic were addressed; neither review reports a remaining concrete finding. This does not replace the outstanding native manual checks.
 

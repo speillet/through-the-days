@@ -105,6 +105,8 @@ Later-milestone acceptance cases remain unimplemented. Passing tests above do no
 
 The continuation passes 435 interface tests (39 files), 152 Rust tests and 70 browser scenarios across WebKit and Chromium. TypeScript, Clippy, frontend and macOS debug builds pass. Five native launches now include Calendar/Book/report queries, weekly-note/summary and private-milestone creation, and exact authored-record recovery in a fresh process. See [commands and limits](development-status.md#verification-performed).
 
+The CI interface command bounds Vitest to two workers and 15 seconds per test after three multi-step scenarios hit the default five-second deadline on the GitHub runner. The identical 435 tests pass with those settings locally; no assertion or acceptance requirement was removed or relaxed. Product specifications are unchanged by this scheduling adjustment.
+
 | Cases / tasks | Observable evidence | Limits |
 |---|---|---|
 | 4–6, 14, 22 / 3.2 | `reading-consistency.spec.ts` verifies cross-view text/energy edits, denominators, retained notes, stale summaries, reduced motion and horizontal/vertical gestures. Rust/UI weekly tests distinguish mood n=3 on two dates from pride n=1 on one date. `ReadingQueries.test.tsx` rejects a late old search result. | Physical trackpad behaviour and VoiceOver remain unchecked. |
