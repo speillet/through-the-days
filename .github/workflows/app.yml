@@ -80,7 +80,8 @@ jobs:
       - name: Type-check
         run: npm run check
       - name: Unit and component tests
-        run: npm test
+        # Bound jsdom contention on the runner; multi-step UI scenarios include real autosave waits.
+        run: npm test -- --maxWorkers=2 --testTimeout=15000
       - name: Install browsers for end-to-end tests
         run: npx playwright install webkit chromium
       - name: End-to-end tests with synthetic data

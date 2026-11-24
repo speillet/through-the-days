@@ -4,7 +4,7 @@
 // year). Enter or Space chooses the focused day.
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
   addDays,
   daysInMonth,
@@ -31,6 +31,9 @@ export interface CalendarGridProps {
   /** Moves focus to the chosen day when the grid appears (for popovers). */
   autoFocus?: boolean;
   className?: string;
+  renderDay?: (date: string) => ReactNode;
+  dayDescription?: (date: string) => string;
+  dayMarkerLabel?: (date: string) => string;
 }
 
 interface Month {
@@ -59,7 +62,16 @@ function inMonth(date: string, { year, month }: Month): boolean {
   return parsed !== null && parsed.year === year && parsed.month === month;
 }
 
-export function CalendarGrid({ value, today, onSelect, autoFocus = false, className }: CalendarGridProps) {
+export function CalendarGrid({
+  value,
+  today,
+  onSelect,
+  autoFocus = false,
+  className,
+  renderDay,
+  dayDescription,
+  dayMarkerLabel,
+}: CalendarGridProps) {
   const labelId = useId();
   const [focused, setFocused] = useState(value);
   const [visible, setVisible] = useState<Month>(() => monthOf(value));
@@ -179,13 +191,14 @@ export function CalendarGrid({ value, today, onSelect, autoFocus = false, classN
                         selected && 'calendar__day--selected',
                         isToday && 'calendar__day--today',
                       )}
-                      aria-label={`${formatLongDate(day.date)}${isToday ? ', today' : ''}`}
+                      aria-label={`${dayMarkerLabel?.(day.date) ? `${day.day} ${dayMarkerLabel(day.date)}. ` : ''}${formatLongDate(day.date)}${isToday ? ', today' : ''}${dayDescription?.(day.date) ?? ''}`}
                       aria-current={isToday ? 'date' : undefined}
                       onClick={() => onSelect(day.date)}
                       onKeyDown={(event) => handleKeyDown(event, day.date)}
                       onFocus={() => setFocused(day.date)}
                     >
                       {day.day}
+                      {renderDay?.(day.date)}
                     </button>
                   </td>
                 );

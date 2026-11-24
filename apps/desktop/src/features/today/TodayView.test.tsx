@@ -305,8 +305,13 @@ describe('Today: dates and slots', () => {
     expect(journalEditor()).toHaveTextContent('Synthetic morning words.');
     expect(slotTab('Morning')).toHaveTextContent('Draft');
 
+    const savedRevision = (await onlyEntry(api)).revision;
     await typeInEditor(user, ' More.');
-    await waitFor(async () => expect((await onlyEntry(api)).revision).toBe(2), { timeout: SAVE_TIMEOUT_MS });
+    await waitFor(async () => {
+      const saved = await onlyEntry(api);
+      expect(saved.revision).toBeGreaterThan(savedRevision);
+      expect(textOf(saved)).toBe('Synthetic morning words. More.');
+    }, { timeout: SAVE_TIMEOUT_MS });
     await waitForSaved();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(textOf(await onlyEntry(api))).toBe('Synthetic morning words. More.');

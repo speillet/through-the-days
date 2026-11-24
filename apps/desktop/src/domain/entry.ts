@@ -50,6 +50,7 @@ export function newDraft(date: string, slot: Slot, timeZone: string, depth: Dept
     actions: [],
     wins: [],
     createdTimeZone: timeZone,
+    includeInInsights: true,
   };
 }
 

@@ -19,11 +19,11 @@ Book View SHALL order entries chronologically by journal date and slot, skip emp
 
 ### Requirement: Complete pagination
 
-Book View SHALL render the complete saved document without clipped, omitted, or duplicated passages across single-page and optional wide two-page layouts.
+Book View SHALL show one entry per page with its complete saved document rendered once, scrolling for long content, selectable text, adjustable text size and a preserved reading position (D-012).
 
 #### Scenario: Long formatted entry
 
-- **WHEN** a long entry containing headings, Unicode text, and lists spans pages
+- **WHEN** a long entry containing headings, Unicode text, and lists exceeds the reading viewport
 - **THEN** the full text appears once in reading order, with no lost passages.
 
 #### Scenario: Window resize
@@ -39,3 +39,37 @@ Book View SHALL support previous/next controls, arrow keys, trackpad navigation,
 
 - **WHEN** the person turns a page with reduced motion enabled
 - **THEN** the next content appears without a required page-turn animation.
+
+#### Scenario: Horizontal and vertical gestures
+
+- **WHEN** the person scrolls horizontally to another saved entry and then scrolls vertically
+- **THEN** horizontal navigation changes the entry while vertical scrolling keeps the current entry.
+
+### Requirement: Source context and current values
+
+Book View SHALL retain the originating selection separately from shared filters, return to that source view with its context preserved, and show current saved check-in values subject to shared display preferences. An unavailable selection SHALL require an explicit recovery action.
+
+#### Scenario: Return to a filtered timeline or week
+
+- **WHEN** the person opens a timeline or weekly source in Book View and returns
+- **THEN** the source's range, filters, layers and notes remain unchanged, and the correct dated slot was read.
+
+#### Scenario: Insight-filtered reading selection
+
+- **WHEN** the person reads a source from a weekly review or a win-filtered timeline
+- **THEN** previous/next navigation uses the originating insight-eligible sources, including the same win permissions, without silently widening to the full owned journal.
+
+#### Scenario: Shared filters changed elsewhere
+
+- **WHEN** the person opens a Book selection from My Journal, changes search filters elsewhere, then resumes Book View
+- **THEN** Book retains its original selection and returning to My Journal preserves the explicitly changed filters.
+
+#### Scenario: Selected sources removed
+
+- **WHEN** the last source in a Book selection is removed
+- **THEN** the app explains that it is unavailable and offers explicit actions to restart the selection or read all entries without changing the source view's filters.
+
+#### Scenario: Saved score edited
+
+- **WHEN** the person saves an energy change from 3 to 9 and reads that entry
+- **THEN** Book View shows 9, matching Calendar, search sources, Trends and Weekly Review, unless score display is hidden.

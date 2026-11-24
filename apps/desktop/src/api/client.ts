@@ -2,7 +2,7 @@
 // (see the command table in the integration contract); implementations live in
 // tauri.ts (native app) and memory.ts (browser preview and tests).
 
-import { createContext, createElement, useContext, type ReactNode } from 'react';
+import { createContext, createElement, useContext, useMemo, type ReactNode } from 'react';
 import type {
   BackupRecord,
   BackupStatus,
@@ -15,6 +15,10 @@ import type {
   RestoreSource,
   StartupStatus,
   TrashItem,
+  SearchRequest,
+  ReadingReport,
+  WeeklyReview,
+  Milestone,
 } from './types';
 
 export interface JournalApi {
@@ -32,6 +36,15 @@ export interface JournalApi {
   entriesOn(date: string): Promise<Entry[]>;
   /** Active entries, newest journal date first. */
   listEntries(): Promise<Entry[]>;
+  searchEntries(request: SearchRequest): Promise<Entry[]>;
+  readingReport(request: SearchRequest): Promise<ReadingReport>;
+  weeklyReview(date: string): Promise<WeeklyReview>;
+  saveWeeklyNotes(date: string, notes: string, revision: number): Promise<WeeklyReview>;
+  generateWeeklySummary(date: string, revision: number): Promise<WeeklyReview>;
+  clearReadingSummaries(): Promise<void>;
+  listMilestones(): Promise<Milestone[]>;
+  saveMilestone(milestone: Milestone): Promise<Milestone>;
+  deleteMilestone(id: string, revision: number): Promise<void>;
   getEntry(id: string): Promise<Entry>;
   /** Saves the whole aggregate; resolves with the acknowledged revision. */
   saveEntry(entry: Entry): Promise<Entry>;
@@ -56,7 +69,11 @@ export interface JournalApi {
    * the restore is refused (safetyBackupFailed) unless withoutSafetyBackup is true. Without an
    * open journal (a failed or unsupported start), the unreadable journal is kept aside.
    */
-  restoreBackup(source: RestoreSource, passphrase: string, withoutSafetyBackup?: boolean): Promise<RestoreOutcome>;
+  restoreBackup(
+    source: RestoreSource,
+    passphrase: string,
+    withoutSafetyBackup?: boolean,
+  ): Promise<RestoreOutcome>;
   /** A null passphrase uses the one already in this session (needsPassphrase when there is none). */
   migrateJournal(passphrase: string | null, remember: boolean): Promise<StartupStatus>;
   /** Requires the exact confirmation text "ERASE". */
@@ -129,7 +146,31 @@ export function toCommandError(error: unknown): CommandError {
 const ApiContext = createContext<JournalApi | null>(null);
 
 export function ApiProvider({ api, children }: { api: JournalApi; children?: ReactNode }) {
-  return createElement(ApiContext.Provider, { value: api }, children);
+  const observable = useMemo(() => {
+    const mutations = new Set([
+      'saveEntry',
+      'trashEntry',
+      'restoreEntry',
+      'deleteEntryPermanently',
+      'restoreBackup',
+      'eraseAppData',
+      'saveMilestone',
+      'deleteMilestone',
+      'clearReadingSummaries',
+    ]);
+    return new Proxy(api, {
+      get(target, property) {
+        const original = Reflect.get(target, property);
+        if (typeof original !== 'function' || !mutations.has(String(property))) return original;
+        return async (...args: unknown[]) => {
+          const result = await original.apply(target, args);
+          window.dispatchEvent(new Event('journal-changed'));
+          return result;
+        };
+      },
+    });
+  }, [api]);
+  return createElement(ApiContext.Provider, { value: observable }, children);
 }
 
 export function useApi(): JournalApi {

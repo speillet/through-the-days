@@ -18,12 +18,13 @@ import type { CommandError, Preferences } from '../api/types';
 import { DEFAULT_PREFERENCES, visibilityFor, type Visibility } from '../domain/preferences';
 import { applyAppearance } from './appearance';
 
+type PreferenceChanges=Partial<Preferences> | ((current:Preferences)=>Partial<Preferences>);
 export interface PreferencesContextValue {
   preferences: Preferences;
   /** Gentle view composed with the per-surface choices. */
   visibility: Visibility;
   /** Persists a change; resolves false (and sets error) when it was not saved. */
-  update(changes: Partial<Preferences>): Promise<boolean>;
+  update(changes: PreferenceChanges): Promise<boolean>;
   error: CommandError | null;
   clearError(): void;
 }
@@ -67,12 +68,12 @@ export function PreferencesProvider({ children, fallback = null }: { children?: 
   }, [theme, reduceMotion, textScale]);
 
   const update = useCallback(
-    (changes: Partial<Preferences>): Promise<boolean> => {
+    (changes: PreferenceChanges): Promise<boolean> => {
       const run = async () => {
         const base = latest.current;
         if (!base) return false;
         try {
-          const saved = await api.setPreferences({ ...base, ...changes });
+          const saved = await api.setPreferences({ ...base, ...(typeof changes === 'function' ? changes(base) : changes) });
           latest.current = saved;
           setPreferences(saved);
           setError(null);

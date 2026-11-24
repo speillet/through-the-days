@@ -21,6 +21,7 @@ import { isEmotionId } from '../domain/emotions';
 import { isIsoDate, isValidTimeZone, todayIn } from '../domain/dates';
 import { DEFAULT_PREFERENCES, isTextScale } from '../domain/preferences';
 import { UNKNOWN_ERROR_MESSAGE, type JournalApi } from './client';
+import {filterPreviewEntries, previewReport, previewWeek, previewFingerprint, isoWeekStart, localSummary} from './reading-preview';
 import type {
   BackupState,
   BackupStatus,
@@ -117,6 +118,8 @@ interface StoredEntry {
 interface JournalSnapshot {
   entries: StoredEntry[];
   preferences: Preferences;
+  weeklyReviews?: Record<string, import('./reading-preview').PreviewReview>;
+  milestones?: import('./types').Milestone[];
 }
 
 interface SimulatedBackup {
@@ -240,6 +243,8 @@ function readJournal(value: unknown): JournalSnapshot | undefined {
   return {
     entries: value.entries as StoredEntry[],
     preferences: { ...DEFAULT_PREFERENCES, ...value.preferences } as Preferences,
+    weeklyReviews: (value.weeklyReviews ?? {}) as JournalSnapshot['weeklyReviews'],
+    milestones: (value.milestones ?? []) as JournalSnapshot['milestones'],
   };
 }
 
@@ -320,6 +325,7 @@ const ENTRY_KEYS = [
   'actions',
   'wins',
   'createdTimeZone',
+  'includeInInsights',
 ] as const;
 const REFLECTION_KEYS = ['intention', 'proudOf', 'difficulty', 'nextStep', 'helped', 'learned'] as const;
 
@@ -377,6 +383,7 @@ function normaliseEntry(input: unknown): Entry {
       };
     }),
     createdTimeZone: stringField(input, 'createdTimeZone', 'Europe/Paris'),
+    includeInInsights: booleanField(input, 'includeInInsights', true),
   };
 }
 
@@ -462,6 +469,7 @@ function normalisePreferences(input: unknown): Preferences {
   if (!['system', 'light', 'dark'].includes(preferences.theme)) throw failure('document');
   if (!['quick', 'daily', 'deep'].includes(preferences.defaultDepth)) throw failure('document');
   if (!isTextScale(preferences.textScale)) throw failure('document');
+  if (![7,14,30].includes(preferences.timelineDays ?? 14) || !Array.isArray(preferences.timelineMetrics) || preferences.timelineMetrics.some((metric)=>!['mood','energy','pride','progress'].includes(metric))) throw failure('document');
   return preferences;
 }
 
@@ -661,6 +669,12 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
     return entriesOf(state).filter((item) => item.trashedAt === null).length;
   }
 
+  function activeEntries(state: PersistedState) {
+    requireReady();
+    return entriesOf(state).filter((item) => item.trashedAt === null)
+      .sort((a,b) => a.entry.date === b.entry.date ? sortBySlot(a,b) : a.entry.date < b.entry.date ? 1 : -1).map((item) => item.entry);
+  }
+
   return {
     async startupStatus() {
       return { ...startup };
@@ -712,6 +726,54 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
       const found = findActive(load().state, id);
       if (!found) throw failure('notFound');
       return found.entry;
+    },
+
+    async searchEntries(request) { return filterPreviewEntries(activeEntries(load().state), request); },
+    async readingReport(request) { return previewReport(activeEntries(load().state), request); },
+    async weeklyReview(date) {
+      const state = load().state;
+      return previewWeek(activeEntries(state), date, state.journal.weeklyReviews?.[isoWeekStart(date)]);
+    },
+    async saveWeeklyNotes(date, notes, revision) {
+      const loaded = load(); const entries = activeEntries(loaded.state); const week = isoWeekStart(date);
+      const records = loaded.state.journal.weeklyReviews ??= {};
+      const current = records[week] ?? {weekStart:week,notes:'',revision:0,summary:null,fingerprint:null};
+      if (revision !== current.revision) throw failure('conflict');
+      records[week] = {...current,notes,revision:revision+1};
+      commit(loaded);
+      return previewWeek(entries,date,records[week]);
+    },
+    async generateWeeklySummary(date, revision) {
+      const loaded = load(); const entries = activeEntries(loaded.state); const week = isoWeekStart(date);
+      const records = loaded.state.journal.weeklyReviews ??= {};
+      const current = records[week] ?? {weekStart:week,notes:'',revision:0,summary:null,fingerprint:null};
+      if (revision !== current.revision) throw failure('conflict');
+      const view = previewWeek(entries,date,current);
+      records[week] = {...current,revision:revision+1,summary:localSummary(view.report),fingerprint:previewFingerprint(entries,view.weekStart,view.weekEnd)};
+      commit(loaded);
+      return previewWeek(entries,date,records[week]);
+    },
+    async clearReadingSummaries() {
+      requireReady(); const loaded = load();
+      for (const review of Object.values(loaded.state.journal.weeklyReviews ?? {})) { review.summary = null; review.fingerprint = null; }
+      commit(loaded);
+    },
+    async listMilestones() { requireReady(); return load().state.journal.milestones ?? []; },
+    async saveMilestone(milestone) {
+      requireReady();
+      if (!isIsoDate(milestone.date)) throw failure('date');
+      if (!UUID.test(milestone.id) || !milestone.title.trim()) throw failure('document');
+      const loaded = load(); const records = loaded.state.journal.milestones ??= [];
+      const current = records.find((m) => m.id === milestone.id);
+      if ((current?.revision ?? 0) !== milestone.revision) throw failure('conflict');
+      const saved = {...milestone,revision:milestone.revision+1};
+      loaded.state.journal.milestones = [...records.filter((m) => m.id !== milestone.id),saved].sort((a,b) => a.date.localeCompare(b.date));
+      commit(loaded); return saved;
+    },
+    async deleteMilestone(id, revision) {
+      requireReady(); const loaded = load(); const records = loaded.state.journal.milestones ?? [];
+      if (!records.some((m) => m.id === id && m.revision === revision)) throw failure('conflict');
+      loaded.state.journal.milestones = records.filter((m) => m.id !== id); commit(loaded);
     },
 
     async saveEntry(input) {

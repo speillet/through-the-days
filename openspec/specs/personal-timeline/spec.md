@@ -1,0 +1,75 @@
+# personal-timeline Specification
+
+## Purpose
+
+Explore a long-range chronology of recorded experiences and chosen milestones while reusing the journal's existing date navigation and metric semantics.
+
+Sources: Appendix INT-06 (§8), TEST-03/11/12/16; existing mini timeline remains in progress-insights.
+
+## Requirements
+
+### Requirement: Long-range source navigation
+
+The Path So Far SHALL offer 7/30/90-day, one-year, and custom ranges with accessible zoom/pan, source filters, dated selections, and links back to the existing day and Book views.
+
+#### Scenario: Open a dated source
+
+- **WHEN** the person opens a day or Book entry from a filtered timeline
+- **THEN** the correct journal date and slot open and returning preserves the prior range and filters.
+
+#### Scenario: Mini timeline remains distinct
+
+- **WHEN** the person uses the editor's existing 7/14/30-day mini timeline
+- **THEN** it remains a view of the same saved observations, not a second chronology store.
+
+#### Scenario: Independent custom range
+
+- **WHEN** the person changes or pans a custom timeline range and later opens My Journal
+- **THEN** the timeline keeps its own date bounds without replacing My Journal's date filters.
+
+#### Scenario: Keyboard zoom from a custom range
+
+- **WHEN** the person activates Zoom out for a 22-day custom range, then Zoom in
+- **THEN** the range widens to 30 days and narrows to 7 days, preserving its end date and visible source links.
+
+### Requirement: Optional available layers
+
+The timeline SHALL offer hideable layers for check-ins, approved wins and manual milestones, respect insight permissions in every available layer, and identify unavailable later layers without invented data. Later experiments, tags, goals and imports remain owned by their respective changes.
+
+#### Scenario: Excluded entry or win
+
+- **WHEN** an entry or an individual win is excluded from insights
+- **THEN** it is absent from the relevant timeline layers, source cards and win-filter decisions, while original Calendar and Book reading retain the person's records.
+
+#### Scenario: Later capability not delivered
+
+- **WHEN** goal or experiment functionality is not yet implemented
+- **THEN** the timeline remains useful with existing journal layers and does not imply those features work.
+
+### Requirement: Honest independent measures
+
+Timeline measures SHALL reuse the progress-insights inclusion rules, preserve separate scales/slot observations and missing-data gaps, and avoid a single improvement gauge or ranked best/worst periods.
+
+#### Scenario: Win on a difficult day
+
+- **WHEN** a saved day contains low mood, high optional progress, and an approved win
+- **THEN** those records coexist without a failed-day label or an inferred mental-health improvement.
+
+#### Scenario: Two entries and an empty week
+
+- **WHEN** a range contains two check-ins on one day and a week with no entries
+- **THEN** the view shows one recorded date with its observations and a gap for the unrecorded week.
+
+### Requirement: User-owned milestones
+
+The system SHALL allow editable, removable private dated milestones without deriving them from a model or implying a clinical outcome.
+
+#### Scenario: Milestone removed
+
+- **WHEN** the person deletes a manual milestone
+- **THEN** it no longer appears in timeline layers or derived insight results.
+
+#### Scenario: Restore private milestones
+
+- **WHEN** a validated encrypted journal backup containing private milestones is restored
+- **THEN** their identifiers, dates, titles, notes and revisions are preserved with the journal.

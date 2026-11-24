@@ -116,10 +116,6 @@ describe('application shell', () => {
     const later = screen.getByRole('list', { name: 'Coming later' });
     const items = within(later).getAllByRole('listitem');
     expect(items.map((item) => item.querySelector('.rail__label')?.textContent)).toEqual([
-      'Calendar',
-      'My Journal',
-      'Book View',
-      'Trends',
       'Keywords & Tags',
       'Goals & Counters',
       'CBT Exercises',
@@ -145,12 +141,12 @@ describe('application shell', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Main' });
     const today = within(nav).getByRole('button', { name: 'Today' });
-    const trash = within(nav).getByRole('button', { name: 'Trash' });
+    const calendar = within(nav).getByRole('button', { name: 'Calendar' });
     const settings = within(nav).getByRole('button', { name: 'Settings' });
     today.focus();
     await user.keyboard('{ArrowDown}');
-    expect(trash).toHaveFocus();
-    await user.keyboard('{ArrowDown}');
+    expect(calendar).toHaveFocus();
+    await user.keyboard('{End}');
     expect(settings).toHaveFocus();
     await user.keyboard('{ArrowDown}');
     expect(today).toHaveFocus();
@@ -171,6 +167,7 @@ describe('application shell', () => {
       screen.getByRole('link', { name: 'Skip to content' }),
       screen.getByRole('button', { name: 'Collapse sidebar' }),
       screen.getByRole('button', { name: 'Today' }),
+      ...['Calendar','My Journal','Book View','Trends','Weekly Review','The Path So Far'].map((name)=>screen.getByRole('button',{name})),
       screen.getByRole('button', { name: 'Trash' }),
       screen.getByRole('button', { name: 'Settings' }),
       screen.getByRole('button', { name: 'Set up backups' }),

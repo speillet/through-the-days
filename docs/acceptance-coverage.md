@@ -87,3 +87,32 @@ The isolated milestone-1 branch was checked on November 23, 2026 with synthetic 
 | 33 | Trash removes active source access; native erasure covers the journal, its companions, managed set-aside journals, device settings and credentials. Independent encrypted backups remain separate. | Full derivative-surface acceptance remains unchecked; future derivatives are not present here. |
 
 The milestone-1 task file retains unfinished acceptance. Later-milestone rows in the ownership table remain plans. Verified main-spec sync is limited to entries, check-in, editor and persistence; the active change is not archived.
+
+### November 23, 2026 audit
+
+This historical snapshot predates the reading continuation below. The active `through-the-days-reading` worktree passed 422 interface tests, 151 Rust tests, and 62 WebKit/Chromium end-to-end tests. TypeScript, Clippy, the frontend build, and the native debug bundle build passed. Three native launches covered writing/save and recovery with English interface copy on French system settings.
+
+| Cases | Evidence available | Remaining scope |
+|---|---|---|
+| 1–3, 7, 9, 12–13, 24–26 | Core journal/persistence/migration/recovery suites; frontend state/check-in/writing-depth suites; writing/editor/protection browser suites; native writing/restart smoke. | Native disabled-network run and broader original milestone integration review. |
+| 4–6, 14, 22 | Rust reading queries verify Unicode search invalidation, separate slots, scored drafts and metric denominators. Reading component/browser suites verify Calendar sources and complete Book text, selection, resize, keyboard navigation and return position. | Historical 7/14/30-day ranges, empty gaps, hidden-series persistence and Enter source navigation now pass in both engines. Cross-view edit combinations and native reading interactions remain. |
+| 27–28, 32–33 | Weekly notes survive save retry/navigation/restart; source changes hide stale summaries; milestones support editing/deletion; notes/milestones survive encrypted backup/restore. Insight exclusions preserve original Calendar reading. | The explicit three-entry/two-date example now passes with separate metric denominators, canonical wins and authored notes outside entry counts. Full layer/context navigation, Gentle-view combinations and complete source-removal audit remain. |
+| 8, 10, 21 | Automated keyboard, privacy/language guards and accessibility suites; six reading views have no serious/critical axe violations in either appearance; native smoke preserves multilingual text with English UI on French locale. | VoiceOver, real-key navigation, full screen, native dialogs/Keychain, networking disabled, and physical exFAT backup/restore. |
+
+Later-milestone acceptance cases remain unimplemented. Passing tests above do not establish every scenario in a mapped case. The original changes remain active and their incomplete tasks stay unchecked; the [native checklist](../openspec/changes/confirm-native-macos-checks/tasks.md) records manual checks without transferring those obligations.
+
+### November 24, 2026 reading verification
+
+The continuation passes 435 interface tests (39 files), 152 Rust tests and 70 browser scenarios across WebKit and Chromium. TypeScript, Clippy, frontend and macOS debug builds pass. Five native launches now include Calendar/Book/report queries, weekly-note/summary and private-milestone creation, and exact authored-record recovery in a fresh process. See [commands and limits](development-status.md#verification-performed).
+
+The CI interface command bounds Vitest to two workers and 15 seconds per test after three multi-step scenarios hit the default five-second deadline on the GitHub runner. The root npm script explicitly forwards those options to Vitest, verified in its invoked command. The identical 435 tests pass with those settings locally; no assertion or acceptance requirement was removed or relaxed. Product specifications are unchanged by this scheduling adjustment.
+
+| Cases / tasks | Observable evidence | Limits |
+|---|---|---|
+| 4–6, 14, 22 / 3.2 | `reading-consistency.spec.ts` verifies cross-view text/energy edits, denominators, retained notes, stale summaries, reduced motion and horizontal/vertical gestures. Rust/UI weekly tests distinguish mood n=3 on two dates from pride n=1 on one date. `ReadingQueries.test.tsx` rejects a late old search result. | Physical trackpad behaviour and VoiceOver remain unchecked. |
+| 27–28, 33 / 4.3 | `ReadingNavigation.test.tsx` and `reading-navigation.spec.ts` cover ranges, keyboard zoom/pan, gaps, independent Morning/Evening sources, milestone layers, Book return context, weekly selection, independent custom dates and explicit recovery after a selection is removed. | Later goal/import/experiment layers are unavailable and not implied to work. |
+| 10, 24–26, 28, 32–33 / 4.4 | `ReadingPrivacy.test.tsx`, `reading-privacy.spec.ts` and the Rust reading suite cover Gentle-view filter suspension/restoration, excluded entries and individual wins, true/false win filters, eligible denominators and contextual Book selections. Original owner reading, notes and backup prompts remain accessible. | No model request or imported records exist. Their later permissions remain in separate changes. |
+| Authored reading persistence | `native-smoke/reading.js` and `reading-recover.js` use real Tauri commands and SQLite in a disposable development journal, alongside Rust encrypted backup/restore tests for notes and milestones. | Native dialogs/Keychain, an OS-disabled-network run and physical exFAT backup/restore remain unexecuted. |
+| 27, 33 / review corrections | `ReadingQueries.test.tsx` edits notes during deferred summary success/failure, navigates away and back, and verifies current and subsequent notes persist. A one-time source-list error has a visible retry and never claims an empty week. | Synthetic deferred responses exercise concurrency; no model adapter is involved. |
+
+All ten reading implementation slices have evidence. New task 5.1 retains the manual native reading acceptance explicitly (10/11 tasks complete); it does not transfer obligations from milestone 1 or the supplementary native checklist. Main specs now include the five verified reading capabilities. Both milestones remain active, with no archive. Worksheet counts and experiment outcomes are retained as unchecked Weekly Review integration in the subsequent CBT change.

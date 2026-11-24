@@ -78,7 +78,7 @@ fn encrypted_snapshot_restores_on_a_clean_store_and_rejects_bad_credentials() {
     ));
     let plaintext = decrypt(&backup.path, PASSPHRASE);
     assert!(plaintext.starts_with(&backup_plaintext(b"SQLite format 3\0")));
-    assert_eq!(image_user_version(&plaintext[BACKUP_MAGIC.len() + 1..]), 2);
+    assert_eq!(image_user_version(&plaintext[BACKUP_MAGIC.len() + 1..]), 3);
     // The image after the prefix is a standalone SQLite database file.
     let image = directory.path().join("decrypted-image.sqlite");
     fs::write(&image, &plaintext[BACKUP_MAGIC.len() + 1..]).unwrap();
@@ -236,7 +236,7 @@ fn pre_migration_backup_of_an_older_schema_restores_into_a_current_journal() {
         "Synthetic difficulty from the previous version."
     );
     drop(fresh);
-    assert_eq!(journal_core::schema_version(&fresh_path), Ok(Some(2)));
+    assert_eq!(journal_core::schema_version(&fresh_path), Ok(Some(3)));
     assert_eq!(
         Journal::open(&fresh_path).unwrap().list().unwrap(),
         vec![restored]
@@ -575,7 +575,7 @@ fn restore_validates_format_schema_and_content_before_replacing_the_journal() {
         crafted("not-sqlite.age", &backup_plaintext(&[b'x'; 4096])),
         crafted(
             "newer-schema.age",
-            &variant("newer.sqlite", "PRAGMA user_version=3;"),
+            &variant("newer.sqlite", "PRAGMA user_version=4;"),
         ),
         crafted(
             "invalid-score.age",

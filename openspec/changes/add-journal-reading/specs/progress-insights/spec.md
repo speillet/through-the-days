@@ -38,12 +38,36 @@ Progress views SHALL include nullable perceived progress when selected, preserve
 
 ### Requirement: Transparent inclusion
 
-The system SHALL document which drafts and completed records contribute to each statistic and SHALL display the denominator needed to interpret it.
+The system SHALL include saved scored drafts and completed entries (D-010), omit missing values and excluded sources, and display each metric's observation count, distinct recorded days and civil-date coverage.
 
 #### Scenario: Mixed entry statuses
 
 - **WHEN** a selected range contains a draft and a completed entry
 - **THEN** the statistic states its inclusion rule and count rather than silently changing the population.
+
+#### Scenario: Different coverage per metric
+
+- **WHEN** three saved drafts on two dates contain three mood values but pride only on one date
+- **THEN** mood shows n=3 across two recorded days and pride shows n=1 across one recorded day, each within the same civil-date range.
+
+#### Scenario: Only insight-visible wins affect filters
+
+- **WHEN** one entry has only an excluded win and another has an included win
+- **THEN** the insight filter With a small win selects only the latter, Without a small win selects only the former, and their denominators use the same eligible sources.
+
+### Requirement: Consistent gentle visibility
+
+Reading views SHALL honour Gentle view and score-display preferences by hiding numeric tracking and optional counts and suspending numeric filters without deleting stored data or filter choices. Writing, original sources, authored notes, permitted wins, save errors and backup prompts SHALL remain accessible.
+
+#### Scenario: Hidden score filter
+
+- **WHEN** Gentle view hides an active minimum-score filter
+- **THEN** Calendar, My Journal, Book View, Trends and The Path So Far stop applying it; turning Gentle view off restores the person's unchanged filter choices.
+
+#### Scenario: Weekly and timeline layers
+
+- **WHEN** Gentle view is enabled with weekly notes and excluded wins present
+- **THEN** notes and permitted sources remain accessible, numeric summaries stay hidden, and excluded wins do not reappear in any insight layer.
 
 ### Requirement: Multiple progress dimensions
 

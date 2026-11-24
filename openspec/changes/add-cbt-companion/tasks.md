@@ -11,6 +11,7 @@ Status: phase-3 draft; no tasks are complete. Manual worksheets and experiments 
 
 - [ ] 2.1 Extend cbt_action_plans with prediction, outcome, and lesson fields rather than adding a parallel store; verify manual create/review, neutral statuses, declined suggestions, and no changes to goals.
 - [ ] 2.2 Add auditable corrections and one optional review reminder; verify original timestamps, Skip, Gentle view, and derived-view invalidation after deletion. Include slice tests and documentation before enabling AI.
+- [ ] 2.3 Extend Weekly Review with separate started/completed worksheet counts and explicit experiment outcomes; verify Not yet stays unknown, source permissions and deletion invalidate summaries, authored notes survive, and wins are not duplicated. Include slice tests and documentation.
 
 ## 3. Shared AI boundary and optional local assistance
 

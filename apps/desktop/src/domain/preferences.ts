@@ -4,7 +4,7 @@
 import type { Preferences, TextScale, Theme } from '../api/types';
 
 /** journal-core's Preferences::default(). */
-export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze({
+export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze<Preferences>({
   timeZone: 'Europe/Paris',
   theme: 'system',
   gentle: false,
@@ -16,6 +16,8 @@ export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze({
   defaultDepth: 'daily',
   showWordCount: false,
   textScale: 100,
+  timelineDays: 14,
+  timelineMetrics: ['mood', 'energy', 'pride', 'progress'],
 });
 
 export const THEME_OPTIONS: readonly { id: Theme; label: string; description: string }[] = [

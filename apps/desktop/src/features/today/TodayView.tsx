@@ -20,6 +20,7 @@ import { EntryWorkspace, type EntryWorkspaceHandle, type FlushOutcome } from './
 import { slotTabId, SlotTabs } from './SlotTabs';
 import { entryStatus, type EntryStatus } from './status';
 import './today.css';
+import {MiniTimeline} from '../reading/Timeline';
 
 interface Loaded {
   date: string;
@@ -55,18 +56,20 @@ function isWriting(panel: HTMLElement | null): boolean {
 export interface TodayViewProps {
   /** Quiet period before an automatic save; tests shorten it. */
   autosaveDelayMs?: number;
+  initialDate?: string;
+  initialSlot?: Slot;
 }
 
-export function TodayView({ autosaveDelayMs }: TodayViewProps = {}) {
+export function TodayView({ autosaveDelayMs, initialDate, initialSlot }: TodayViewProps = {}) {
   const api = useApi();
   const { today } = useToday();
   const { focusMode } = useFocusMode();
   const { navigate: openView } = useNavigation();
   const panelId = useId();
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(initialDate ?? today);
   // True while the open date is today's, reached without choosing another date.
-  const [followsToday, setFollowsToday] = useState(true);
-  const [slot, setSlot] = useState<Slot>('morning');
+  const [followsToday, setFollowsToday] = useState(!initialDate);
+  const [slot, setSlot] = useState<Slot>(initialSlot ?? 'morning');
   const [generation, setGeneration] = useState(0);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loadError, setLoadError] = useState<CommandError | null>(null);
@@ -273,6 +276,7 @@ export function TodayView({ autosaveDelayMs }: TodayViewProps = {}) {
           </p>
         )}
       </div>
+      {focusMode ? null : <MiniTimeline date={date} onSelect={(next)=>void chooseDate(next)}/>}
     </div>
   );
 }

@@ -34,6 +34,8 @@ The first [Application run](https://github.com/speillet/through-the-days/actions
 
 CI now uses the [standard macOS 15 Intel runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) for the same native/interface checks. Local native verification above ran on Apple Silicon. Rust test concurrency is bounded to two because password-derived encryption uses substantial memory per test. This changes verification infrastructure only; product requirements and delivered behaviour are unchanged. The rerun must establish its own result and is not implied to pass by these configuration changes.
 
+The [Application rerun](https://github.com/speillet/through-the-days/actions/runs/45267866641) and [specification checks](https://github.com/speillet/through-the-days/actions/runs/45267866525) subsequently passed. [PR #4](https://github.com/speillet/through-the-days/pull/4) was merged into main on November 23, 2026, preserving its separate commits. This GitHub merge does not archive the active OpenSpec change or complete the manual checks below.
+
 ## Specification reconciliation
 
 The verified `journal-entries`, `daily-check-in`, `journal-editor` and `local-persistence` deltas are synchronised into `openspec/specs/`. The complete intended contracts remain in the active `build-offline-journal` change. `desktop-shell`, `local-data-protection` and `product-guardrails` remain there pending broader platform/acceptance verification; their existing code and automated coverage are not a substitute for all their native scenarios.

@@ -29,7 +29,12 @@ describe('native journal commands', () => {
       ['retryStartup', () => api.retryStartup(), 'retry_startup', {}],
       ['today', () => api.today(), 'today', {}],
       ['getPreferences', () => api.getPreferences(), 'get_preferences', {}],
-      ['setPreferences', () => api.setPreferences(DEFAULT_PREFERENCES), 'set_preferences', { preferences: DEFAULT_PREFERENCES }],
+      [
+        'setPreferences',
+        () => api.setPreferences(DEFAULT_PREFERENCES),
+        'set_preferences',
+        { preferences: DEFAULT_PREFERENCES },
+      ],
       ['entriesOn', () => api.entriesOn('2026-11-22'), 'entries_on', { date: '2026-11-22' }],
       ['listEntries', () => api.listEntries(), 'list_entries', {}],
       ['getEntry', () => api.getEntry(entry.id), 'get_entry', { id: entry.id }],
@@ -37,7 +42,12 @@ describe('native journal commands', () => {
       ['trashEntry', () => api.trashEntry(entry.id, 3), 'trash_entry', { id: entry.id, revision: 3 }],
       ['listTrash', () => api.listTrash(), 'list_trash', {}],
       ['restoreEntry', () => api.restoreEntry(entry.id), 'restore_entry', { id: entry.id }],
-      ['deleteEntryPermanently', () => api.deleteEntryPermanently(entry.id), 'delete_entry_permanently', { id: entry.id }],
+      [
+        'deleteEntryPermanently',
+        () => api.deleteEntryPermanently(entry.id),
+        'delete_entry_permanently',
+        { id: entry.id },
+      ],
       ['purgeExpiredTrash', () => api.purgeExpiredTrash(), 'purge_expired_trash', {}],
       ['backupStatus', () => api.backupStatus(), 'backup_status', {}],
       ['chooseBackupFolder', () => api.chooseBackupFolder(), 'choose_backup_folder', {}],
@@ -83,6 +93,60 @@ describe('native journal commands', () => {
       ['eraseAppData', () => api.eraseAppData('ERASE'), 'erase_app_data', { confirmation: 'ERASE' }],
       ['confirmExit', () => api.confirmExit(), 'confirm_exit', {}],
       ['cancelExit', () => api.cancelExit(), 'cancel_exit', {}],
+      [
+        'searchEntries',
+        () => api.searchEntries({ text: 'synthetic' }),
+        'search_entries',
+        { request: { text: 'synthetic' } },
+      ],
+      [
+        'readingReport',
+        () => api.readingReport({ from: '2026-11-01', to: '2026-11-22' }),
+        'reading_report',
+        { request: { from: '2026-11-01', to: '2026-11-22' } },
+      ],
+      ['weeklyReview', () => api.weeklyReview('2026-11-22'), 'weekly_review', { date: '2026-11-22' }],
+      [
+        'saveWeeklyNotes',
+        () => api.saveWeeklyNotes('2026-11-16', 'Synthetic notes.', 0),
+        'save_weekly_notes',
+        { date: '2026-11-16', notes: 'Synthetic notes.', revision: 0 },
+      ],
+      [
+        'generateWeeklySummary',
+        () => api.generateWeeklySummary('2026-11-16', 1),
+        'generate_weekly_summary',
+        { date: '2026-11-16', revision: 1 },
+      ],
+      ['clearReadingSummaries', () => api.clearReadingSummaries(), 'clear_reading_summaries', {}],
+      ['listMilestones', () => api.listMilestones(), 'list_milestones', {}],
+      [
+        'saveMilestone',
+        () =>
+          api.saveMilestone({
+            id: 'synthetic',
+            date: '2026-11-22',
+            title: 'Synthetic moment',
+            notes: '',
+            revision: 0,
+          }),
+        'save_milestone',
+        {
+          milestone: {
+            id: 'synthetic',
+            date: '2026-11-22',
+            title: 'Synthetic moment',
+            notes: '',
+            revision: 0,
+          },
+        },
+      ],
+      [
+        'deleteMilestone',
+        () => api.deleteMilestone('synthetic', 1),
+        'delete_milestone',
+        { id: 'synthetic', revision: 1 },
+      ],
     ];
     for (const [, invoke] of invocations) await invoke();
     expect(calls).toEqual(invocations.map(([, , command, args]) => [command, args]));
@@ -101,7 +165,10 @@ describe('native journal commands', () => {
       code: 'conflict',
       message: 'This entry has changed.',
     });
-    await expect(api.getEntry('x')).rejects.toEqual({ code: 'unknown', message: 'Something went wrong. Please try again.' });
+    await expect(api.getEntry('x')).rejects.toEqual({
+      code: 'unknown',
+      message: 'Something went wrong. Please try again.',
+    });
   });
 
   it('explains a save the journal never received, such as an entry the webview could not send', async () => {
@@ -117,7 +184,10 @@ describe('native journal commands', () => {
     });
     expect(ENTRY_NOT_SENT.code).toBe('document');
     // Other commands keep the generic message.
-    await expect(api.listEntries()).rejects.toEqual({ code: 'unknown', message: 'Something went wrong. Please try again.' });
+    await expect(api.listEntries()).rejects.toEqual({
+      code: 'unknown',
+      message: 'Something went wrong. Please try again.',
+    });
   });
 
   it('passes the new native error codes through with their English messages', async () => {

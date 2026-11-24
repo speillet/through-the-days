@@ -13,6 +13,13 @@ import { BackupBanner } from './features/backup/BackupBanner';
 import { SettingsView } from './features/settings/SettingsView';
 import { StartupGate } from './features/startup/StartupGate';
 import { TodayView } from './features/today/TodayView';
+import { CalendarView } from './features/reading/CalendarView';
+import { BookView } from './features/reading/BookView';
+import { TrendsView } from './features/reading/TrendsView';
+import { WeeklyView } from './features/reading/WeeklyView';
+import { PathView } from './features/reading/PathView';
+import { ReadingProvider } from './features/reading/state';
+import './features/reading/reading.css';
 import { TrashView } from './features/trash/TrashView';
 import { BackupProvider } from './state/backup';
 import { TodayProvider } from './state/clock';
@@ -51,7 +58,9 @@ function Workspace() {
       <TodayProvider>
         <BackupProvider>
           <FocusModeProvider>
-            <Shell />
+            <ReadingProvider>
+              <Shell />
+            </ReadingProvider>
           </FocusModeProvider>
         </BackupProvider>
       </TodayProvider>
@@ -60,7 +69,7 @@ function Workspace() {
 }
 
 function Shell() {
-  const { view } = useNavigation();
+  const { view, target, requestId } = useNavigation();
   const { focusMode, setFocusMode } = useFocusMode();
   const { notice, noticeTone, dismissNotice } = useStartup();
   const mainRef = useRef<HTMLElement>(null);
@@ -101,7 +110,23 @@ function Shell() {
           ) : null}
           <BackupBanner />
         </div>
-        {view === 'today' ? <TodayView /> : view === 'trash' ? <TrashView /> : <SettingsView />}
+        {view === 'today' ? (
+          <TodayView key={requestId} initialDate={target?.date} initialSlot={target?.slot} />
+        ) : view === 'trash' ? (
+          <TrashView />
+        ) : view === 'settings' ? (
+          <SettingsView />
+        ) : view === 'book' ? (
+          <BookView />
+        ) : view === 'trends' ? (
+          <TrendsView />
+        ) : view === 'weekly' ? (
+          <WeeklyView />
+        ) : view === 'path' ? (
+          <PathView />
+        ) : (
+          <CalendarView journal={view === 'journal'} />
+        )}
       </main>
     </div>
   );

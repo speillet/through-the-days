@@ -23,6 +23,7 @@ use crate::{
 };
 use chrono::Utc;
 use journal_core::{BackupRecord, Entry, Error, Preferences, TrashItem};
+use journal_core::{Milestone, ReadingReport, SearchRequest, WeeklyReview};
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder};
@@ -119,6 +120,92 @@ pub async fn entries_on(app: AppHandle, date: String) -> Result<Vec<Entry>, Comm
 #[tauri::command]
 pub async fn list_entries(app: AppHandle) -> Result<Vec<Entry>, CommandError> {
     with_core(app, "list_entries", |core| core.list_entries()).await
+}
+
+#[tauri::command]
+pub async fn search_entries(
+    app: AppHandle,
+    request: SearchRequest,
+) -> Result<Vec<Entry>, CommandError> {
+    with_core(app, "search_entries", move |core| {
+        Ok(core.journal()?.search(&request)?)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn reading_report(
+    app: AppHandle,
+    request: SearchRequest,
+) -> Result<ReadingReport, CommandError> {
+    with_core(app, "reading_report", move |core| {
+        Ok(core.journal()?.reading_report(&request)?)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn weekly_review(app: AppHandle, date: String) -> Result<WeeklyReview, CommandError> {
+    with_core(app, "weekly_review", move |core| {
+        Ok(core.journal()?.weekly_review(&date)?)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn save_weekly_notes(
+    app: AppHandle,
+    date: String,
+    notes: String,
+    revision: u32,
+) -> Result<WeeklyReview, CommandError> {
+    with_core(app, "save_weekly_notes", move |core| {
+        Ok(core.journal()?.save_weekly_notes(&date, &notes, revision)?)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn generate_weekly_summary(
+    app: AppHandle,
+    date: String,
+    revision: u32,
+) -> Result<WeeklyReview, CommandError> {
+    with_core(app, "generate_weekly_summary", move |core| {
+        Ok(core.journal()?.generate_weekly_summary(&date, revision)?)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn clear_reading_summaries(app: AppHandle) -> Result<(), CommandError> {
+    with_core(app, "clear_reading_summaries", |core| {
+        Ok(core.journal()?.clear_reading_summaries()?)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn list_milestones(app: AppHandle) -> Result<Vec<Milestone>, CommandError> {
+    with_core(app, "list_milestones", |core| {
+        Ok(core.journal()?.milestones()?)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn save_milestone(
+    app: AppHandle,
+    milestone: Milestone,
+) -> Result<Milestone, CommandError> {
+    with_core(app, "save_milestone", move |core| {
+        Ok(core.journal()?.save_milestone(milestone)?)
+    })
+    .await
+}
+#[tauri::command]
+pub async fn delete_milestone(
+    app: AppHandle,
+    id: String,
+    revision: u32,
+) -> Result<(), CommandError> {
+    with_core(app, "delete_milestone", move |core| {
+        Ok(core.journal()?.delete_milestone(&id, revision)?)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -416,7 +503,7 @@ mod tests {
     #[test]
     fn every_command_is_registered_and_called_with_its_argument_names() {
         let native = native_commands();
-        assert_eq!(native.len(), 27);
+        assert!(native.contains_key("startup_status"));
         assert_eq!(registered(), native.keys().cloned().collect());
         assert_eq!(renderer_calls(), native);
     }

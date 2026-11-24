@@ -5,7 +5,7 @@ use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
 use std::{fs, io, path::Path};
 
 /// Version this build writes to `PRAGMA user_version`.
-pub(crate) const SCHEMA_VERSION: u32 = 2;
+pub(crate) const SCHEMA_VERSION: u32 = 3;
 /// Oldest schema this build can upgrade, after an encrypted pre-migration backup.
 pub(crate) const OLDEST_SUPPORTED_VERSION: u32 = 1;
 
@@ -20,7 +20,9 @@ const CREATE_CURRENT_SCHEMA: &str = "
     );
     CREATE UNIQUE INDEX active_slot ON journal_entries(entry_date, slot) WHERE trashed_at IS NULL;
     CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    PRAGMA user_version=2;";
+    CREATE TABLE weekly_reviews (week_start TEXT PRIMARY KEY, payload TEXT NOT NULL CHECK(json_valid(payload)));
+    CREATE TABLE timeline_milestones (id TEXT PRIMARY KEY, payload TEXT NOT NULL CHECK(json_valid(payload)));
+    PRAGMA user_version=3;";
 
 /// Version 1 kept trashed entries out of the schema and had no perceived-progress answer.
 const UPGRADE_1_TO_2: &str = "
@@ -29,6 +31,11 @@ const UPGRADE_1_TO_2: &str = "
     CREATE UNIQUE INDEX active_slot ON journal_entries(entry_date,slot) WHERE trashed_at IS NULL;
     UPDATE journal_entries SET payload=json_set(payload,'$.progress',NULL);
     PRAGMA user_version=2;";
+
+const UPGRADE_2_TO_3: &str = "
+    CREATE TABLE weekly_reviews (week_start TEXT PRIMARY KEY, payload TEXT NOT NULL CHECK(json_valid(payload)));
+    CREATE TABLE timeline_milestones (id TEXT PRIMARY KEY, payload TEXT NOT NULL CHECK(json_valid(payload)));
+    PRAGMA user_version=3;";
 
 /// What a journal path holds, determined without changing it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,6 +134,7 @@ pub(crate) fn upgrade(connection: &Connection, from: u32) -> Result<(), Error> {
     for version in from..SCHEMA_VERSION {
         let step = match version {
             1 => UPGRADE_1_TO_2,
+            2 => UPGRADE_2_TO_3,
             _ => return Err(Error::Unsupported),
         };
         connection.execute_batch(step)?;
@@ -158,7 +166,11 @@ fn classify(connection: &Connection) -> Result<Stored, Error> {
     )?;
     Ok(Stored::Database {
         version,
-        journal: journal_tables == 2,
+        journal: journal_tables == 2
+            && (version < 3
+                || count(
+                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('weekly_reviews','timeline_milestones')",
+                )? == 2),
     })
 }
 

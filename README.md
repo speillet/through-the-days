@@ -4,7 +4,7 @@
 
 A personal journal for macOS, designed to help you remember your days, notice your efforts, and reflect at your own pace. Your writing stays at the centre; check-ins, scores, and guided exercises are optional.
 
-> **Status: offline-journal development preview.** The offline journal works: Morning and Evening entries, a skippable check-in, the editor, autosave, Trash, and encrypted backups with restore. Automated verification is available; manual native acceptance remains open in [milestone 1 status](docs/milestone-1-status.md). There is no signed release yet, so you build the app yourself (see [Build and run](#build-and-run)). Reading views, CBT exercises, and the other planned features arrive in later milestones.
+> **Status: development preview.** The offline journal and reading views are implemented in the development branch. Automated checks pass; native acceptance and milestone closure are still in progress. There is no signed release yet, so you build the app yourself (see [Build and run](#build-and-run)). See the [verified development status](docs/development-status.md) for the current branch and remaining work.
 
 ## What you can do now
 
@@ -13,6 +13,7 @@ A personal journal for macOS, designed to help you remember your days, notice yo
 - **Notice what you did.** Note activities, small wins, what helped, what you learned, a difficulty, and a next small step. Every question is optional.
 - **Keep your own words.** Entries save as you type, with a clear *Saving…*, *Saved*, or *Couldn't save*. You can view any entry as Markdown.
 - **Keep things simple.** Gentle view hides scores and tracking prompts without deleting anything. Missing days stay neutral. Text size is adjustable.
+- **Revisit your days.** Browse the calendar, search saved writing, or read one full entry at a time in Book View. Explore trends, write weekly notes, and add private milestones to your timeline.
 - **Recover from mistakes.** Deleted entries stay in Trash for 30 days. Encrypted backups run daily while the app is open, into a folder you choose, and can be restored on another Mac with your backup passphrase.
 
 ## How to use it
@@ -21,12 +22,13 @@ A personal journal for macOS, designed to help you remember your days, notice yo
 2. Answer any parts of the check-in you find useful, skip them, or choose **Write directly**.
 3. Write freely. Autosave keeps your draft; press ⌘S to save straight away. Mood, energy, and some writing are needed only if you mark an entry complete.
 4. Before relying on the app, open **Settings → Backups**, choose a backup folder, and set a backup passphrase. Keep the passphrase somewhere safe: backups cannot be restored without it.
+5. Use **Calendar** or **My Journal** to find an entry, then open it in **Book View**. Long entries scroll within their page. **Weekly Review** keeps your notes separate from optional local summaries.
+6. Explore **The Path So Far** by date range, with optional private milestones. Clear an entry's **Include in insights and timelines** checkbox to omit it from analyses while keeping the original available to read.
 
 The interface is in **English**. Your journal can be written in **any language**, without automatic translation.
 
 ## Coming later
 
-- **Revisit your story:** a calendar, a book-style reader, weekly reviews, and a personal timeline.
 - **Reflect with care:** manual cognitive behavioural therapy (CBT) worksheets and small experiments. Optional AI assistance should be kind, question unsupported conclusions, and acknowledge its own mistakes.
 - **Explore:** tags, keyword trends, independent goals, and optional private ChatGPT analytics.
 

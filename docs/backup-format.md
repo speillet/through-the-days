@@ -21,6 +21,8 @@ A backup holds the whole journal database at one consistent moment:
 
 - every active entry with its writing, check-in answers, actions and small wins;
 - the trash: entries deleted less than 30 days earlier, with their deletion time;
+- authored weekly notes and private timeline milestones, with their identities and revisions;
+- optional local weekly summaries and their source fingerprints, subject to freshness checks after restore;
 - the display preferences stored in the journal.
 
 A backup does not contain the backup plan (chosen folder, last successful backup, Keychain choice), the passphrase or anything else from Keychain.
@@ -48,7 +50,7 @@ The image is a consistent copy of the live database:
 2. `VACUUM` rebuilds the in-memory copy without free pages. The copy's temporary storage is in memory too (`temp_store=MEMORY`), so the rebuild never spills to a temporary file.
 3. The copy is serialised, and bytes 18 and 19 of its header (the file-format versions) are set to 1. The live journal uses WAL mode (value 2); SQLite [documents this change](https://www.sqlite.org/c3ref/deserialize.html) so that an image can be deserialised. Restoring into the live journal sets WAL mode again.
 
-The schema version is SQLite's `user_version`, a big-endian integer at offset 60 of the image header. This build writes version 2 and can read versions 1 and 2.
+The schema version is SQLite's `user_version`, a big-endian integer at offset 60 of the image header. This reading build writes version 3 and can read versions 1, 2 and 3. The age envelope and backup format version remain unchanged.
 
 The plaintext exists only in memory. Every SQLite connection that holds decrypted content (the snapshot, the staged copy of a backup and its rebuilt copy) is an in-memory database whose temporary storage is also in memory (`temp_store=MEMORY`). `VACUUM`, integrity checks and upgrades therefore never spill decrypted pages to temporary files, whatever the journal's size. Snapshots, verification and restore never write decrypted data to disk; a restore writes only into the live journal.
 
@@ -118,10 +120,11 @@ A backup is validated when it is created and again before it is restored:
 - decryption with the passphrase, which authenticates every chunk;
 - the magic and format version 1;
 - an SQLite header and `PRAGMA integrity_check` returning `ok` (page structure, indexes, unique and check constraints);
-- exactly the expected schema objects: the tables `journal_entries` and `preferences` and the index `active_slot`, plus SQLite's internal indexes. Triggers, views and other tables are refused;
+- exactly the expected objects for the source schema: `journal_entries`, `preferences` and `active_slot`, plus `weekly_reviews` and `timeline_milestones` in schema 3 and SQLite's internal indexes. Triggers, views and unrelated tables are refused;
 - a supported schema version; an older one is upgraded first (see [Schema versions](#schema-versions));
 - every entry passes the validation used when saving it (date, slot, score ranges, emotion identifiers, actions, small wins and document structure), its columns match its content, its revision is at least 1, and a completed entry still meets the completion rule. The document may contain only the editor's node and mark types (links are not among them), no empty text nodes, and at most 32 levels of nesting, counting the document itself as the first;
 - at most one active entry for each date and slot;
+- weekly-review keys that match valid Monday week starts and positive stored revisions, and valid milestone IDs/dates that match their keys and revisions;
 - stored display preferences that can be read and that meet the rules for saving them: a known time zone, the theme `system`, `light` or `dark`, and a text size of 100, 115, 130 or 150 per cent.
 
 The staged copy lives in memory with SQLite's defensive settings `trusted_schema=OFF` and `cell_size_check=ON`, and its temporary storage in memory.
@@ -130,13 +133,15 @@ The schema objects are checked by name only, because their definitions are not t
 
 ## Schema versions
 
-A restore accepts every supported schema version, currently 1 and 2. A version-1 backup, such as a pre-migration backup, is upgraded inside the staged in-memory copy with the same migration steps used for the live journal. It is then validated as version 2. A backup with a newer or unknown version is refused, and the journal is unchanged.
+A restore accepts schema versions 1, 2 and 3. Older backups are upgraded inside the staged in-memory copy with the same migration steps used for the live journal, then validated as version 3. A backup with a newer or unknown version is refused, and the journal is unchanged.
 
 The upgrade from version 1 to version 2:
 
 - adds the trash column;
 - limits the one-entry-per-slot index to entries that are not in the trash;
 - records perceived progress as missing for existing entries.
+
+The upgrade from version 2 to version 3 adds `weekly_reviews` and `timeline_milestones`, preserving existing entry aggregates and preferences. Reading-source inclusion defaults to enabled for older entries. An existing live journal still requires its protected pre-migration backup before either upgrade proceeds. Weekly notes and private milestones are authored journal records, not disposable indexes.
 
 ## Restoring
 

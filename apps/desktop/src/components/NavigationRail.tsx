@@ -31,14 +31,22 @@ interface RailItem {
   Icon: LucideIcon;
 }
 
-const PRIMARY_ITEMS: readonly RailItem[] = [{ view: 'today', label: 'Today', Icon: NotebookPen }];
+const PRIMARY_ITEMS: readonly RailItem[] = [
+  { view: 'today', label: 'Today', Icon: NotebookPen },
+  { view: 'calendar', label: 'Calendar', Icon: CalendarDays },
+  { view: 'journal', label: 'My Journal', Icon: BookOpenText },
+  { view: 'book', label: 'Book View', Icon: BookOpen },
+  { view: 'trends', label: 'Trends', Icon: ChartLine },
+  { view: 'weekly', label: 'Weekly Review', Icon: CalendarDays },
+  { view: 'path', label: 'The Path So Far', Icon: BookOpenText },
+];
 
 const UTILITY_ITEMS: readonly RailItem[] = [
   { view: 'trash', label: 'Trash', Icon: Trash2 },
   { view: 'settings', label: 'Settings', Icon: Settings },
 ];
 
-const LATER_ICONS: Record<(typeof UNAVAILABLE_VIEWS)[number], LucideIcon> = {
+const LATER_ICONS: Record<string, LucideIcon> = {
   Calendar: CalendarDays,
   'My Journal': BookOpenText,
   'Book View': BookOpen,

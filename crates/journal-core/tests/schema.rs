@@ -35,7 +35,7 @@ fn newer_or_foreign_databases_are_unsupported_and_left_unchanged() {
     let journal_tables = "CREATE TABLE journal_entries(id TEXT PRIMARY KEY,entry_date TEXT,slot TEXT,revision INTEGER,payload TEXT);
         CREATE TABLE preferences(key TEXT PRIMARY KEY,value TEXT);";
     let newer = directory.path().join("newer.sqlite");
-    execute(&newer, &format!("{journal_tables} PRAGMA user_version=3;"));
+    execute(&newer, &format!("{journal_tables} PRAGMA user_version=4;"));
     let foreign = directory.path().join("foreign.sqlite");
     execute(
         &foreign,
@@ -53,7 +53,7 @@ fn newer_or_foreign_databases_are_unsupported_and_left_unchanged() {
     );
 
     let cases = [
-        (&newer, Ok(Some(3))),
+        (&newer, Ok(Some(4))),
         (&foreign, Ok(Some(0))),
         (&current_without_tables, Ok(Some(2))),
         (&negative, Err(Error::Unsupported)),
@@ -95,13 +95,13 @@ fn missing_or_empty_files_open_as_a_fresh_current_journal() {
     let journal = Journal::open(&missing).unwrap();
     assert!(journal.list().unwrap().is_empty());
     drop(journal);
-    assert_eq!(schema_version(&missing), Ok(Some(2)));
+    assert_eq!(schema_version(&missing), Ok(Some(3)));
 
     let empty = directory.path().join("empty.sqlite");
     fs::write(&empty, b"").unwrap();
     assert_eq!(schema_version(&empty), Ok(None));
     Journal::open(&empty).unwrap();
-    assert_eq!(schema_version(&empty), Ok(Some(2)));
+    assert_eq!(schema_version(&empty), Ok(Some(3)));
 
     let folder = directory.path().join("unused-backups");
     let fresh = directory.path().join("fresh.sqlite");

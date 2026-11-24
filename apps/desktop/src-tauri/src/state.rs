@@ -469,7 +469,7 @@ impl Core {
         }
     }
 
-    fn journal(&self) -> Result<&Journal, CommandError> {
+    pub(crate) fn journal(&self) -> Result<&Journal, CommandError> {
         self.journal.as_ref().ok_or_else(CommandError::not_ready)
     }
 
