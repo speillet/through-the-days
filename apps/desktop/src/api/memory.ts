@@ -104,7 +104,8 @@ export interface MemoryApiOptions {
    * Simulates the state found at launch; by default it follows the stored journal (ready, or
    * failed when the stored journal is damaged). "failed" is a passing failure that
    * retryStartup clears; "unsupported" is a journal this version cannot open, which stays
-   * until a restore or an erase replaces it; "needsMigration" waits for migrateJournal.
+   * until a restore or an erase replaces it; "needsMigration" waits for migrateJournal, unless
+   * a restore or an erase replaces the older journal first.
    */
   startup?: Partial<StartupStatus>;
 }
@@ -936,7 +937,6 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
     },
 
     async restoreBackup(source: RestoreSource, passphrase, withoutSafetyBackup = false): Promise<RestoreOutcome> {
-      if (startup.state === 'needsMigration') throw failure('notReady');
       const loaded = load();
       const { state } = loaded;
       let name: string | null;
@@ -953,7 +953,8 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
       }
 
       if (startup.state !== 'ready') {
-        // No open journal: keep the unreadable one aside (never deleted) and restore into a fresh one.
+        // No open journal: keep the one that could not be opened or upgraded aside (never deleted)
+        // and restore into a fresh one.
         const setAside = `journal.unreadable-${nowUnix()}.sqlite`;
         state.setAside.push({ name: setAside, journal: loaded.damagedJournal ?? copy(state.journal) });
         loaded.damagedJournal = undefined;

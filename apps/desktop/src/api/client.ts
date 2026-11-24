@@ -67,7 +67,8 @@ export interface JournalApi {
    * Verifies the chosen backup, then replaces the journal with it. When a safety backup of
    * the current journal is needed but cannot be made because that journal cannot be read,
    * the restore is refused (safetyBackupFailed) unless withoutSafetyBackup is true. Without an
-   * open journal (a failed or unsupported start), the unreadable journal is kept aside.
+   * open journal (a failed or unsupported start, or an older journal waiting for its upgrade),
+   * that journal is kept aside.
    */
   restoreBackup(
     source: RestoreSource,

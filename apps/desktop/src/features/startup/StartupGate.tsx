@@ -2,7 +2,8 @@
 // a protected upgrade (an encrypted backup first, D-005/D-006), when this version
 // cannot open it, or when opening failed. A journal that can't be opened can be
 // opened again, restored from a backup file (the file that can't be opened is kept
-// aside, never deleted) or erased after a typed confirmation. Otherwise nothing here
+// aside, never deleted) or erased after a typed confirmation. An older journal whose
+// upgrade failed can be restored or erased in the same way. Otherwise nothing here
 // changes the journal except "Back up and upgrade", which the journal performs only
 // after the backup succeeds.
 
@@ -150,7 +151,7 @@ function Unsupported({ status }: { status: StartupStatus }) {
   );
 }
 
-/** Ways back when the journal can't be opened: a backup file, or erasing app data. */
+/** Ways back when the journal can't be opened or upgraded: a backup file, or erasing app data. */
 function Recovery({ status, children }: { status: StartupStatus; children: ReactNode }) {
   const api = useApi();
   const { setStatus } = useStartup();
@@ -226,6 +227,8 @@ function ProtectedUpgrade({ status }: { status: StartupStatus }) {
   const [problems, setProblems] = useState<PassphraseProblems>({});
   const [folderError, setFolderError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Set once an upgrade from this screen fails, so the ways back stay offered during later attempts. */
+  const [attemptFailed, setAttemptFailed] = useState(false);
   const [busy, setBusy] = useState<'folder' | 'upgrade' | 'session' | null>(null);
 
   useEffect(() => {
@@ -270,6 +273,7 @@ function ProtectedUpgrade({ status }: { status: StartupStatus }) {
       setStatus(next, next.state === 'ready' ? UPGRADED_NOTICE : undefined);
     } catch (caught) {
       setError(`${toCommandError(caught).message} ${NOT_CHANGED}`);
+      setAttemptFailed(true);
       setBusy(null);
     }
   }
@@ -368,6 +372,21 @@ function ProtectedUpgrade({ status }: { status: StartupStatus }) {
           </Button>
         </div>
       </form>
+
+      {/* Damage in the journal itself can stop every backup of it, so a failed upgrade offers the ways back. */}
+      {attemptFailed || status.message ? (
+        <>
+          <DataLocation path={status.dataLocation} />
+          <Recovery status={status}>
+            <p>
+              If the upgrade keeps failing, for example because the journal file is damaged, you can restore your
+              journal from a backup file instead. The journal that can’t be upgraded is kept aside in the app’s data
+              folder; it is not deleted. You can also erase all app data on this Mac and start again with an empty
+              journal.
+            </p>
+          </Recovery>
+        </>
+      ) : null}
     </>
   );
 }

@@ -124,3 +124,8 @@ Before migrating an existing journal, the system SHALL create a consistent encry
 
 - **WHEN** the pre-migration backup cannot be completed or validated
 - **THEN** the existing journal remains intact and no unprotected schema upgrade proceeds.
+
+#### Scenario: Recovery after a failed upgrade
+
+- **WHEN** an upgrade attempt fails, including when part of the existing journal cannot be read or validated so that every retry fails
+- **THEN** the paused upgrade explains the failure, keeps the existing journal unchanged, and offers to restore a validated backup, which keeps the existing journal aside without deleting it, or to erase application data.

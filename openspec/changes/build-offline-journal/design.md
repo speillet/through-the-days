@@ -38,7 +38,7 @@ Gentle view composes existing visibility and prompt controls as one preference. 
 
 All later indexes, embeddings, cached summaries, and pinned excerpts follow the source's active/visibility state; exclude them at query time immediately when a source is removed, even before background rebuilding. Clearing generated data preserves original writing and authored notes. Full application-data erasure includes managed derivatives/credentials and accurately describes independently held backup/export copies.
 
-An existing journal must have a consistent encrypted pre-migration recovery snapshot before upgrading. If a passphrase or valid snapshot is unavailable, pause the upgrade safely. Fresh database creation is not an existing-data migration. These rules refine recovery rather than changing the confirmed daily/catch-up backup schedule.
+An existing journal must have a consistent encrypted pre-migration recovery snapshot before upgrading. If a passphrase or valid snapshot is unavailable, pause the upgrade safely. The journal itself can prevent the snapshot, for example with a damaged page, so a failed upgrade also offers the recovery of a journal that cannot be opened: a validated backup replaces it while it is kept aside, or application data is erased. Fresh database creation is not an existing-data migration. These rules refine recovery rather than changing the confirmed daily/catch-up backup schedule.
 
 ### Verification interfaces
 

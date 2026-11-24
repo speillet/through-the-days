@@ -861,12 +861,25 @@ describe('memory journal: startup failures and recovery', () => {
     expect(await relaunched.chooseRestoreFile()).not.toBeNull();
   });
 
-  it('never restores while a protected upgrade is waiting', async () => {
-    const { restart, backup } = await backedUpJournal();
+  it('restores over an older journal that its upgrade cannot back up, keeping it aside', async () => {
+    const { storage, restart, clock, kept, backup } = await backedUpJournal();
+    damageStore(storage, (stored) => {
+      (stored.journal as { entries: unknown[] }).entries.push({ entry: 'Synthetic damaged page', trashedAt: null });
+    });
+    const storedJournal = () => (JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? '{}') as { journal: unknown }).journal;
+    const older = storedJournal();
     const relaunched = restart({ startup: { state: 'needsMigration' } });
-    await expect(relaunched.restoreBackup({ kind: 'registered', name: backup.name }, SAFE_PASSPHRASE)).rejects.toEqual(
-      commandError('notReady'),
-    );
+    await expect(relaunched.migrateJournal(SAFE_PASSPHRASE, false)).rejects.toEqual(commandError('damaged'));
+    await expect(relaunched.startupStatus()).resolves.toMatchObject({ state: 'needsMigration', fromVersion: 1 });
+    expect(storedJournal()).toEqual(older);
+    await expect(relaunched.listBackups()).resolves.toEqual([backup]);
+
+    const outcome = await relaunched.restoreBackup({ kind: 'registered', name: backup.name }, SAFE_PASSPHRASE);
+    expect(outcome).toEqual({ entries: 1, safetyBackup: false, setAside: `journal.unreadable-${clock.unix()}.sqlite` });
+    await expect(relaunched.startupStatus()).resolves.toMatchObject({ state: 'ready', fromVersion: null, message: null });
+    await expect(relaunched.listEntries()).resolves.toEqual([kept]);
+    const stored = JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? '{}') as { setAside: unknown[] };
+    expect(stored.setAside).toEqual([{ name: outcome.setAside, journal: older }]);
   });
 });
 

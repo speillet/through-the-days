@@ -86,9 +86,9 @@ impl Core {
     /// session passphrase are available, a safety backup of it is published before it is
     /// replaced. If the journal cannot be read for that, or the safety backup fails, the restore
     /// stops with `safetyBackupFailed`, unless `without_safety_backup` confirms that it may go
-    /// ahead without one. When the start failed or found a journal this version cannot open,
-    /// the backup replaces the journal file instead (see [`Self::restore_at_startup`]). A failed
-    /// restore leaves the journal unchanged.
+    /// ahead without one. When the start failed, found a journal this version cannot open, or
+    /// found an older journal still waiting for its upgrade, the backup replaces the journal file
+    /// instead (see [`Self::restore_at_startup`]). A failed restore leaves the journal unchanged.
     pub fn restore_backup(
         &mut self,
         source: RestoreSource,
@@ -98,10 +98,11 @@ impl Core {
     ) -> Result<RestoreOutcome, CommandError> {
         match self.startup.state {
             StartupState::Ready => {}
-            StartupState::Failed | StartupState::Unsupported => {
+            // An older journal waiting for its upgrade is not open either, and a damaged page or
+            // an invalid row in it can stop every pre-migration backup: a restore replaces it.
+            StartupState::Failed | StartupState::Unsupported | StartupState::NeedsMigration => {
                 return self.restore_at_startup(&source, passphrase, now);
             }
-            StartupState::NeedsMigration => return Err(CommandError::not_ready()),
         }
         let source = self.restore_source(&source)?;
         // The safety backup can prune the oldest registered backup, which may be the one being
@@ -124,8 +125,8 @@ impl Core {
         })
     }
 
-    /// Restores when no journal is open because the start failed or found a journal this
-    /// version cannot open.
+    /// Restores when no journal is open because the start failed, found a journal this version
+    /// cannot open, or found an older journal that is still waiting for its protected upgrade.
     ///
     /// Once the backup is verified, the journal file and its SQLite companions are moved aside
     /// in the data folder, never deleted, and a new journal created in their place receives the
