@@ -49,9 +49,7 @@ fn weekly_notes_and_milestones_survive_restart_and_source_changes_invalidate_sum
     let review = journal
         .save_weekly_notes(&review.week_start, "Synthetic notes to keep.", 0)
         .unwrap();
-    let summary = journal
-        .generate_weekly_summary(&review.week_start, review.revision)
-        .unwrap();
+    let summary = journal.generate_weekly_summary(&review.week_start).unwrap();
     assert!(summary.summary.is_some());
     let milestone = journal_core::Milestone::new("2026-11-22", "Synthetic milestone");
     let milestone = journal.save_milestone(milestone).unwrap();
@@ -79,7 +77,7 @@ fn weekly_notes_and_milestones_survive_restart_and_source_changes_invalidate_sum
     assert_eq!(stale_after_edit.summary, None);
     assert_eq!(stale_after_edit.notes, "Synthetic notes to keep.");
     journal
-        .generate_weekly_summary(&stale_after_edit.week_start, stale_after_edit.revision)
+        .generate_weekly_summary(&stale_after_edit.week_start)
         .unwrap();
     journal
         .trash(&edited.id, edited.revision, 1_795_363_200)
@@ -200,9 +198,7 @@ fn weekly_counts_use_distinct_dates_and_do_not_count_authored_notes_or_pride_twi
         )
         .unwrap();
     assert_eq!((notes.report.entries, notes.report.recorded_days), (3, 2));
-    let summary = journal
-        .generate_weekly_summary(&notes.week_start, notes.revision)
-        .unwrap();
+    let summary = journal.generate_weekly_summary(&notes.week_start).unwrap();
     assert!(
         summary
             .summary
@@ -214,6 +210,107 @@ fn weekly_counts_use_distinct_dates_and_do_not_count_authored_notes_or_pride_twi
     assert_eq!((empty.report.entries, empty.report.recorded_days), (0, 0));
     assert_eq!(empty.report.mood.mean, None);
     assert_eq!(empty.report.mood.recorded_days, 0);
+}
+
+/// weekly-reviews — Authorship and source freshness: a local summary leaves the authored notes
+/// and their revision alone, so a notes save based on the revision read before it still succeeds.
+#[test]
+fn summaries_leave_the_notes_revision_to_authored_saves() {
+    let directory = tempfile::tempdir().unwrap();
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    journal
+        .save(Entry::draft("2026-11-22", Slot::Morning))
+        .unwrap();
+    let notes = journal
+        .save_weekly_notes("2026-11-22", "Synthetic notes.", 0)
+        .unwrap();
+    let summary = journal.generate_weekly_summary("2026-11-22").unwrap();
+    assert!(summary.summary.is_some());
+    assert_eq!(
+        (summary.notes.as_str(), summary.revision),
+        ("Synthetic notes.", 1)
+    );
+    let saved = journal
+        .save_weekly_notes("2026-11-22", "Synthetic notes. Kept.", notes.revision)
+        .unwrap();
+    assert_eq!(
+        (saved.notes.as_str(), saved.revision),
+        ("Synthetic notes. Kept.", 2)
+    );
+    assert_eq!(saved.summary, summary.summary);
+    let regenerated = journal.generate_weekly_summary("2026-11-16").unwrap();
+    assert_eq!(
+        (regenerated.notes.as_str(), regenerated.revision),
+        ("Synthetic notes. Kept.", 2)
+    );
+    assert!(matches!(
+        journal.save_weekly_notes("2026-11-22", "Synthetic stale text.", notes.revision),
+        Err(journal_core::Error::Conflict)
+    ));
+
+    // A week without notes is stored at revision 1, as backups accept only positive revisions.
+    let empty = journal.generate_weekly_summary("2026-11-09").unwrap();
+    assert_eq!((empty.notes.as_str(), empty.revision), ("", 1));
+    let again = journal.generate_weekly_summary("2026-11-09").unwrap();
+    assert_eq!(again.revision, 1);
+    journal
+        .backup_to(
+            directory.path(),
+            "synthetic reading backup passphrase",
+            1_795_363_200,
+        )
+        .unwrap();
+}
+
+/// weekly-reviews — Authorship and source freshness: a notes save whose reply cannot be built
+/// reports the error with nothing stored, so retrying on the same revision succeeds.
+#[test]
+fn a_notes_save_that_cannot_build_its_reply_stores_nothing() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.sqlite");
+    let journal = Journal::open(&path).unwrap();
+    let source = journal
+        .save(Entry::draft("2026-11-22", Slot::Morning))
+        .unwrap();
+    let notes = journal
+        .save_weekly_notes("2026-11-22", "Synthetic notes.", 0)
+        .unwrap();
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    let payload: String = raw
+        .query_row(
+            "SELECT payload FROM journal_entries WHERE id=?1",
+            [&source.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    // The week's source becomes unreadable, so the reply fails after the notes are written.
+    raw.execute(
+        "UPDATE journal_entries SET payload='{}' WHERE id=?1",
+        [&source.id],
+    )
+    .unwrap();
+    assert!(
+        journal
+            .save_weekly_notes("2026-11-22", "Synthetic notes. Kept.", notes.revision)
+            .is_err()
+    );
+    raw.execute(
+        "UPDATE journal_entries SET payload=?1 WHERE id=?2",
+        [&payload, &source.id],
+    )
+    .unwrap();
+    let stored = journal.weekly_review("2026-11-22").unwrap();
+    assert_eq!(
+        (stored.notes.as_str(), stored.revision),
+        ("Synthetic notes.", 1)
+    );
+    let retried = journal
+        .save_weekly_notes("2026-11-22", "Synthetic notes. Kept.", notes.revision)
+        .unwrap();
+    assert_eq!(
+        (retried.notes.as_str(), retried.revision),
+        ("Synthetic notes. Kept.", 2)
+    );
 }
 
 #[test]

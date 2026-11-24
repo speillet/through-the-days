@@ -54,8 +54,8 @@ it('saves newer authored notes when a summary finishes after another edit', asyn
   });
   const api: JournalApi = {
     ...journal,
-    async generateWeeklySummary(date, revision) {
-      const generated = await journal.generateWeeklySummary(date, revision);
+    async generateWeeklySummary(date) {
+      const generated = await journal.generateWeeklySummary(date);
       await pending;
       return generated;
     },
@@ -64,7 +64,7 @@ it('saves newer authored notes when a summary finishes after another edit', asyn
   const user = userEvent.setup();
   const notes = await screen.findByRole('textbox', { name: 'Your notes' });
   await user.click(screen.getByRole('button', { name: 'Recalculate local summary' }));
-  await waitFor(async () => expect((await journal.weeklyReview('2026-11-22')).revision).toBe(2));
+  await waitFor(async () => expect((await journal.weeklyReview('2026-11-22')).summary).not.toBeNull());
   await user.clear(notes);
   await user.type(notes, 'Synthetic newer notes to keep.');
   await user.click(screen.getByRole('button', { name: 'Save notes' }));

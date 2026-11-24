@@ -39,8 +39,10 @@ export interface JournalApi {
   searchEntries(request: SearchRequest): Promise<Entry[]>;
   readingReport(request: SearchRequest): Promise<ReadingReport>;
   weeklyReview(date: string): Promise<WeeklyReview>;
+  /** Refused with conflict unless the week's notes are still at revision; advances it. */
   saveWeeklyNotes(date: string, notes: string, revision: number): Promise<WeeklyReview>;
-  generateWeeklySummary(date: string, revision: number): Promise<WeeklyReview>;
+  /** Replaces the local summary; the notes and their revision stay as they are. */
+  generateWeeklySummary(date: string): Promise<WeeklyReview>;
   clearReadingSummaries(): Promise<void>;
   listMilestones(): Promise<Milestone[]>;
   saveMilestone(milestone: Milestone): Promise<Milestone>;

@@ -9,7 +9,7 @@ export type ReadingOrigin = 'calendar' | 'journal' | 'weekly' | 'path';
 
 function useReadingState() {
   const api = useApi();
-  const [notes] = useState(() => new WeeklyNotesStore((...args) => api.saveWeeklyNotes(...args)));
+  const [notes] = useState(() => new WeeklyNotesStore(api));
   useEffect(() => {
     const stop = registerFlusher(notes);
     return () => {

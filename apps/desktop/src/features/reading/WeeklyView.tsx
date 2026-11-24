@@ -34,7 +34,7 @@ export function WeeklyView() {
     setBusy(true);
     setError(null);
     try {
-      await notes.regenerateWeek(data.weekStart, (date, revision) => api.generateWeeklySummary(date, revision));
+      await notes.regenerateWeek(data.weekStart, (date) => api.generateWeeklySummary(date));
       reload();
     } catch (caught) {
       setError(toCommandError(caught).message);
@@ -93,11 +93,36 @@ export function WeeklyView() {
               />
             </label>
             <div className="reading-row">
-              <p role={draft.error ? 'alert' : 'status'}>{draft.error ?? (pending ? 'Saving…' : 'Saved')}</p>
-              <Button onClick={() => void notes.flushWeek(data.weekStart)}>
-                {draft.error ? 'Retry saving notes' : 'Save notes'}
-              </Button>
+              <p role={draft.error ? 'alert' : 'status'}>
+                {draft.error ?? (draft.conflict ? 'Not saved' : pending ? 'Saving…' : 'Saved')}
+              </p>
+              {draft.conflict ? null : (
+                <Button onClick={() => void notes.flushWeek(data.weekStart)}>
+                  {draft.error ? 'Retry saving notes' : 'Save notes'}
+                </Button>
+              )}
             </div>
+            {draft.conflict ? (
+              <Notice
+                tone="error"
+                actions={
+                  <>
+                    <Button size="small" onClick={() => void notes.keepText(data.weekStart)}>
+                      Keep my text
+                    </Button>
+                    <Button size="small" onClick={() => void notes.loadSavedText(data.weekStart)}>
+                      Load saved text
+                    </Button>
+                  </>
+                }
+              >
+                <p>These notes were changed elsewhere, so your text has not been saved.</p>
+                <p>
+                  Keep my text replaces the saved notes with your text. Load saved text replaces your text
+                  with the saved notes; copy anything you want to keep first.
+                </p>
+              </Notice>
+            ) : null}
           </section>
           {error ? <Notice tone="error">{error}</Notice> : null}
           {preferences.gentle ? null : (

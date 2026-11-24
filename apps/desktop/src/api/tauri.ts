@@ -59,8 +59,7 @@ export function createTauriApi(): JournalApi {
     weeklyReview: (date) => call<WeeklyReview>('weekly_review', { date }),
     saveWeeklyNotes: (date, notes, revision) =>
       call<WeeklyReview>('save_weekly_notes', { date, notes, revision }),
-    generateWeeklySummary: (date, revision) =>
-      call<WeeklyReview>('generate_weekly_summary', { date, revision }),
+    generateWeeklySummary: (date) => call<WeeklyReview>('generate_weekly_summary', { date }),
     clearReadingSummaries: async () => {
       await call<null>('clear_reading_summaries');
     },

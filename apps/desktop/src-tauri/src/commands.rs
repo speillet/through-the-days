@@ -165,10 +165,9 @@ pub async fn save_weekly_notes(
 pub async fn generate_weekly_summary(
     app: AppHandle,
     date: String,
-    revision: u32,
 ) -> Result<WeeklyReview, CommandError> {
     with_core(app, "generate_weekly_summary", move |core| {
-        Ok(core.journal()?.generate_weekly_summary(&date, revision)?)
+        Ok(core.journal()?.generate_weekly_summary(&date)?)
     })
     .await
 }
