@@ -15,7 +15,7 @@ A person needs to write, record a skippable check-in, and recover exactly what w
 
 ### New Capabilities
 
-- desktop-shell: Mac navigation, themes, settings, and keyboard access.
+- desktop-shell: Mac navigation, a single running copy, themes, settings, and keyboard access.
 - journal-entries: Dates, slots, draft/completion lifecycle, and conflict handling.
 - daily-check-in: Writing depths, four independent dimensions, optional reflections, and user-approved small wins.
 - journal-editor: Comfortable writing and portable document content.

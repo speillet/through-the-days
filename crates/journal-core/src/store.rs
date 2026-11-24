@@ -4,7 +4,9 @@ use crate::{
     recovery::{publish_snapshot, validate_passphrase},
     schema::{self, Stored},
 };
-use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
+use rusqlite::{
+    Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior, params,
+};
 use serde::Serialize;
 use std::{ffi::OsString, fs, io, path::Path, time::Duration};
 
@@ -92,7 +94,7 @@ impl Journal {
     /// draft; an explicit completion request that does not satisfy them is refused.
     pub fn save(&self, mut entry: Entry) -> Result<Entry, Error> {
         entry.validate()?;
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let trashed: bool = transaction.query_row(
             "SELECT EXISTS(SELECT 1 FROM journal_entries WHERE id=?1 AND trashed_at IS NOT NULL)",
             [&entry.id],
@@ -227,7 +229,7 @@ impl Journal {
     /// An entry whose 30-day retention ended at or before `now` (Unix seconds) is no longer
     /// restorable and reports [`Error::NotFound`], even before a purge removes it.
     pub fn restore(&self, id: &str, now: i64) -> Result<Entry, Error> {
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let payload: String = transaction
             .query_row(
                 "SELECT payload FROM journal_entries
@@ -283,6 +285,18 @@ impl Journal {
             .query_map(parameters, |row| row.get::<_, String>(0))?
             .map(|payload| Ok(serde_json::from_str(&payload?)?))
             .collect()
+    }
+
+    /// Starts a transaction that reads before it writes, holding the write lock from the start.
+    ///
+    /// While another connection writes, SQLite fails at once rather than turn a read transaction
+    /// into a write transaction, and a read that another connection has since overtaken can never
+    /// be written. Taking the lock first waits for it like any other, for up to [`BUSY_TIMEOUT`].
+    pub(crate) fn write_transaction(&self) -> Result<Transaction<'_>, Error> {
+        Ok(Transaction::new_unchecked(
+            &self.connection,
+            TransactionBehavior::Immediate,
+        )?)
     }
 }
 

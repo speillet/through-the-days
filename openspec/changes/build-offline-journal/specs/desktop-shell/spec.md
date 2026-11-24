@@ -22,6 +22,15 @@ The application SHALL launch as a macOS desktop application and provide a collap
 - **WHEN** a later milestone has not been implemented
 - **THEN** navigation identifies its unavailable state without presenting placeholder features as working.
 
+### Requirement: One running copy
+
+The application SHALL run as a single copy: launching it again while it is open SHALL bring the open window forward, and that launch SHALL exit before it opens the journal or changes any application file.
+
+#### Scenario: Second launch while open
+
+- **WHEN** the person launches the app again while its window is open
+- **THEN** the open window comes forward with its writing intact, no second window opens, and the second launch leaves the journal, its backups and the backup settings untouched.
+
 ### Requirement: Appearance and navigation
 
 The application SHALL support system-matched light/dark appearance, a manual override, standard full-screen behavior, keyboard focus, and usable small-window layouts.

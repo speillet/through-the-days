@@ -1,6 +1,6 @@
 # Tasks for build the first usable offline journal
 
-Status: application code is implemented; automated and native-smoke evidence was audited on November 23, 2026. User decisions D-001–D-009 apply. Four tasks still require acceptance evidence. The change is not archived.
+Status: application code is implemented; automated and native-smoke evidence was audited on November 23, 2026. User decisions D-001–D-009 apply. Five tasks still require acceptance evidence. The change is not archived.
 
 ## 1. Scope and first usable slice
 
@@ -16,6 +16,7 @@ Status: application code is implemented; automated and native-smoke evidence was
 
 - [x] 3.1 Persist optional actions, reflections, and pride in the same acknowledged entry revision. Verify with aggregate save/load tests preserving optional and missing answers; include the slice's tests and relevant documentation.
 - [x] 3.2 Expose pending/saved/failed states, explicit save, retry, crash recovery, and safe migration failure. Verify with failure-injection and migration-recovery tests with documented save guarantees; include the slice's tests and relevant documentation.
+- [ ] 3.3 Run one copy of the app at a time: a second launch brings the open window forward and exits before it opens the journal, and operations that read before they write wait for another connection's lock instead of failing. Verify with a two-process launch test, lock-waiting writer tests and a native second launch (`open -n`) of a release build on a macOS account whose journal holds only synthetic entries; include the slice's tests and relevant documentation.
 
 ## 4. Data recovery
 
@@ -45,6 +46,7 @@ See [development status](../../../docs/milestone-1-status.md) for commands, actu
 
 - 1.1 and 4.2: `docs/backup-format.md`, core recovery/migration suites, native backup/restore state tests and browser protection scenarios cover portable encryption, retention, failure preservation, daily catch-up and clean restore. Real Keychain prompts and an actual exFAT drive remain manual checks.
 - 2.1–3.2 and 4.1: core journal/persistence/schema suites, frontend autosave/flush/exit tests, native state tests and writing/editor/protection browser scenarios cover acknowledged independent entries, validation/conflicts, aggregate answers, save failures and Trash. Native smoke verifies actual save/restart recovery. The quit regression verifies a missing flush acknowledgement keeps the app open and permits a later retry, including stale-timeout cancellation. See technical design for platform termination limits.
+- 3.3: `apps/desktop/src-tauri/src/single_instance.rs` runs an open copy under Tauri's mock runtime and launches the test binary again: the second copy hands over and exits before it opens its synthetic data folder, which a launch after the open copy quits does open. `crates/journal-core/tests/persistence.rs` holds another connection's write lock while an entry is saved, a trashed entry is restored, weekly notes and a summary are written and a milestone is saved; each waits and succeeds. The guard is registered in release builds only, so 3.3 stays unchecked until a native second launch of a release build is recorded.
 - 6.1–6.4: domain/check-in, WritingDepth, GentleView, Today and writing browser tests cover identity-preserving depth changes, nullable progress, explicit canonical wins and visibility without data loss. Later reading-surface combinations remain in that change's task 4.4.
 - 7.2: privacy guards and native diagnostics/migration tests cover metadata-only error reporting and protected migration failure.
 - 1.2, 5.1, 5.2 and 7.1 remain unchecked: native Skip/focus/assistive checks, all mapped acceptance, and the full derivative-removal audit have not been established by this audit.
