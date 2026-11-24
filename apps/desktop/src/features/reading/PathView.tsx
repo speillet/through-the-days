@@ -11,7 +11,7 @@ import { newId } from '../../domain/entry';
 import { useToday } from '../../state/clock';
 import { useNavigation } from '../../state/navigation';
 import { usePreferences } from '../../state/preferences';
-import { EntryPreview, Filters } from './shared';
+import { EntryPreview, Filters, insightSources } from './shared';
 import { useReading, useReadingQuery, useReadingSelection } from './state';
 
 const RANGES = [7, 30, 90, 365];
@@ -55,10 +55,7 @@ export function PathView() {
   const milestones = useReadingQuery(useCallback(() => api.listMilestones(), [api]));
   const [editing, setEditing] = useState<Milestone | null>(null);
   const [deleting, setDeleting] = useState<Milestone | null>(null);
-  const includedIds = new Set(report.data?.days.flatMap((day) => day.observations.map((entry) => entry.id)));
-  const records = (entries.data ?? []).filter(
-    (entry) => entry.includeInInsights !== false && includedIds.has(entry.id),
-  );
+  const records = insightSources(entries.data ?? [], report.data);
   const moments = (milestones.data ?? []).filter(
     (milestone) => milestone.date >= from && milestone.date <= to,
   );

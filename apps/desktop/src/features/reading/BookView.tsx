@@ -7,7 +7,7 @@ import { formatLongDate } from '../../domain/dates';
 import { useToday } from '../../state/clock';
 import { useNavigation } from '../../state/navigation';
 import { JournalDocument } from './Document';
-import { SLOT_NAMES, CheckInReading, EntryValues } from './shared';
+import { SLOT_NAMES, CheckInReading, EntryValues, insightSources } from './shared';
 import { useReading, useReadingQuery, useReadingSelection } from './state';
 
 const RETURN_LABELS = {
@@ -34,8 +34,7 @@ export function BookView() {
         api.searchEntries({ ...request, hasWin: null }),
         api.readingReport(request),
       ]);
-      const includedIds = new Set(report.days.flatMap((day) => day.observations.map((entry) => entry.id)));
-      return sources.filter((entry) => entry.includeInInsights !== false && includedIds.has(entry.id));
+      return insightSources(sources, report);
     }, [api, key, insightSelection]),
   );
   const entries = [...(data ?? [])].sort(

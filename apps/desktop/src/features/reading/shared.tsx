@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApi, toCommandError } from '../../api/client';
-import type { Entry, ScoreMetric, SearchRequest } from '../../api/types';
+import type { Entry, ReadingReport, ScoreMetric, SearchRequest } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { formatLongDate } from '../../domain/dates';
@@ -18,6 +18,11 @@ export const METRIC_LABELS: Record<ScoreMetric, string> = {
 };
 export const METRICS: readonly ScoreMetric[] = ['mood', 'energy', 'pride', 'progress'];
 export const SLOT_NAMES = { morning: 'Morning', evening: 'Evening' };
+/** Only the report authority decides which owned sources are eligible for an insight selection. */
+export function insightSources(entries: readonly Entry[], report: ReadingReport | null): Entry[] {
+  const includedIds = new Set(report?.days.flatMap((day) => day.observations.map((entry) => entry.id)));
+  return entries.filter((entry) => entry.includeInInsights !== false && includedIds.has(entry.id));
+}
 export const plainDate = (date: string) => formatLongDate(date).split(' ').slice(1).join(' ');
 export function scoreLabel(metric: ScoreMetric, value: number) {
   return `${METRIC_LABELS[metric]} ${value}/10${(metric === 'mood' || metric === 'energy') && value === 5 ? ' (neutral)' : ''}`;
