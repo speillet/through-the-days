@@ -124,3 +124,9 @@ Cases 3 and 22 cover a pause while editing a 400-paragraph Unicode entry. The po
 The macOS app reproduced the same sequence in a disposable SQLite journal. Revision 2 contained the space, revision 3 included `Fin.`, and a fresh process recovered the entire formatted entry. The five native writing and reading checks also passed with outbound IP connections denied to the test process. The system-wide offline and physical-input checks remain open.
 
 For case 8, the WebKit rerun reached the 30-second test deadline while scanning six surfaces together in each appearance. Playwright now reports Today, Trash, Settings, and the permanent deletion, passphrase and erasure dialogs individually in both appearances and both engines. Each of these 24 cases runs the same axe WCAG A/AA checks for serious and critical findings within its own 30-second test. [WebKit timeout on main](https://github.com/speillet/through-the-days/actions/runs/45349640722/job/138649740712)
+
+### November 25, 2026 browser follow-up
+
+All 24 individual audits passed on the PR. Another editor scenario recovered the full Morning text after switching slots, in revision 3. Its assertion expected revision 2. A deliberate pause reproduced this in WebKit. The scenario now checks that the same entry keeps all its text and its revision advances. [Browser run and assertion](https://github.com/speillet/through-the-days/actions/runs/45455001538/job/138661934764)
+
+Cases 8 and 12 now give each reading view, minimum-window view, manual dark appearance and recovery screen its own accessibility audit. Separate restoration tests still create the backup through the interface, exercise the warning about a failed safety backup and check the recovered entry. Playwright serves the compiled frontend. A cold WebKit load of Today made three local requests for the bundle, compared with 124 from the development server.
