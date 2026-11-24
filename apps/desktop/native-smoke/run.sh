@@ -4,6 +4,8 @@
 #   1. write.js   — record Morning mood/energy, write a synthetic entry, Command-S, quit.
 #   2. recover.js — relaunch: the exact text and scores come back from the SQLite journal.
 #   3. recover.js — relaunch with French as the system language: the interface stays English.
+#   4. reading.js — Calendar/Book/report queries, weekly notes and a private milestone.
+#   5. reading-recover.js — relaunch: authored reading records return from native SQLite.
 #
 # Build the bundle first:
 #   npm run tauri --workspace @through-the-days/desktop -- build --debug --bundles app
@@ -39,6 +41,8 @@ launch() {
 launch "write and save" write.js
 launch "relaunch and recover" recover.js
 launch "relaunch with French system language" recover.js -AppleLanguages "(fr-FR)" -AppleLocale fr_FR
+launch "native reading and authored records" reading.js
+launch "relaunch and recover authored reading records" reading-recover.js
 
 if [ -f "$data/journal.sqlite" ]; then
   echo "== journal folder: $(ls "$data" | tr '\n' ' ')"
