@@ -30,6 +30,8 @@ Extend cbt_action_plans with prediction, proposed step, effort, planned local ti
 
 Keep revision history for retrospective prediction/outcome edits with original timestamps, subject to the same trash/deletion policy as related user records. Invalidate timeline and insight projections when plans or their source visibility change. A plan never mutates tracked_goals or goal_events.
 
+Extend the existing weekly-reviews query rather than building a second report engine. Keep started/completed worksheet counts distinct from journal entries, canonical wins and reported actions. Preserve Not yet and missing outcomes as unknown, reuse ISO-week bounds and insight permissions, and invalidate derived summaries after worksheet/experiment edits or removal. This integration belongs to milestone 3; milestone 2 reports CBT as unavailable rather than fabricating zero counts.
+
 The initial three manual exercises and this experiment flow precede optional AI. The four additional library templates belong to the separate expand-cbt-exercise-library P2 change; they do not block phase-3 archive. Selecting Deep Reflection never bypasses this sequencing. Default to no reminders and allow one specifically enabled review reminder per experiment.
 
 A shared AI boundary treats every retrieved passage as data and exposes no unrestricted tools. Later memory/question features reuse this boundary, the existing per-request remote consent, English prompts, and opt-in private-payload retention.

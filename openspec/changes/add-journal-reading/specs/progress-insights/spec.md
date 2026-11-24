@@ -45,6 +45,25 @@ The system SHALL include saved scored drafts and completed entries (D-010), omit
 - **WHEN** a selected range contains a draft and a completed entry
 - **THEN** the statistic states its inclusion rule and count rather than silently changing the population.
 
+#### Scenario: Only insight-visible wins affect filters
+
+- **WHEN** one entry has only an excluded win and another has an included win
+- **THEN** the insight filter With a small win selects only the latter, Without a small win selects only the former, and their denominators use the same eligible sources.
+
+### Requirement: Consistent gentle visibility
+
+Reading views SHALL honour Gentle view and score-display preferences by hiding numeric tracking and optional counts and suspending numeric filters without deleting stored data or filter choices. Writing, original sources, authored notes, permitted wins, save errors and backup prompts SHALL remain accessible.
+
+#### Scenario: Hidden score filter
+
+- **WHEN** Gentle view hides an active minimum-score filter
+- **THEN** Calendar, My Journal, Book View, Trends and The Path So Far stop applying it; turning Gentle view off restores the person's unchanged filter choices.
+
+#### Scenario: Weekly and timeline layers
+
+- **WHEN** Gentle view is enabled with weekly notes and excluded wins present
+- **THEN** notes and permitted sources remain accessible, numeric summaries stay hidden, and excluded wins do not reappear in any insight layer.
+
 ### Requirement: Multiple progress dimensions
 
 Progress views SHALL distinguish experience, reported actions, coping, and explicitly reported follow-through, with links to their sources and descriptive rather than causal language.

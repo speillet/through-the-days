@@ -20,7 +20,7 @@ The person can choose a structured reflection or manageable action without depen
 
 ### Modified Capabilities
 
-None. The delivered capability inventory is currently empty.
+- weekly-reviews: Extend the delivered local review with separate worksheet counts and explicit experiment outcomes after manual CBT records exist. The reading milestone keeps unavailable exercise counts explicit until then.
 
 ## Impact
 

@@ -26,11 +26,15 @@ Use SQLite FTS5 for local journal text search as required by the brief. The curr
 
 The native Tauri adapter delegates search, reports, notes and milestone operations to the Rust journal authority. Browser tests use the explicit synthetic memory adapter. React reading state retains filters, selected sources and per-entry scroll positions; source mutations invalidate dependent queries. Weekly authored-note autosave survives navigation and retries failures independently of summary generation.
 
+Book selections snapshot the originating query independently from shared filters. Weekly sources use their own ISO-week bounds and return to Weekly Review; timeline sources retain range and layers. Custom timeline bounds are separate from My Journal's date filters. Losing a selected source shows an explicit recovery action instead of silently widening the selection.
+
+All reading views derive an effective selection from shared display preferences: hidden numeric controls suspend score filters while retaining the original choices. The report authority applies win filters only to insight-included wins; original search still finds all owned records. Timeline source cards use report eligibility, and insight cards omit excluded wins while original Calendar/Book reading remains intact.
+
 ### Weekly reviews and The Path So Far
 
 These are views over shared journal queries and provenance, not another editable journal or another metric engine. Reuse progress-insights aggregation rules and extend selectable measures with nullable perceived progress. Calendar/Book links carry the current range/filter context.
 
-Store one weekly_reviews record per ISO week in the current single-user context, with exact boundaries, snapshot fingerprint/version metadata, deterministic statistics, separate user_notes, and an optionally retained labelled summary. Count distinct in-scope journal dates, canonical win IDs, and started/completed exercises separately. A generated review never becomes an extra original entry in its own denominators.
+Store one weekly_reviews record per ISO week in the current single-user context, with exact boundaries, snapshot fingerprint/version metadata, deterministic statistics, separate user_notes, and an optionally retained labelled summary. Count distinct in-scope journal dates, canonical win IDs and reported actions separately. A generated review never becomes an extra original entry in its own denominators. The subsequent add-cbt-companion change owns started/completed worksheet counts and experiment outcomes; until then they are explicitly unavailable and not counted.
 
 Invalidate derived material on source edits, trash/deletion, or insight-visibility changes. Old excerpts must not remain visible as current evidence. Recalculation preserves authored notes. Snapshot metadata supports freshness checks; it does not authorise retaining copies of deleted text.
 

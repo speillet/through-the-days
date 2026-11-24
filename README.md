@@ -23,6 +23,7 @@ A personal journal for macOS, designed to help you remember your days, notice yo
 3. Write freely. Autosave keeps your draft; press ⌘S to save straight away. Mood, energy, and some writing are needed only if you mark an entry complete.
 4. Before relying on the app, open **Settings → Backups**, choose a backup folder, and set a backup passphrase. Keep the passphrase somewhere safe: backups cannot be restored without it.
 5. Use **Calendar** or **My Journal** to find an entry, then open it in **Book View**. Long entries scroll within their page. **Weekly Review** keeps your notes separate from optional local summaries.
+6. Explore **The Path So Far** by date range, with optional private milestones. Clear an entry's **Include in insights and timelines** checkbox to omit it from analyses while keeping the original available to read.
 
 The interface is in **English**. Your journal can be written in **any language**, without automatic translation.
 

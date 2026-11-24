@@ -29,12 +29,12 @@ Weekly Review SHALL be user-initiated, use Monday–Sunday ISO weeks in the conf
 
 ### Requirement: Distinct reviewed evidence
 
-The review SHALL count approved win items and started/completed exercises separately, preserve explicit experiment outcomes, and link each highlight to its dated source.
+The review SHALL count approved canonical wins separately from reported actions, link each highlight to its dated source, and identify unavailable exercise functionality without inventing counts. Exercise counts and experiment outcomes are added by the subsequent CBT change.
 
-#### Scenario: Not yet is unknown progress
+#### Scenario: Exercises not delivered
 
-- **WHEN** an experiment is marked Not yet or has no follow-up
-- **THEN** the review preserves that status without a failure score or treating a missing outcome as unsuccessful.
+- **WHEN** the person opens a review before CBT exercises are available
+- **THEN** the app states that exercises are unavailable and not counted rather than displaying zero as an observed result.
 
 #### Scenario: No duplicate wins
 
@@ -43,7 +43,7 @@ The review SHALL count approved win items and started/completed exercises separa
 
 ### Requirement: Authorship and source freshness
 
-Weekly Review SHALL separate user notes from generated text, label AI summaries, retain source dates/versions, and mark derived material stale after source changes while preserving user notes.
+Weekly Review SHALL separate user notes from optional labelled deterministic local summaries, retain source dates/versions, and mark derived material stale after source changes while preserving user notes. Any later AI summary remains subject to the shared llm-assistance policy.
 
 #### Scenario: Source edited
 

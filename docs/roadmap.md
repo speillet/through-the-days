@@ -31,9 +31,11 @@ Original section numbering is retained for source references.
 
 - [x] Calendar markers for both entries and optional pride/achievement markers.
 - [x] Book view with one complete scrolling entry per page, light/dark themes and keyboard navigation (D-012).
-- [ ] **7/14/30-day timeline below each entry**, navigable by date with explicit missing-data gaps.
+- [x] **7/14/30-day timeline below each entry**, navigable by date with explicit missing-data gaps.
 - [x] Local full-text search and filters.
-- [ ] Deterministic Weekly Review and The Path So Far with available layers, private milestones, source links and freshness; later-layer capabilities remain deferred.
+- [x] Deterministic Weekly Review and The Path So Far with available layers, private milestones, source links and freshness; later-layer capabilities remain deferred.
+
+The implementation slices and automated/native smoke checks pass. Manual native accessibility and physical-input acceptance remain open; see [development status](development-status.md). Worksheet counts and experiment outcomes extend Weekly Review in phase 3.
 
 **Acceptance:** Today, Calendar and Book View show the same saved data; selecting a timeline date opens the correct day.
 

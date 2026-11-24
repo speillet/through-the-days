@@ -22,14 +22,24 @@ The Path So Far SHALL offer 7/30/90-day, one-year, and custom ranges with access
 - **WHEN** the person uses the editor's existing 7/14/30-day mini timeline
 - **THEN** it remains a view of the same saved observations, not a second chronology store.
 
+#### Scenario: Independent custom range
+
+- **WHEN** the person changes or pans a custom timeline range and later opens My Journal
+- **THEN** the timeline keeps its own date bounds without replacing My Journal's date filters.
+
+#### Scenario: Keyboard zoom from a custom range
+
+- **WHEN** the person activates Zoom out for a 22-day custom range, then Zoom in
+- **THEN** the range widens to 30 days and narrows to 7 days, preserving its end date and visible source links.
+
 ### Requirement: Optional available layers
 
-The timeline SHALL offer hideable layers for check-ins, approved wins, manual milestones, and later available experiments, tags, goals, or imported data, respecting source permissions and explicit counter opt-in.
+The timeline SHALL offer hideable layers for check-ins, approved wins and manual milestones, respect insight permissions in every available layer, and identify unavailable later layers without invented data. Later experiments, tags, goals and imports remain owned by their respective changes.
 
-#### Scenario: Hidden counter or disabled source
+#### Scenario: Excluded entry or win
 
-- **WHEN** a goal is hidden or imported conversations are not enabled
-- **THEN** its data is absent from the timeline as well as the other affected surfaces.
+- **WHEN** an entry or an individual win is excluded from insights
+- **THEN** it is absent from the relevant timeline layers, source cards and win-filter decisions, while original Calendar and Book reading retain the person's records.
 
 #### Scenario: Later capability not delivered
 

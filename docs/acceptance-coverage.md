@@ -90,7 +90,7 @@ The milestone-1 task file retains unfinished acceptance. Later-milestone rows in
 
 ### November 23, 2026 audit
 
-The active `through-the-days-reading` worktree passed 422 interface tests, 151 Rust tests, and 62 WebKit/Chromium end-to-end tests. TypeScript, Clippy, the frontend build, and the native debug bundle build pass. The native smoke check passed writing/save, exact recovery after restart, and French-system-language launches with English interface copy. See [commands and limits](development-status.md#verification-performed).
+This historical snapshot predates the reading continuation below. The active `through-the-days-reading` worktree passed 422 interface tests, 151 Rust tests, and 62 WebKit/Chromium end-to-end tests. TypeScript, Clippy, the frontend build, and the native debug bundle build passed. Three native launches covered writing/save and recovery with English interface copy on French system settings.
 
 | Cases | Evidence available | Remaining scope |
 |---|---|---|
@@ -100,3 +100,16 @@ The active `through-the-days-reading` worktree passed 422 interface tests, 151 R
 | 8, 10, 21 | Automated keyboard, privacy/language guards and accessibility suites; six reading views have no serious/critical axe violations in either appearance; native smoke preserves multilingual text with English UI on French locale. | VoiceOver, real-key navigation, full screen, native dialogs/Keychain, networking disabled, and physical exFAT backup/restore. |
 
 Later-milestone acceptance cases remain unimplemented. Passing tests above do not establish every scenario in a mapped case. The original changes remain active and their incomplete tasks stay unchecked; the [native checklist](../openspec/changes/confirm-native-macos-checks/tasks.md) records manual checks without transferring those obligations.
+
+### November 24, 2026 reading verification
+
+The continuation passes 431 interface tests (39 files), 152 Rust tests and 70 browser scenarios across WebKit and Chromium. TypeScript, Clippy, frontend and macOS debug builds pass. Five native launches now include Calendar/Book/report queries, weekly-note/summary and private-milestone creation, and exact authored-record recovery in a fresh process. See [commands and limits](development-status.md#verification-performed).
+
+| Cases / tasks | Observable evidence | Limits |
+|---|---|---|
+| 4–6, 14, 22 / 3.2 | `reading-consistency.spec.ts` edits a saved text/energy value and verifies Calendar, Book, search, Trends, Weekly Review and timeline agreement, explicit observation/day denominators, retained notes, stale summaries, reduced motion and horizontal/vertical gestures. `ReadingQueries.test.tsx` rejects a late old search result. | Physical trackpad behaviour and VoiceOver remain unchecked. |
+| 27–28, 33 / 4.3 | `ReadingNavigation.test.tsx` and `reading-navigation.spec.ts` cover ranges, keyboard zoom/pan, gaps, independent Morning/Evening sources, milestone layers, Book return context, weekly selection, independent custom dates and explicit recovery after a selection is removed. | Later goal/import/experiment layers are unavailable and not implied to work. |
+| 10, 24–26, 28, 32–33 / 4.4 | `ReadingPrivacy.test.tsx`, `reading-privacy.spec.ts` and the Rust reading suite cover Gentle-view filter suspension/restoration, excluded entries and individual wins, true/false win filters, eligible denominators and contextual Book selections. Original owner reading, notes and backup prompts remain accessible. | No model request or imported records exist. Their later permissions remain in separate changes. |
+| Authored reading persistence | `native-smoke/reading.js` and `reading-recover.js` use real Tauri commands and SQLite in a disposable development journal, alongside Rust encrypted backup/restore tests for notes and milestones. | Native dialogs/Keychain, an OS-disabled-network run and physical exFAT backup/restore remain unexecuted. |
+
+All ten reading implementation slices have evidence. New task 5.1 retains the manual native reading acceptance explicitly (10/11 tasks complete); it does not transfer obligations from milestone 1 or the supplementary native checklist. Main specs now include the five verified reading capabilities. Both milestones remain active, with no archive. Worksheet counts and experiment outcomes are retained as unchecked Weekly Review integration in the subsequent CBT change.

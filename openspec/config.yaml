@@ -9,7 +9,7 @@ context: |
   All artifacts and first-party product copy are English. Preserve the language of user-authored text.
   In-app LLMs share llm-assistance's compassionate evidence-calibrated disagreement and self-correction policy (D-008).
   First milestone: two-slot journal, skippable check-in, editor, durable persistence, trash, encrypted backups and tested restore.
-  Active changes retain intended behaviour and unfinished acceptance; main specs contain the four verified milestone-1 capabilities. The reading change is not archived.
+  Active changes retain unfinished native acceptance; main specs contain four verified journal capabilities and five verified reading capabilities. Neither milestone is archived. Later worksheet counts and experiment outcomes in Weekly Review belong to add-cbt-companion.
   Appendix choices and exclusions: docs/appendix-integration.md. Writing depths/progress/Gentle view preserve the original completion rule.
   Read GLOSSARY.md for domain terms and relevant docs/adr/ for durable decisions.
   Keep real journal content and secrets outside the repository. Use synthetic fixtures.
