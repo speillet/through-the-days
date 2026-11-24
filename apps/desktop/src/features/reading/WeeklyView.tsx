@@ -34,10 +34,7 @@ export function WeeklyView() {
     setBusy(true);
     setError(null);
     try {
-      await notes.flushWeek(data.weekStart);
-      if (notes.get(data.weekStart).error) return;
-      const current = await api.weeklyReview(data.weekStart);
-      await api.generateWeeklySummary(data.weekStart, current.revision);
+      await notes.regenerateWeek(data.weekStart, (date, revision) => api.generateWeeklySummary(date, revision));
       reload();
     } catch (caught) {
       setError(toCommandError(caught).message);
@@ -123,7 +120,13 @@ export function WeeklyView() {
           )}
           <section aria-label="Week sources">
             <h2>Recorded moments</h2>
-            {sources.length ? (
+            {entries.error ? (
+              <Notice tone="error" actions={<Button onClick={entries.reload}>Retry loading sources</Button>}>
+                {entries.error}
+              </Notice>
+            ) : entries.loading ? (
+              <p role="status">Opening week sources…</p>
+            ) : sources.length ? (
               sources.map((entry) => (
                 <EntryPreview
                   key={`${entry.id}:${entry.revision}`}

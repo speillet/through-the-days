@@ -1,4 +1,4 @@
-// One ordered save stream per week's authored notes, retained across view changes.
+// One ordered stream for notes and summary revisions, retained across view changes.
 import type { WeeklyReview } from '../../api/types';
 import { toCommandError } from '../../api/client';
 
@@ -10,6 +10,7 @@ interface NotesDraft {
   error: string | null;
 }
 type SaveNotes = (date: string, notes: string, revision: number) => Promise<WeeklyReview>;
+type GenerateSummary = (date: string, revision: number) => Promise<WeeklyReview>;
 export class WeeklyNotesStore {
   private drafts = new Map<string, NotesDraft>();
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -59,26 +60,38 @@ export class WeeklyNotesStore {
     );
     this.notify();
   }
-  async flushWeek(date: string): Promise<void> {
+  private async savePending(date: string, draft: NotesDraft) {
+    while (draft.value !== draft.saved) {
+      const value = draft.value;
+      const saved = await this.save(date, value, draft.revision);
+      draft.revision = saved.revision;
+      draft.saved = value;
+    }
+  }
+  private async runWeek(date: string, generate?: GenerateSummary): Promise<void> {
     clearTimeout(this.timers.get(date));
     this.timers.delete(date);
-    const existing = this.flights.get(date);
-    if (existing) {
-      await existing;
-      return;
-    }
-    const draft = this.drafts.get(date);
-    if (!draft || draft.value === draft.saved) return;
+    const previous = this.flights.get(date);
+    const generationFailure: { error?: unknown } = {};
     const flight = (async () => {
+      await previous;
+      const draft = this.drafts.get(date);
+      if (!draft || (draft.value === draft.saved && !generate)) return;
       draft.saving = true;
       draft.error = null;
       this.notify();
       try {
-        while (draft.value !== draft.saved) {
-          const value = draft.value;
-          const saved = await this.save(date, value, draft.revision);
-          draft.revision = saved.revision;
-          draft.saved = value;
+        await this.savePending(date, draft);
+        if (generate) {
+          try {
+            const generated = await generate(date, draft.revision);
+            draft.revision = generated.revision;
+            draft.saved = generated.notes;
+          } catch (error) {
+            generationFailure.error = error;
+          }
+          // Typing stays available during generation; save those edits on its acknowledged revision.
+          await this.savePending(date, draft);
         }
       } catch (error) {
         draft.error = toCommandError(error).message;
@@ -89,8 +102,11 @@ export class WeeklyNotesStore {
     })();
     this.flights.set(date, flight);
     await flight;
-    this.flights.delete(date);
+    if (this.flights.get(date) === flight) this.flights.delete(date);
+    if ('error' in generationFailure) throw generationFailure.error;
   }
+  flushWeek = (date: string) => this.runWeek(date);
+  regenerateWeek = (date: string, generate: GenerateSummary) => this.runWeek(date, generate);
   hasPending = () => [...this.drafts.values()].some((draft) => draft.saving || draft.value !== draft.saved);
   flush = async () => {
     await Promise.all([...this.drafts.keys()].map((date) => this.flushWeek(date)));
