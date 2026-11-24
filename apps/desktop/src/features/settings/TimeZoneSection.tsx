@@ -11,29 +11,24 @@ import { formatLongDate, supportedTimeZones } from '../../domain/dates';
 import { useToday } from '../../state/clock';
 import { usePreferences } from '../../state/preferences';
 
-const offsetCache = new Map<string, string>();
-let offsetCacheDay = '';
+/** Each zone's offset formatter, slow to build, or null when the zone cannot be formatted. */
+const offsetFormats = new Map<string, Intl.DateTimeFormat | null>();
 
-/** "GMT+1" for a zone at the current moment; cached for the day. */
+/**
+ * "GMT+1" for a zone at the current moment. Only the formatter is kept: daylight
+ * saving can change a zone's offset at any hour, so the offset is read each time.
+ */
 function currentOffset(zone: string): string {
-  const day = new Date().toISOString().slice(0, 10);
-  if (day !== offsetCacheDay) {
-    offsetCache.clear();
-    offsetCacheDay = day;
-  }
-  let offset = offsetCache.get(zone);
-  if (offset === undefined) {
+  let format = offsetFormats.get(zone);
+  if (format === undefined) {
     try {
-      offset =
-        new Intl.DateTimeFormat('en-GB', { timeZone: zone, timeZoneName: 'shortOffset' })
-          .formatToParts(new Date())
-          .find((part) => part.type === 'timeZoneName')?.value ?? '';
+      format = new Intl.DateTimeFormat('en-GB', { timeZone: zone, timeZoneName: 'shortOffset' });
     } catch {
-      offset = '';
+      format = null;
     }
-    offsetCache.set(zone, offset);
+    offsetFormats.set(zone, format);
   }
-  return offset;
+  return format?.formatToParts(new Date()).find((part) => part.type === 'timeZoneName')?.value ?? '';
 }
 
 export function timeZoneLabel(zone: string): string {

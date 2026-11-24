@@ -12,6 +12,7 @@ Status: not executed. This verification-only checklist supplements the original 
 - [ ] 2.1 Exercise native folder/file dialogs and optional Keychain prompts, including cancellation and unavailable credentials. Verify an error never appears as a successful backup and existing writing remains readable; record results with synthetic records only.
 - [ ] 2.2 Disable networking at the operating-system level and verify native create/edit/save/restart/read, search, and weekly notes. Record the disabled-network environment and actual persistence results.
 - [ ] 2.3 Back up to an actual exFAT drive and restore into an isolated destination, comparing synthetic writing and reading metadata. Record device/filesystem details and any interruption or unsupported behaviour.
+- [ ] 2.4 Leave Today frontmost on an empty slot of the current date, let the Mac sleep past midnight in the journal time zone, then wake it and type at once without clicking. Verify that Today shows the new date before the first keystroke and that the entry is saved under it; repeat with the screen locked across midnight instead. Record the macOS version, how the Mac slept, the lock-screen setting and actual results. If Today keeps the earlier date, the webview did not report the window as shown again, and the shell needs to notify the interface on waking.
 
 ## 3. Acceptance reconciliation
 
