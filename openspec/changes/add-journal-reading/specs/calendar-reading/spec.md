@@ -48,7 +48,7 @@ The system SHALL provide local full-text search and combinable journal filters w
 #### Scenario: Punctuation beside searched words
 
 - **WHEN** the person searches saved words together with punctuation or an emoji that search does not index, such as "pourquoi ?", "« journée »" or "paisible 🌿"
-- **THEN** My Journal, Calendar, Book View, Trends and The Path So Far include every entry containing all the searched words, and a search made only of such characters matches no entry.
+- **THEN** My Journal, Calendar, Book View, Trends and The Path So Far show the same results as a search for those words alone, and a search made only of such characters matches no entry.
 
 #### Scenario: Edit invalidates search
 
