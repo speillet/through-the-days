@@ -4,6 +4,7 @@
 
 import type { Page } from '@playwright/test';
 import type { Entry } from '../src/api/types';
+import { documentText } from '../src/domain/entry';
 import { expect, storedJournal, test } from './fixtures';
 
 function journalPage(page: Page, slot: 'Morning' | 'Evening' = 'Morning') {
@@ -12,12 +13,6 @@ function journalPage(page: Page, slot: 'Morning' | 'Evening' = 'Morning') {
 
 function saveStatus(page: Page) {
   return page.getByRole('status').filter({ hasText: /^(Saving…|Saved|Couldn't save)$/ });
-}
-
-function documentText(entry: Entry): string {
-  const walk = (node: Entry['document']): string =>
-    typeof node.text === 'string' ? node.text : (node.content ?? []).map(walk).join('\n');
-  return walk(entry.document);
 }
 
 async function savedEntries(page: Page): Promise<Entry[]> {
@@ -94,7 +89,7 @@ test('reopens a slot on its saved writing after switching slots, and saves the n
   await expect(morning).toBeFocused();
   await page.keyboard.type(' More.');
   await expect
-    .poll(async () => (await savedEntries(page)).map((entry) => [documentText(entry), entry.revision]))
+    .poll(async () => (await savedEntries(page)).map((entry) => [documentText(entry.document), entry.revision]))
     .toEqual([['Fictional morning words. More.', 2]]);
   await expect(saveStatus(page)).toHaveText('Saved');
   await expect(page.getByRole('alert')).toHaveCount(0);

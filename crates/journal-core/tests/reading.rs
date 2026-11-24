@@ -251,3 +251,32 @@ fn insight_win_filters_use_only_included_wins_while_original_search_keeps_owned_
     assert_eq!(without_included_win.days[0].observations[0].id, morning.id);
     assert!(journal.search(&request).unwrap().is_empty());
 }
+
+/// calendar-reading — Local search and filtering / Formatted part of a word: a word with a bold
+/// part is indexed whole, so search finds it by the whole word and not by its bold part alone.
+#[test]
+fn search_finds_a_partly_formatted_word_by_the_whole_word_only() {
+    let directory = tempfile::tempdir().unwrap();
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    let mut evening = Entry::draft("2026-11-22", Slot::Evening);
+    evening.document = json!({"type":"doc","content":[{"type":"paragraph","content":[
+        {"type":"text","text":"Synthetic peaceful "},
+        {"type":"text","marks":[{"type":"bold"}],"text":"after"},
+        {"type":"text","text":"noon by the canal."}
+    ]}]});
+    let saved = journal.save(evening).unwrap();
+    let search = |text: &str| {
+        journal
+            .search(&SearchRequest {
+                text: text.into(),
+                ..Default::default()
+            })
+            .unwrap()
+    };
+    for text in ["afternoon", "peaceful afternoon"] {
+        assert_eq!(search(text), std::slice::from_ref(&saved), "{text}");
+    }
+    for text in ["after", "noon"] {
+        assert!(search(text).is_empty(), "{text}");
+    }
+}

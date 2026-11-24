@@ -49,3 +49,8 @@ The system SHALL provide local full-text search and combinable journal filters w
 
 - **WHEN** an entry is edited so that a previous match disappears
 - **THEN** search no longer returns a stale match for the old version.
+
+#### Scenario: Formatted part of a word
+
+- **WHEN** the person formats part of a saved word, such as "after" in bold within "afternoon", and searches the journal
+- **THEN** search finds the entry by the whole word but not by the formatted part alone, and its excerpt shows the text without a line break where the formatting changes.

@@ -1,4 +1,4 @@
-import { entry, expect, expectNoSeriousViolations, openView, seedJournal, test } from './fixtures';
+import { entry, expect, expectNoSeriousViolations, openView, seedJournal, storedJournal, test } from './fixtures';
 
 test('Book View keeps every passage, selection and scroll position across resize and return', async ({
   page,
@@ -124,4 +124,39 @@ test('historical timelines keep both slots, gaps, hidden-series preferences and 
   await expect(page.getByRole('textbox', { name: /Morning journal/ })).toContainText(
     'Synthetic historical morning.',
   );
+});
+
+test('finds a typed word whose middle was made bold with Command-B by the whole word only', async ({ page }) => {
+  await page.goto('/');
+  const editor = page.getByRole('textbox', { name: /^Morning journal, Sunday 22 November 2026/ });
+  await editor.click();
+  await page.keyboard.type('Synthetic peaceful afternoon.');
+  // Select "after": back over "noon.", then five characters with Shift.
+  for (let press = 0; press < 5; press += 1) await page.keyboard.press('ArrowLeft');
+  for (let press = 0; press < 5; press += 1) await page.keyboard.press('Shift+ArrowLeft');
+  await page.keyboard.press('ControlOrMeta+b');
+  await expect(editor.locator('strong')).toHaveText('after');
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.getByRole('status').filter({ hasText: /^Saved$/ })).toBeVisible();
+  await expect
+    .poll(async () => (await storedJournal(page)).journal.entries[0]?.entry.document.content?.[0]?.content)
+    .toEqual([
+      { type: 'text', text: 'Synthetic peaceful ' },
+      { type: 'text', text: 'after', marks: [{ type: 'bold' }] },
+      { type: 'text', text: 'noon.' },
+    ]);
+
+  await openView(page, 'My Journal');
+  const search = page.getByRole('searchbox', { name: 'Search journal' });
+  await search.fill('after');
+  await expect(page.getByText('No entries match these filters.', { exact: true })).toBeVisible();
+  // Completing the word sends no empty query, which would list the entry anyway.
+  await search.press('End');
+  await page.keyboard.insertText('noon');
+  await expect(search).toHaveValue('afternoon');
+  const excerpt = page
+    .getByRole('region', { name: 'Morning entry from 22 November 2026' })
+    .getByText('Synthetic peaceful afternoon.', { exact: true });
+  await expect(excerpt).toBeVisible();
+  expect(await excerpt.textContent()).toBe('Synthetic peaceful afternoon.');
 });

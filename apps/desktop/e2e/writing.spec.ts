@@ -4,6 +4,7 @@
 
 import type { Page } from '@playwright/test';
 import type { Entry } from '../src/api/types';
+import { documentText } from '../src/domain/entry';
 import { expect, openView, seedJournal, storedJournal, tabTo, test } from './fixtures';
 
 const TODAY = '2026-11-22';
@@ -18,12 +19,6 @@ function saveStatus(page: Page) {
 
 function checkIn(page: Page) {
   return page.getByRole('region', { name: 'Check-in' });
-}
-
-function documentText(entry: Entry): string {
-  const walk = (node: Entry['document']): string =>
-    typeof node.text === 'string' ? node.text : (node.content ?? []).map(walk).join('\n');
-  return walk(entry.document);
 }
 
 async function savedEntries(page: Page): Promise<Entry[]> {
@@ -63,7 +58,7 @@ test('writes with the keyboard alone and recovers the exact text after a restart
   await page.reload();
   await expect(journalPage(page)).toHaveText(words);
   const [saved] = await savedEntries(page);
-  expect(documentText(saved)).toBe(words);
+  expect(documentText(saved.document)).toBe(words);
   expect(saved).toMatchObject({ date: TODAY, slot: 'morning', mood: null, energy: null, complete: false });
 });
 
