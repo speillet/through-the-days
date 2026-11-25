@@ -355,6 +355,41 @@ describe('memory journal: entries', () => {
   });
 });
 
+// The same queries and fixtures run against native SQLite FTS5 search in
+// crates/journal-core/tests/reading.rs; the preview must follow the same rules.
+describe('memory journal: search, as native search does', () => {
+  it.each(['journee ?', 'paisible 🌿', '« journee »'])(
+    'finds the words of "%s" and ignores the punctuation or emoji beside them',
+    async (text) => {
+      const { api } = setup();
+      // Deliberate multilingual synthetic fixture.
+      const saved = await api.saveEntry(withText(draft(), 'Synthetic journée paisible 🌿'));
+      await expect(api.searchEntries({ text })).resolves.toEqual([saved]);
+      const report = await api.readingReport({ text, from: '2026-11-22', to: '2026-11-22' });
+      expect([report.entries, report.recordedDays]).toEqual([1, 1]);
+    },
+  );
+
+  it('still requires every word, and finds nothing for punctuation alone', async () => {
+    const { api } = setup();
+    // Deliberate multilingual synthetic fixture.
+    await api.saveEntry(withText(draft(), 'Synthetic journée paisible 🌿'));
+    await expect(api.searchEntries({ text: 'journee ? absent' })).resolves.toEqual([]);
+    await expect(api.searchEntries({ text: '?' })).resolves.toEqual([]);
+  });
+
+  it('keeps the words of each query part together and folds only Latin accents', async () => {
+    const { api } = setup();
+    // Deliberate multilingual synthetic fixtures in French and Greek.
+    const together = await api.saveEntry(withText(draft('2026-11-21'), 'Synthetic l’amour du matin, καλημέρα'));
+    const apart = await api.saveEntry(withText(draft('2026-11-22'), "Synthetic amour de l'été"));
+    await expect(api.searchEntries({ text: "l'amour" })).resolves.toEqual([together]);
+    await expect(api.searchEntries({ text: 'ete amour' })).resolves.toEqual([apart]);
+    await expect(api.searchEntries({ text: 'ΚΑΛΗΜΈΡΑ' })).resolves.toEqual([together]);
+    await expect(api.searchEntries({ text: 'καλημερα' })).resolves.toEqual([]);
+  });
+});
+
 describe('memory journal: trash', () => {
   it('moves an entry to trash for 30 days and hides it from the journal', async () => {
     const { api, clock } = setup();
