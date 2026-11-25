@@ -85,14 +85,16 @@ Each backup folder has a registry, `.through-the-days-backups.json`. It lists th
 |---|---|
 | `version` | Registry format version. Only `1` is accepted. |
 | `name` | File name inside the folder. |
-| `createdAt` | Creation time in Unix seconds. Listing orders backups by it, then by name. Pruning uses the same order but always keeps the backup just published (see [Retention](#retention)). |
+| `createdAt` | Creation time in Unix seconds, from `0` to `253402300799` (1 January 1970 to the end of 31 December 9999, UTC). Listing orders backups by it, then by name. Pruning uses the same order but always keeps the backup just published (see [Retention](#retention)). An entry with any other time is treated like one with an unsafe name. |
 | `sha256` | SHA-256 digest of the encrypted file as published. |
 
 The registry holds no journal content: only file names, times and digests. It is replaced atomically (temporary file, flush, rename, folder flush).
 
-A registry with another version, unknown fields or invalid JSON, or a directory where the registry belongs, is refused with the `backupRegistry` error, and nothing is deleted. New backups to that folder fail before a snapshot is taken, and listing reports the same error. To recover, choose a different folder. Backups in the old folder remain restorable with the file picker, but they are no longer listed or pruned. A registry that the folder does not let the app read at all is reported as `backupFolder` instead.
+A registry with another version, unknown fields or invalid JSON, a registry larger than 1 MiB, or anything but a regular file where the registry belongs (a directory, a symbolic link, a named pipe or a device), is refused with the `backupRegistry` error, and nothing is deleted. New backups to that folder fail before a snapshot is taken, and listing reports the same error. To recover, choose a different folder. Backups in the old folder remain restorable with the file picker, but they are no longer listed or pruned. A registry that the folder does not let the app read at all is reported as `backupFolder` instead.
 
-**Listing.** The validated backups of a folder are the registered entries whose name passes the name check and whose file still exists as a regular file. They are listed newest first with their name, creation time and size. A folder without a registry, including one that is currently unavailable, has no validated backups.
+**Folders others can write to.** Another account, another computer sharing the drive or a sync client may be able to change the files in a backup folder. The app opens the registry, and the backups whose digest it checks, without following a symbolic link in their place and without waiting for a writer of a named pipe, and reads them only when they are regular files. It reads at most 1 MiB of registry. A file planted in their place therefore fails at once, instead of keeping the app waiting while it holds the journal or filling its memory. The desktop app copies a backup to restore with the same care (see [Destination](#destination)).
+
+**Listing.** The validated backups of a folder are the registered entries whose name passes the name check, whose creation time lies from 1970 to the end of 9999, and whose file still exists as a regular file. They are listed newest first with their name, creation time and size. A folder without a registry, including one that is currently unavailable, has no validated backups.
 
 ## Publishing a backup
 
@@ -166,12 +168,12 @@ When SQLite cannot read part of the live journal file, `journal-core` reports `d
 
 ## Retention
 
-After each successful publication, pruning keeps the 30 newest registered backups whose files still exist, and deletes older registered backups. A file is deleted only when its name passes the name check and its SHA-256 digest still matches the registry.
+After each successful publication, pruning keeps the 30 newest registered backups whose files still exist, and deletes older registered backups. A file is deleted only when its name passes the name check and the SHA-256 digest of the regular file in its place, never read through a symbolic link, still matches the registry.
 
 - **The new backup is kept.** The backup just published always counts as the first of the 30 and is never deleted by its own publication. The others are ordered by creation time, which shows which are oldest only while none of them is newer than the backup just made. When one is newer (the clock was set back, or ran ahead earlier) and a backup would be pruned, nothing is deleted and a retention warning is reported, until the clock again passes every registered creation time.
 - **Count, not time.** Retention keeps 30 backups, whatever their dates, independently of the 30-day trash. Explicit, pre-migration and safety backups count like daily ones.
-- **Never deleted:** files that are not in the registry, files whose content changed after registration, files that are not regular files, names outside the pattern, and anything outside the folder.
-- **Changed or unsafe entries** are removed from the registry, their files are left in place, and a retention warning is reported.
+- **Never deleted:** files that are not in the registry, files whose content changed after registration, files that are not regular files, names outside the pattern, files whose entry has a creation time before 1970 or after 9999, and anything outside the folder.
+- **Changed or unsafe entries**, including entries with a creation time before 1970 or after 9999, are removed from the registry, their files are left in place, and a retention warning is reported. Such a time therefore never sorts before every real backup or holds back pruning as a clock set back would.
 - **Missing files** are removed from the registry silently: the person deleted them.
 - **Failures** to inspect, delete or rewrite the registry keep the affected entries and report a retention warning.
 
@@ -184,6 +186,8 @@ Backups go to a folder the person chooses in the desktop app with the native mac
 The app never uploads backups. If the person chooses a folder synced by iCloud Drive, Dropbox or a similar service, that service copies the encrypted files; that is the person's choice. Temporary files hold ciphertext only.
 
 Choosing another folder leaves earlier backups where they are. Listing and pruning apply only to the current folder.
+
+**Copy before a restore (desktop app).** A restore first copies the encrypted backup into a private file in the application data folder, so that the safety backup's pruning cannot remove it midway. Someone else who can write to the backup folder could replace a listed backup after it was listed, so the copy opens it without following a symbolic link and without waiting for a writer of a named pipe, and copies only a regular file. A file picked in the open dialog may be reached through a symbolic link, but must also be a regular file. The copy stops once it passes 2 GiB, more than any backup that can be restored, so a file that keeps growing cannot fill the startup disk. Each refusal fails the restore at once, leaves no copy behind and leaves the journal unchanged.
 
 ## Passphrase
 
@@ -222,6 +226,9 @@ If the backup cannot be made, the journal stays at its earlier version, unchange
 | Verification fails | The backup fails as a validation failure and its temporary file is removed. |
 | Registration fails | The published file is removed and the backup fails. |
 | Registry damaged or from a newer version | `backupRegistry` before any snapshot; listing reports the same error and nothing is deleted. |
+| Registry replaced by a symbolic link, a named pipe, a device or a file larger than 1 MiB | `backupRegistry` at once, without reading through it or waiting for a writer; nothing is deleted. |
+| Registered creation time before 1970 or after 9999 | The entry is not listed; pruning forgets it with a retention warning and leaves its file in place. |
+| Backup to restore replaced by a symbolic link, a named pipe or a device, or growing past 2 GiB while it is copied (desktop app) | The restore fails at once, leaves no copy behind and the journal is unchanged. A picked file may be a symbolic link to a regular file. |
 | Clock behind a registered backup | The new backup is kept; when pruning is due, nothing is deleted and a retention warning is reported. |
 | Pruning cannot complete safely | Retention warning; the new backup is still valid. |
 | Live journal damaged | Reads and backups report `damaged`; a validated backup can replace the journal. |
@@ -276,6 +283,8 @@ The `journal-core` tests exercise this contract with real temporary SQLite datab
 | Content deleted before a backup is not in it | `recovery.rs`: `backups_exclude_content_deleted_before_they_were_made` |
 | Daily schedule, catch-up and pending states; no success recorded on failure | `recovery.rs`: `daily_backups_catch_up_current_state_without_inventing_closed_days`, `failed_daily_backup_records_no_success` |
 | Registry listing rules and damaged registries | `recovery.rs`: `listing_reports_only_registered_backups_that_still_exist` |
+| A registry that is a named pipe, a symbolic link or larger than 1 MiB is refused at once; entries with a creation time outside 1970 to 9999 are never listed or deleted, and do not stop pruning | `recovery.rs`: `a_named_pipe_in_place_of_the_registry_is_refused_without_waiting_for_a_writer`, `a_registry_replaced_by_a_symbolic_link_is_refused_and_never_followed`, `a_registry_larger_than_one_mebibyte_is_refused`, `backups_registered_with_an_impossible_creation_time_are_unlisted_and_never_pruned` |
+| The desktop app's copy before a restore refuses links in place of a registered backup, named pipes, devices and folders, and stops at its size limit | `apps/desktop/src-tauri/src/state/restore.rs`: `the_private_copy_follows_a_link_only_for_a_picked_file`, `the_private_copy_refuses_a_named_pipe_without_waiting_for_a_writer`, `the_private_copy_refuses_devices_and_folders`, `the_private_copy_stops_at_its_size_limit` |
 | Pre-migration backup required; failed migration leaves the journal intact | `migration.rs`, `schema.rs` |
 | Migration of frozen version-1 content, and frozen version-2 content still loading | `migration.rs`: `existing_journal_waits_for_recovery_then_migrates_with_nullable_progress`, `frozen_current_version_payload_still_loads_with_every_field` |
 | Damaged pages, headers and schemas reported as `damaged`, never changed, and replaceable from a backup | `damaged.rs` |

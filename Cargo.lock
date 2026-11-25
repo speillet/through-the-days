@@ -2305,6 +2305,7 @@ dependencies = [
  "age",
  "chrono",
  "chrono-tz",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",
@@ -4633,6 +4634,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "journal-core",
+ "libc",
  "rusqlite",
  "security-framework",
  "serde",

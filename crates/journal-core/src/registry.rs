@@ -3,16 +3,22 @@
 //! Only files listed here were verified by this application after encryption. Listing and
 //! pruning trust nothing else in the folder, and pruning deletes a file only when its name is a
 //! backup name and its SHA-256 digest still matches the registered one.
+//!
+//! Others may be able to write to the folder too, so its files are read only as regular files,
+//! never through a symbolic link, and the registry only up to [`MAXIMUM_REGISTRY_BYTES`].
 
 use crate::{
     Error,
-    fsutil::{TEMPORARY_PREFIX, backup_folder_error, parse_json_object, write_atomically},
+    fsutil::{
+        TEMPORARY_PREFIX, backup_folder_error, open_regular_file, parse_json_object,
+        write_atomically,
+    },
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
-    fs::{self, File},
+    fs,
     io::{self, Read},
     path::Path,
 };
@@ -22,6 +28,14 @@ pub(crate) const REGISTRY_FILE: &str = ".through-the-days-backups.json";
 const REGISTRY_VERSION: u32 = 1;
 /// Number of newest validated backups kept by pruning (D-009).
 pub(crate) const RETAINED_BACKUPS: usize = 30;
+/// Largest registry read: room for thousands of entries, where retention keeps about 30.
+const MAXIMUM_REGISTRY_BYTES: u64 = 1 << 20;
+/// Latest creation time of a registered backup, 9999-12-31T23:59:59Z in Unix seconds.
+///
+/// No backup was made after it or before 1970. Such an entry is treated like an unsafe name, so
+/// it can neither sort before every real backup nor hold back pruning, and every listed time is
+/// one the interface can show as a date.
+const LATEST_CREATION_TIME: i64 = 253_402_300_799;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -40,6 +54,14 @@ pub(crate) struct Registered {
     pub(crate) sha256: String,
 }
 
+impl Registered {
+    /// Whether this entry can describe a backup this application published: a backup file name
+    /// inside the folder and a creation time from 1970 to the end of year 9999.
+    fn is_safe(&self) -> bool {
+        is_backup_name(&self.name) && (0..=LATEST_CREATION_TIME).contains(&self.created_at)
+    }
+}
+
 /// A validated backup available in the chosen folder.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,15 +76,16 @@ pub struct BackupRecord {
 /// Lists the registered validated backups whose file still exists in `folder`, newest first.
 ///
 /// A folder without a registry, including a folder that is currently unavailable, has no
-/// validated backups. A damaged registry, or one with a newer registry version, is
-/// [`Error::BackupRegistry`]; a registry the folder does not let this app read is
-/// [`Error::BackupFolder`].
+/// validated backups. A damaged registry, one with a newer registry version, or anything but a
+/// regular file of at most 1 MiB in its place, is [`Error::BackupRegistry`]; a registry the
+/// folder does not let this app read is [`Error::BackupFolder`]. Entries with an unsafe name or
+/// a creation time outside 1970 to 9999 are not listed.
 pub fn list_backups(folder: &Path) -> Result<Vec<BackupRecord>, Error> {
     let mut backups = read(folder)?;
     sort_newest_first(&mut backups);
     Ok(backups
         .into_iter()
-        .filter(|backup| is_backup_name(&backup.name))
+        .filter(Registered::is_safe)
         .filter_map(|backup| {
             let metadata = fs::symlink_metadata(folder.join(&backup.name)).ok()?;
             metadata.is_file().then_some(BackupRecord {
@@ -90,9 +113,10 @@ pub(crate) fn register(folder: &Path, backup: Registered) -> Result<(), Error> {
 /// clock was set back, or ran ahead earlier) and pruning is due, nothing is deleted and a warning
 /// is reported.
 ///
-/// Entries whose file is gone are forgotten. Entries with an unsafe name, a non-regular file or
-/// a changed digest are forgotten without touching the file: they are no longer backups this
-/// application manages. Nothing outside the registry is ever deleted.
+/// Entries whose file is gone are forgotten. Entries with an unsafe name, a creation time
+/// outside 1970 to 9999, a non-regular file or a changed digest are forgotten without touching
+/// the file: they are no longer backups this application manages. Nothing outside the registry
+/// is ever deleted.
 pub(crate) fn prune(folder: &Path, published: &str, published_at: i64) -> bool {
     let Ok(mut backups) = read(folder) else {
         return true;
@@ -107,7 +131,7 @@ pub(crate) fn prune(folder: &Path, published: &str, published_at: i64) -> bool {
     let mut kept = Vec::with_capacity(backups.len());
     let mut existing = Vec::with_capacity(backups.len());
     for backup in backups {
-        if !is_backup_name(&backup.name) {
+        if !backup.is_safe() {
             (warning, changed) = (true, true);
             continue;
         }
@@ -192,9 +216,13 @@ pub(crate) fn remove_stale_temporaries(folder: &Path) {
     }
 }
 
-/// Lowercase hexadecimal SHA-256 digest of a file in the backup folder.
+/// Lowercase hexadecimal SHA-256 digest of a regular file in the backup folder.
+///
+/// Anything else in its place, such as a symbolic link to a device, is [`Error::Backup`].
 pub(crate) fn file_digest(path: &Path) -> Result<String, Error> {
-    let mut source = File::open(path).map_err(|error| backup_folder_error(&error))?;
+    let mut source = open_regular_file(path)
+        .map_err(|error| backup_folder_error(&error))?
+        .ok_or(Error::Backup)?;
     let mut digest = Sha256::new();
     let mut buffer = vec![0_u8; 64 * 1024];
     loop {
@@ -211,17 +239,24 @@ pub(crate) fn file_digest(path: &Path) -> Result<String, Error> {
 
 /// Reads the registered backups of `folder`; a folder without a registry has none.
 ///
-/// Invalid JSON, unknown fields, another registry version or a directory in the registry's
-/// place are [`Error::BackupRegistry`]. Any other failure to read it is [`Error::BackupFolder`].
+/// Invalid JSON, unknown fields, another registry version, more than [`MAXIMUM_REGISTRY_BYTES`],
+/// or anything but a regular file in the registry's place (a folder, a symbolic link, a named
+/// pipe or a device) are [`Error::BackupRegistry`]. Any other failure to read it is
+/// [`Error::BackupFolder`].
 pub(crate) fn read(folder: &Path) -> Result<Vec<Registered>, Error> {
-    let bytes = match fs::read(folder.join(REGISTRY_FILE)) {
-        Ok(bytes) => bytes,
+    let file = match open_regular_file(&folder.join(REGISTRY_FILE)) {
+        Ok(Some(file)) => file,
+        Ok(None) => return Err(Error::BackupRegistry),
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) if error.kind() == io::ErrorKind::IsADirectory => {
-            return Err(Error::BackupRegistry);
-        }
         Err(_) => return Err(Error::BackupFolder),
     };
+    let mut bytes = Vec::new();
+    file.take(MAXIMUM_REGISTRY_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| Error::BackupFolder)?;
+    if bytes.len() as u64 > MAXIMUM_REGISTRY_BYTES {
+        return Err(Error::BackupRegistry);
+    }
     let registry: RegistryFile = parse_json_object(&bytes, Error::BackupRegistry)?;
     if registry.version != REGISTRY_VERSION {
         return Err(Error::BackupRegistry);

@@ -14,7 +14,7 @@ use journal_core::{Error, Journal, erase_journal_files, list_backups, verify_bac
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File, OpenOptions},
-    io,
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
@@ -31,6 +31,15 @@ pub enum RestoreSource {
     Registered { name: String },
     /// The file chosen with `choose_restore_file`.
     Picked,
+}
+
+impl RestoreSource {
+    /// Whether the backup file may be reached through a symbolic link. A picked file is the one
+    /// the person chose, through a link or not. A registered name must be the file that the
+    /// folder lists, never a link that someone else who can write to the folder put in its place.
+    fn follows_links(&self) -> bool {
+        matches!(self, Self::Picked)
+    }
 }
 
 /// The backup file chosen in the native dialog, as `PickedBackup` in `api/types.ts`.
@@ -103,10 +112,11 @@ impl Core {
             }
             StartupState::NeedsMigration => return Err(CommandError::not_ready()),
         }
-        let source = self.restore_source(&source)?;
+        let path = self.restore_source(&source)?;
         // The safety backup can prune the oldest registered backup, which may be the one being
         // restored, so the restore reads a private copy (ciphertext only) taken beforehand.
-        let staged = StagedCopy::of(&source, &self.paths.data_dir).map_err(|_| Error::Restore)?;
+        let staged = StagedCopy::of(&path, source.follows_links(), &self.paths.data_dir)
+            .map_err(|_| Error::Restore)?;
         verify_backup(staged.path(), passphrase)?;
         let safety_backup = self.safety_backup(without_safety_backup, now)?;
         let journal = self.journal.as_mut().ok_or_else(CommandError::not_ready)?;
@@ -137,8 +147,9 @@ impl Core {
         now: DateTime<Utc>,
     ) -> Result<RestoreOutcome, CommandError> {
         paths::create_private_dir(&self.paths.data_dir).map_err(|_| Error::Storage)?;
-        let source = self.restore_source(source)?;
-        let staged = StagedCopy::of(&source, &self.paths.data_dir).map_err(|_| Error::Restore)?;
+        let path = self.restore_source(source)?;
+        let staged = StagedCopy::of(&path, source.follows_links(), &self.paths.data_dir)
+            .map_err(|_| Error::Restore)?;
         verify_backup(staged.path(), passphrase)?;
         let set_aside =
             SetAside::move_journal(&self.paths.journal, now.timestamp()).map_err(|_| {
@@ -253,16 +264,57 @@ impl Core {
     }
 }
 
+/// Opens `path` for reading when it is a regular file.
+///
+/// Opening a named pipe never waits for a writer (`O_NONBLOCK`, which does not change how a
+/// regular file reads). A symbolic link in the file's place is followed only when
+/// `follow_links`; otherwise it fails to open (`O_NOFOLLOW`). A pipe, a device or a folder is
+/// refused once open, so reading the file can neither block nor go on without end.
+fn open_regular_file(path: &Path, follow_links: bool) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        let links = if follow_links { 0 } else { libc::O_NOFOLLOW };
+        std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NONBLOCK | links);
+    }
+    let file = options.open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(io::ErrorKind::InvalidInput.into());
+    }
+    Ok(file)
+}
+
+/// Copies `input` to `output`, failing once `input` holds more than `limit` bytes. At most one
+/// byte more than `limit` is copied.
+fn copy_at_most(input: impl Read, output: &mut impl Write, limit: u64) -> io::Result<()> {
+    if io::copy(&mut input.take(limit + 1), output)? > limit {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
+    Ok(())
+}
+
 /// A private copy of a backup file in the data folder, removed when dropped. It holds the
 /// encrypted file only, and its name lets launch and erasure clean up after a crash. Its prefix
 /// is not the temporary-file prefix, which a backup published into the same folder removes.
 struct StagedCopy(PathBuf);
 
 impl StagedCopy {
-    fn of(source: &Path, folder: &Path) -> io::Result<Self> {
+    /// Copies the backup at `source` into `folder`, as [`Self::at_most`] does for any backup.
+    fn of(source: &Path, follow_links: bool, folder: &Path) -> io::Result<Self> {
+        Self::at_most(source, follow_links, folder, MAXIMUM_BACKUP_BYTES)
+    }
+
+    /// Copies `source` into `folder` when it is a regular file of at most `limit` bytes.
+    ///
+    /// Someone else who can write to the backup folder can replace a backup after it was
+    /// listed. The source is opened as [`open_regular_file`] describes, and a file that grows
+    /// while it is copied fails one byte past `limit`, so the copy can never fill the disk. A
+    /// failed copy is removed.
+    fn at_most(source: &Path, follow_links: bool, folder: &Path, limit: u64) -> io::Result<Self> {
         static COPIES: AtomicU64 = AtomicU64::new(0);
-        let mut input = File::open(source)?;
-        if input.metadata()?.len() > MAXIMUM_BACKUP_BYTES {
+        let input = open_regular_file(source, follow_links)?;
+        if input.metadata()?.len() > limit {
             return Err(io::ErrorKind::InvalidData.into());
         }
         let nanos = SystemTime::now()
@@ -279,7 +331,7 @@ impl StagedCopy {
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
         let mut output = options.open(folder.join(&name))?;
         let staged = Self(folder.join(name));
-        io::copy(&mut input, &mut output)?;
+        copy_at_most(input, &mut output, limit)?;
         Ok(staged)
     }
 
@@ -297,7 +349,116 @@ impl Drop for StagedCopy {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, reason = "a failed unwrap is a failed test")]
 mod tests {
-    use super::{RestoreOutcome, RestoreSource, is_backup_name};
+    use super::{RestoreOutcome, RestoreSource, StagedCopy, copy_at_most, is_backup_name};
+    use std::{fs, io, os::unix::fs::symlink, path::Path, sync::mpsc, thread, time::Duration};
+
+    const BACKUP: &[u8] = b"Synthetic encrypted backup";
+
+    fn names_in(folder: &Path) -> Vec<String> {
+        let mut names: Vec<_> = fs::read_dir(folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// local-data-protection — Safe restore / Backup replaced before it is copied: a symbolic
+    /// link that replaced a registered backup is never followed by the private copy, while a
+    /// file the person picked may be reached through a link.
+    #[test]
+    fn the_private_copy_follows_a_link_only_for_a_picked_file() {
+        let backups = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let backup = backups.path().join("ttd-1795363200-synthetic.ttd.age");
+        fs::write(&backup, BACKUP).unwrap();
+        let link = backups.path().join("ttd-1795449600-link.ttd.age");
+        symlink(&backup, &link).unwrap();
+
+        let registered = RestoreSource::Registered {
+            name: "ttd-1795449600-link.ttd.age".into(),
+        };
+        assert!(!registered.follows_links());
+        assert!(StagedCopy::of(&link, false, data.path()).is_err());
+        assert!(names_in(data.path()).is_empty());
+
+        assert!(RestoreSource::Picked.follows_links());
+        let staged = StagedCopy::of(&link, true, data.path()).unwrap();
+        assert_eq!(fs::read(staged.path()).unwrap(), BACKUP);
+        drop(staged);
+        assert!(names_in(data.path()).is_empty());
+    }
+
+    /// local-data-protection — Safe restore / Backup replaced before it is copied: a named pipe
+    /// in a backup's place, which nothing writes to, is refused at once, instead of keeping the
+    /// restore waiting while it holds the journal.
+    #[test]
+    fn the_private_copy_refuses_a_named_pipe_without_waiting_for_a_writer() {
+        let backups = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let pipe = backups.path().join("ttd-1795449600-pipe.ttd.age");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .unwrap();
+        assert!(made.success());
+        let (sender, receiver) = mpsc::channel();
+        let folder = data.path().to_path_buf();
+        thread::spawn(move || {
+            let _ = sender.send(StagedCopy::of(&pipe, true, &folder).is_err());
+        });
+        assert_eq!(receiver.recv_timeout(Duration::from_secs(5)), Ok(true));
+        assert!(names_in(data.path()).is_empty());
+    }
+
+    /// local-data-protection — Safe restore / Backup replaced before it is copied: a device or a
+    /// folder in a backup's place is refused before anything is copied, even through a picked
+    /// link.
+    #[test]
+    fn the_private_copy_refuses_devices_and_folders() {
+        let backups = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let device = backups.path().join("ttd-1795449600-device.ttd.age");
+        symlink("/dev/zero", &device).unwrap();
+        for (source, follow_links) in [
+            (device.as_path(), false),
+            (device.as_path(), true),
+            (Path::new("/dev/zero"), true),
+            (backups.path(), true),
+        ] {
+            assert!(
+                StagedCopy::of(source, follow_links, data.path()).is_err(),
+                "{}",
+                source.display()
+            );
+        }
+        assert!(names_in(data.path()).is_empty());
+    }
+
+    /// local-data-protection — Safe restore / Backup replaced before it is copied: the private
+    /// copy stops at its size limit. A larger file is not copied, and a source that never ends,
+    /// or keeps growing while it is copied, fails one byte past the limit.
+    #[test]
+    fn the_private_copy_stops_at_its_size_limit() {
+        let backups = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let backup = backups.path().join("ttd-1795363200-synthetic.ttd.age");
+        fs::write(&backup, BACKUP).unwrap();
+        let limit = BACKUP.len() as u64;
+        let staged = StagedCopy::at_most(&backup, false, data.path(), limit).unwrap();
+        assert_eq!(fs::read(staged.path()).unwrap(), BACKUP);
+        drop(staged);
+        assert!(StagedCopy::at_most(&backup, false, data.path(), limit - 1).is_err());
+        assert!(names_in(data.path()).is_empty());
+
+        let mut copied = Vec::new();
+        let endless = copy_at_most(io::repeat(7), &mut copied, 16).unwrap_err();
+        assert_eq!(endless.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(copied.len(), 17);
+        let mut exact = Vec::new();
+        copy_at_most(BACKUP, &mut exact, limit).unwrap();
+        assert_eq!(exact, BACKUP);
+    }
 
     #[test]
     fn registered_names_cannot_leave_the_backup_folder() {

@@ -111,6 +111,15 @@ describe('time zones', () => {
     expect(formatDateTime(instant, 'Not/AZone')).toBe('22 November 2026 at 13:05');
   });
 
+  it('shows a time that no date can describe as an unknown date instead of failing', () => {
+    // 9,999,999,999,999 seconds is about 317,000 years from now, beyond any JavaScript date.
+    expect(formatDateTime(9_999_999_999_999, 'Europe/Paris')).toBe('Unknown date');
+    expect(formatDateTime(9_999_999_999_999, 'Not/AZone')).toBe('Unknown date');
+    expect(formatDateTime(Number.NaN, 'Europe/Paris')).toBe('Unknown date');
+    // The last second of year 9999, the latest time a registered backup can have, still shows.
+    expect(formatDateTime(253_402_300_799, 'UTC')).toBe('31 December 9999 at 23:59');
+  });
+
   it('accepts IANA names the journal can parse', () => {
     expect(isValidTimeZone('Europe/Paris')).toBe(true);
     expect(isValidTimeZone('UTC')).toBe(true);

@@ -21,6 +21,10 @@ serde_json = "1"
 chrono = "0.4"
 zeroize = "1"
 
+# Copying a backup to restore without following symbolic links or waiting for named pipes.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
 
