@@ -4,6 +4,7 @@
 
 import type { Page } from '@playwright/test';
 import type { Entry } from '../src/api/types';
+import { documentText as plainText } from '../src/domain/entry';
 import { expect, openView, seedJournal, storedJournal, tabTo, test } from './fixtures';
 
 const TODAY = '2026-11-22';
@@ -20,10 +21,9 @@ function checkIn(page: Page) {
   return page.getByRole('region', { name: 'Check-in' });
 }
 
+/** The saved writing as plain text, extracted as journal-core's document_text does. */
 function documentText(entry: Entry): string {
-  const walk = (node: Entry['document']): string =>
-    typeof node.text === 'string' ? node.text : (node.content ?? []).map(walk).join('\n');
-  return walk(entry.document);
+  return plainText(entry.document);
 }
 
 async function savedEntries(page: Page): Promise<Entry[]> {

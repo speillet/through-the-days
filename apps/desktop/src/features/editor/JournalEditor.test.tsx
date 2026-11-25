@@ -141,6 +141,19 @@ describe('journal editor schema', () => {
     expect(markdown).toContain('> A fictional quote');
   });
 
+  it('writes a stored heading level outside 1 to 6 at the nearest level instead of failing', () => {
+    // Only a crafted document holds such a level: journal-core does not check attributes.
+    const heading = (level: number, text: string): JSONContent => ({
+      type: 'heading',
+      attrs: { level },
+      content: [{ type: 'text', text }],
+    });
+    const editor = headlessEditor(doc(heading(-1, 'Below'), heading(9, 'Above'), heading(3, 'Kept')));
+    expect(editor.getMarkdown()).toBe('# Below\n\n###### Above\n\n### Kept');
+    // Only the Markdown changes; the document keeps the stored levels.
+    expect(editor.getJSON().content?.map((block) => block.attrs?.level)).toEqual([-1, 9, 3]);
+  });
+
   it('keeps plain paragraphs that look like Markdown as plain text, without HTML entities', () => {
     const lines = ['# Monday', '- milk', '+ eggs', '1. call a friend', '> a quote', '    indented', 'Tom & Jerry <3', 'a > b'];
     const editor = headlessEditor(doc(...lines.map((line) => paragraph(line))));
@@ -501,6 +514,39 @@ describe('documents this version cannot edit exactly', () => {
     expect(editor).toHaveTextContent('Synthetic kept words');
     expect(editor).toHaveTextContent('Synthetic cell');
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps a partly bold word whole in the plain-text copy of a document it cannot show', () => {
+    render(
+      <JournalEditor
+        initialContent={doc(
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'A peaceful ' },
+              { type: 'text', text: 'after', marks: [{ type: 'bold' }] },
+              { type: 'text', text: 'noon' },
+              { type: 'hardBreak' },
+              { type: 'text', text: 'by the canal.' },
+            ],
+          },
+          { type: 'table', content: [paragraph('Synthetic cell')] },
+        )}
+        label="Synthetic journal"
+        placeholder="Write freely."
+        showToolbar={false}
+        showWordCount={false}
+        onChange={vi.fn()}
+      />,
+    );
+    const editor = screen.getByRole('textbox', { name: 'Synthetic journal' });
+    expect(editor).toHaveAttribute('aria-readonly', 'true');
+    // Each line of the text is one paragraph; formatting adds none.
+    expect(Array.from(editor.querySelectorAll('p'), (line) => line.textContent)).toEqual([
+      'A peaceful afternoon',
+      'by the canal.',
+      'Synthetic cell',
+    ]);
   });
 
   it('edits exactly the documents the editor represents without loss', () => {

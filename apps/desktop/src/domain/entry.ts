@@ -58,11 +58,20 @@ function structuredCopy<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-/** Plain text of a document, joining block children with new lines (as journal-core does). */
+/** Node types whose content is inline: their text runs and line breaks form the block's text. */
+const TEXT_BLOCK_TYPES: ReadonlySet<string> = new Set(['paragraph', 'heading', 'codeBlock']);
+
+/**
+ * Plain text of a document, as journal-core's document_text extracts it: the text runs
+ * of a paragraph, heading or code block joined as written, so formatting part of a word
+ * never splits it, a hard break as a new line, and one line break between blocks.
+ */
 export function documentText(node: JSONContent | null | undefined): string {
   if (!node) return '';
   if (typeof node.text === 'string') return node.text;
-  return Array.isArray(node.content) ? node.content.map(documentText).join('\n') : '';
+  if (node.type === 'hardBreak') return '\n';
+  if (!Array.isArray(node.content)) return '';
+  return node.content.map(documentText).join(TEXT_BLOCK_TYPES.has(node.type ?? '') ? '' : '\n');
 }
 
 /** Blank by Rust's definition: only Unicode White_Space characters. */

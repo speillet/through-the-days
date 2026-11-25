@@ -77,6 +77,8 @@ export const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = Object.freeze
     "This folder's list of backups is damaged or was made by a newer version. Choose a different backup folder; the backups already in it can still be restored with Choose a backup file…",
   backupFolder:
     "The backup folder is not available or can't be written to. Reconnect the drive or choose another folder.",
+  backupUnavailable:
+    'The backup is not available. Reconnect the drive that holds it or choose another backup. Your current journal is unchanged.',
   safetyBackupFailed:
     'A safety backup of your current journal could not be made, so nothing was restored. If your current journal is damaged, you can restore without a safety backup.',
   notReady: 'The journal is not open yet. Finish the step on screen first.',
@@ -104,7 +106,8 @@ export interface MemoryApiOptions {
    * Simulates the state found at launch; by default it follows the stored journal (ready, or
    * failed when the stored journal is damaged). "failed" is a passing failure that
    * retryStartup clears; "unsupported" is a journal this version cannot open, which stays
-   * until a restore or an erase replaces it; "needsMigration" waits for migrateJournal.
+   * until a restore or an erase replaces it; "needsMigration" waits for migrateJournal, unless
+   * a restore or an erase replaces the older journal first.
    */
   startup?: Partial<StartupStatus>;
 }
@@ -408,7 +411,14 @@ export const DOCUMENT_NODE_TYPES: ReadonlySet<string> = new Set([
 ]);
 export const DOCUMENT_MARK_TYPES: ReadonlySet<string> = new Set(['bold', 'italic', 'strike', 'code', 'underline']);
 
-/** Only documents the editor can open again: known nodes and marks, no empty text, bounded nesting. */
+/**
+ * Mirrors journal-core's validate_node: every node has a node type of the editor schema and every
+ * mark a mark type of it (so no links), each text node has non-empty text, `marks` and `content`
+ * are arrays, and nesting stays within MAX_DOCUMENT_DEPTH levels. Like it, this checks neither
+ * which nodes the schema allows inside which nor attributes, so it does not prove that the editor
+ * can show a document exactly: canEditExactly (features/editor/content.ts) guards that fidelity,
+ * and the editor opens any other document read-only.
+ */
 function validateNode(node: unknown, depth: number): void {
   if (depth > MAX_DOCUMENT_DEPTH) throw failure('document');
   if (!isRecord(node) || typeof node.type !== 'string' || !DOCUMENT_NODE_TYPES.has(node.type)) throw failure('document');
@@ -595,6 +605,9 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
       folderPath: plan.folderChosen ? SYNTHETIC_BACKUP_PATH : null,
       passphraseAvailable: sessionFingerprint !== null,
       remembered: plan.rememberedFingerprint !== null,
+      // The simulated Keychain answers at once and never refuses a change.
+      keychainPending: false,
+      keychainWarning: null,
       lastSuccessDate: plan.lastSuccessDate,
       lastSuccessAt: plan.lastSuccessAt,
       lastError: lastError ? { ...lastError } : null,
@@ -940,7 +953,6 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
     },
 
     async restoreBackup(source: RestoreSource, passphrase, withoutSafetyBackup = false): Promise<RestoreOutcome> {
-      if (startup.state === 'needsMigration') throw failure('notReady');
       const loaded = load();
       const { state } = loaded;
       let name: string | null;
@@ -950,14 +962,16 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
       } else {
         name = pickedBackup;
       }
-      // The chosen backup is always verified first: a wrong passphrase changes nothing.
+      // The chosen backup is always verified first: a backup that is gone, or a wrong passphrase, changes nothing.
       const backup = state.folder.find((item) => item.name === name);
-      if (!backup || typeof passphrase !== 'string' || fingerprint(passphrase) !== backup.fingerprint) {
+      if (!backup) throw failure('backupUnavailable');
+      if (typeof passphrase !== 'string' || fingerprint(passphrase) !== backup.fingerprint) {
         throw failure('restore');
       }
 
       if (startup.state !== 'ready') {
-        // No open journal: keep the unreadable one aside (never deleted) and restore into a fresh one.
+        // No open journal: keep the one that could not be opened or upgraded aside (never deleted)
+        // and restore into a fresh one.
         const setAside = `journal.unreadable-${nowUnix()}.sqlite`;
         state.setAside.push({ name: setAside, journal: loaded.damagedJournal ?? copy(state.journal) });
         loaded.damagedJournal = undefined;

@@ -154,7 +154,7 @@ impl Journal {
         revision: u32,
     ) -> Result<WeeklyReview, Error> {
         let start = week_start(date)?;
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let mut stored = self.stored_review(&start)?;
         if stored.revision != revision {
             return Err(Error::Conflict);
@@ -175,7 +175,7 @@ impl Journal {
     pub fn generate_weekly_summary(&self, date: &str) -> Result<WeeklyReview, Error> {
         let request = self.week_request(date)?;
         let start = request.from.as_deref().ok_or(Error::Date)?;
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let mut stored = self.stored_review(start)?;
         stored.revision = stored.revision.max(1);
         let report = self.reading_report(&request)?;
@@ -226,7 +226,7 @@ impl Journal {
 
     pub fn save_milestone(&self, mut milestone: Milestone) -> Result<Milestone, Error> {
         milestone.validate()?;
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let stored: Option<String> = transaction
             .query_row(
                 "SELECT payload FROM timeline_milestones WHERE id=?1",
@@ -244,6 +244,8 @@ impl Journal {
         Ok(milestone)
     }
 
+    /// Deletes a milestone at `revision`. Its title and notes leave the journal files as with
+    /// [`Journal::permanently_delete`].
     pub fn delete_milestone(&self, id: &str, revision: u32) -> Result<(), Error> {
         if self.connection.execute(
             "DELETE FROM timeline_milestones WHERE id=?1 AND json_extract(payload,'$.revision')=?2",
@@ -252,6 +254,7 @@ impl Journal {
         {
             return Err(Error::Conflict);
         }
+        self.checkpoint();
         Ok(())
     }
 }

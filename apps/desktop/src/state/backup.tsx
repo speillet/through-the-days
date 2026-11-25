@@ -2,7 +2,8 @@
 // purge expired trash and run the daily backup (D-007: catch up at launch, then
 // daily while active), immediately, every ten minutes, on window focus and when
 // the journal date changes. Purging first keeps trash past its 30 days out of the
-// backup made right after.
+// backup made right after. While the launch still waits for macOS Keychain to
+// return the remembered passphrase, the routine looks again every few seconds.
 
 import {
   createContext,
@@ -19,6 +20,8 @@ import type { BackupStatus, CommandError } from '../api/types';
 import { useToday } from './clock';
 
 export const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
+/** How soon the routine looks again while the launch waits for macOS Keychain. */
+export const KEYCHAIN_RECHECK_MS = 3_000;
 
 export interface BackupContextValue {
   /** Null until the first status arrives. */
@@ -37,9 +40,11 @@ const BackupContext = createContext<BackupContextValue | null>(null);
 export function BackupProvider({
   children,
   intervalMs = MAINTENANCE_INTERVAL_MS,
+  keychainRecheckMs = KEYCHAIN_RECHECK_MS,
 }: {
   children?: ReactNode;
   intervalMs?: number;
+  keychainRecheckMs?: number;
 }) {
   const api = useApi();
   const { today } = useToday();
@@ -98,6 +103,14 @@ export function BackupProvider({
       window.removeEventListener('focus', onFocus);
     };
   }, [runMaintenance, intervalMs]);
+
+  // A Keychain prompt can wait behind the window. Each status that still reports it
+  // schedules another look, so the due backup runs soon after the prompt is answered.
+  useEffect(() => {
+    if (!status?.keychainPending) return undefined;
+    const timer = window.setTimeout(() => void runMaintenance(), keychainRecheckMs);
+    return () => window.clearTimeout(timer);
+  }, [status, runMaintenance, keychainRecheckMs]);
 
   const value = useMemo(
     () => ({ status, error, refresh, setStatus, runMaintenance }),

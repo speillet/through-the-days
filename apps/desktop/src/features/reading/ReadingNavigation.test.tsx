@@ -175,3 +175,83 @@ it('retains a journal Book selection when shared filters change elsewhere', asyn
   expect(await screen.findByRole('searchbox', { name: 'Search journal' })).toHaveValue('evening');
   expect(await screen.findByText('Synthetic scoped evening.')).toBeInTheDocument();
 });
+
+it('keeps Trends and its ending date when a typed year gains a fifth digit', async () => {
+  const api = await journal();
+  render(<App api={api} initialView="trends" />);
+  const ending = await screen.findByLabelText('Ending on');
+  expect(await screen.findByText('Monday 9 November 2026 to Sunday 22 November 2026')).toBeInTheDocument();
+  // Date fields accept six-digit years: "2026" and a stray "1" give 20261-11-24.
+  fireEvent.change(ending, { target: { value: '20261-11-24' } });
+  expect(screen.getByRole('heading', { level: 1, name: 'Trends' })).toBeInTheDocument();
+  expect(ending).toHaveValue('2026-11-22');
+  expect(screen.getByText('Monday 9 November 2026 to Sunday 22 November 2026')).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('stops day, week, range and month steps at 31 December 9999 and keeps that date', async () => {
+  const api = await journal();
+  render(<App api={api} initialView="trends" />);
+  const user = userEvent.setup();
+  fireEvent.change(await screen.findByLabelText('Ending on'), { target: { value: '9999-12-31' } });
+  expect(await screen.findByText('Saturday 18 December 9999 to Friday 31 December 9999')).toBeInTheDocument();
+
+  await user.click(screen.getByTitle('Friday 31 December 9999'));
+  expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Friday 31 December 9999');
+  expect(screen.getByRole('button', { name: 'Next day' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Previous day' })).toBeEnabled();
+
+  await user.click(screen.getByRole('button', { name: 'Weekly Review' }));
+  expect(await screen.findByRole('button', { name: 'Next week' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Previous week' })).toBeEnabled();
+
+  await user.click(screen.getByRole('button', { name: 'The Path So Far' }));
+  expect(await screen.findByRole('button', { name: 'Later range' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Earlier range' })).toBeEnabled();
+  await user.click(screen.getByRole('button', { name: '1 year' }));
+  expect(screen.getByRole('button', { name: 'Later range' })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: 'Custom range' }));
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: '20261-11-24' } });
+  expect(screen.getByLabelText('To')).toHaveValue('9999-12-31');
+  expect(screen.getByRole('button', { name: 'Later range' })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: '30 days' }));
+
+  await user.click(screen.getByRole('button', { name: 'Calendar' }));
+  expect(await screen.findByRole('grid', { name: 'December 9999' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled();
+  expect(screen.getByRole('heading', { level: 2, name: 'Friday 31 December 9999' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Trends' }));
+  expect(await screen.findByLabelText('Ending on')).toHaveValue('9999-12-31');
+});
+
+it('stops one-year and custom timelines and the weekly review at 1 January 0001', async () => {
+  const api = await journal();
+  render(<App api={api} initialView="trends" />);
+  const user = userEvent.setup();
+  fireEvent.change(await screen.findByLabelText('Ending on'), { target: { value: '0001-11-24' } });
+  await user.click(screen.getByRole('button', { name: 'The Path So Far' }));
+  await user.click(await screen.findByRole('button', { name: '1 year' }));
+  expect(screen.getByRole('button', { name: 'Earlier range' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Later range' })).toBeEnabled();
+
+  // A custom range stops where its From date would pass 1 January 0001; a typed From with a
+  // fifth year digit is ignored.
+  await user.click(screen.getByRole('button', { name: 'Custom range' }));
+  fireEvent.change(screen.getByLabelText('From'), { target: { value: '0001-01-01' } });
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: '0001-01-10' } });
+  expect(screen.getByText(/^Monday 1 January 1 to Wednesday 10 January 1\./)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Earlier range' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Later range' })).toBeEnabled();
+  fireEvent.change(screen.getByLabelText('From'), { target: { value: '20261-11-24' } });
+  expect(screen.getByLabelText('From')).toHaveValue('0001-01-01');
+  expect(screen.getByRole('button', { name: 'Earlier range' })).toBeDisabled();
+
+  await user.click(screen.getByRole('button', { name: 'Trends' }));
+  fireEvent.change(await screen.findByLabelText('Ending on'), { target: { value: '0001-01-05' } });
+  await user.click(screen.getByRole('button', { name: 'Weekly Review' }));
+  expect(
+    await screen.findByRole('heading', { name: 'Monday 1 January 1 to Sunday 7 January 1' }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Previous week' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Next week' })).toBeEnabled();
+});

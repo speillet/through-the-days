@@ -104,6 +104,18 @@ describe('TodayProvider', () => {
     expect(await screen.findByText('Today is 2026-11-23')).toBeInTheDocument();
   });
 
+  it('refreshes when the page is shown again without the window regaining focus, as after the Mac wakes', async () => {
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const clock = setup(new Date('2026-11-22T21:00:00Z')); // 22:00 in Paris
+    await screen.findByText('Today is 2026-11-22');
+    visibility.mockReturnValue('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    clock.setNow(new Date('2026-11-23T06:00:00Z')); // 07:00 the next morning
+    visibility.mockReturnValue('visible');
+    fireEvent(document, new Event('visibilitychange'));
+    expect(await screen.findByText('Today is 2026-11-23')).toBeInTheDocument();
+  });
+
   it('follows a change of journal time zone', async () => {
     const clock = setup(new Date('2026-11-22T12:30:00Z')); // 13:30 Paris, 01:30 next day in Auckland
     await screen.findByText('Today is 2026-11-22');

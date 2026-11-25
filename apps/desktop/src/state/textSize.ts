@@ -1,6 +1,8 @@
 // Command-plus, Command-minus and Command-0 change the text size from anywhere in the
 // workspace, as in other Mac apps. The size is a display preference saved in the
-// journal and also offered in Settings, under Appearance.
+// journal and also offered in Settings, under Appearance. They do nothing while a modal
+// dialog is open: Restore and Erase replace the journal from such a dialog, and a size
+// saved meanwhile would carry the replaced journal's preferences into the new one.
 
 import { useEffect, useRef } from 'react';
 import { steppedTextScale } from '../domain/preferences';
@@ -33,6 +35,8 @@ export function useTextSizeShortcuts(): void {
       const step = textSizeStep(event);
       if (step === null) return;
       event.preventDefault();
+      // The rest of the workspace is inert behind a modal dialog; this listener is not.
+      if (document.querySelector('[aria-modal="true"]')) return;
       const next = steppedTextScale(target.current, step);
       if (next === target.current) return;
       target.current = next;

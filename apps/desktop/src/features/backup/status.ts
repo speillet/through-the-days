@@ -1,7 +1,7 @@
 // English wording for backup status, shared by the banner, Settings and the
 // startup gate. Nothing here says a backup succeeded unless the journal reported it.
 
-import type { BackupStatus } from '../../api/types';
+import type { BackupStatus, KeychainWarning } from '../../api/types';
 import { formatDateTime } from '../../domain/dates';
 
 /** journal-core's rule: at least 12 characters, counted as Unicode scalar values. */
@@ -58,6 +58,33 @@ export function passphraseText(status: BackupStatus): string {
   if (status.remembered) return 'Remembered in macOS Keychain on this Mac.';
   if (status.passphraseAvailable) return 'Entered for this session only. You’ll be asked again after the app restarts.';
   return 'Not entered in this session.';
+}
+
+/** How to remove a backup passphrase that macOS Keychain kept. */
+export const KEYCHAIN_ACCESS_HINT = 'You can delete it yourself in the Keychain Access app: search for “throughthedays”.';
+
+/** While the launch waits for macOS Keychain, whose prompt can open behind the window. */
+export const KEYCHAIN_PENDING_TEXT =
+  'Waiting for macOS Keychain: answer its prompt, which may be behind this window, to use your remembered backup passphrase.';
+
+/** The outcome of saving a passphrase that macOS Keychain did not follow; null when it did. */
+export function passphraseSavedWarning(warning: KeychainWarning | null): string | null {
+  switch (warning) {
+    case 'notRemembered':
+      return 'Passphrase saved for this session, but macOS Keychain could not remember it. The app will ask for it again after it restarts.';
+    case 'notReplaced':
+      return `Passphrase saved for this session, but macOS Keychain could not remember it. The app will ask for it again after it restarts. Keychain may still hold the passphrase it remembered before, which the app no longer uses. ${KEYCHAIN_ACCESS_HINT}`;
+    case 'notRemoved':
+      return `Passphrase saved for this session, but macOS Keychain could not remove the passphrase it may have remembered before. The app no longer uses that one. ${KEYCHAIN_ACCESS_HINT}`;
+    default:
+      return null;
+  }
+}
+
+/** The outcome of forgetting a passphrase that macOS Keychain could not remove; null when it did. */
+export function passphraseForgottenWarning(warning: KeychainWarning | null): string | null {
+  if (warning === null) return null;
+  return `The app forgot the passphrase and will ask for it when the next backup is due, but macOS Keychain could not remove it, so it may still be stored there. ${KEYCHAIN_ACCESS_HINT}`;
 }
 
 export function lastBackupText(status: BackupStatus, timeZone: string): string {

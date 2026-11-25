@@ -1,6 +1,8 @@
 // Today's journal date in the configured time zone. The journal is authoritative;
-// the value refreshes every minute, when the window regains focus and after the
-// time zone changes, so an app left open overnight moves on to the new date.
+// the value refreshes every minute, when the window regains focus, when the page is
+// shown again and after the time zone changes, so an app left open overnight moves
+// on to the new date. A window can stay focused while the Mac sleeps: waking then
+// sends no focus event, and the minute timer can take up to a minute to run again.
 // Entries that are already open keep their own chosen date.
 
 import {
@@ -71,10 +73,15 @@ export function TodayProvider({
   useEffect(() => {
     const timer = window.setInterval(() => void refresh(), intervalMs);
     const onFocus = () => void refresh();
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
     window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [refresh, intervalMs]);
 

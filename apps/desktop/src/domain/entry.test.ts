@@ -51,8 +51,50 @@ describe('entry helpers', () => {
         { type: 'paragraph' },
       ],
     };
-    expect(documentText(document)).toBe('Title\nOne \ntwo\n');
+    expect(documentText(document)).toBe('Title\nOne two\n');
     expect(documentText(EMPTY_DOCUMENT)).toBe('');
+  });
+
+  it('keeps a partly formatted word whole and separates only blocks and line breaks', () => {
+    // The fixture and text of document_text_keeps_formatted_words_whole_… in crates/journal-core/tests/journal.rs.
+    const document = {
+      type: 'doc',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 2 },
+          content: [
+            { type: 'text', text: 'Synthetic ' },
+            { type: 'text', text: 'title', marks: [{ type: 'italic' }] },
+          ],
+        },
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'A peaceful ' },
+            { type: 'text', text: 'after', marks: [{ type: 'bold' }] },
+            { type: 'text', text: 'noon' },
+            { type: 'hardBreak' },
+            { type: 'text', text: 'I felt ' },
+            { type: 'text', text: 'calm', marks: [{ type: 'bold' }] },
+            { type: 'text', text: ' today.' },
+          ],
+        },
+        {
+          type: 'bulletList',
+          content: [
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'One' }] }] },
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Two' }] }] },
+          ],
+        },
+        { type: 'horizontalRule' },
+        { type: 'codeBlock', content: [{ type: 'text', text: 'line one\nline two' }] },
+        { type: 'paragraph' },
+      ],
+    };
+    expect(documentText(document)).toBe(
+      'Synthetic title\nA peaceful afternoon\nI felt calm today.\nOne\nTwo\n\nline one\nline two\n',
+    );
   });
 
   it('treats only Unicode white space as blank', () => {
