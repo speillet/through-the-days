@@ -1,4 +1,5 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
+import type { Editor } from '@tiptap/core';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { JournalApi } from '../../api/client';
@@ -7,6 +8,7 @@ import type { Entry } from '../../api/types';
 import { formatLongDate } from '../../domain/dates';
 import { newDraft } from '../../domain/entry';
 import { discardAllSavers } from '../../state/autosave';
+import { renderWithProviders } from '../../test/render';
 import { PROTECTED_DOCUMENT_MESSAGE } from '../editor/JournalEditor';
 import {
   checkedScore,
@@ -24,6 +26,7 @@ import {
   typeInEditor,
   waitForSaved,
 } from './testing';
+import { TodayView } from './TodayView';
 
 afterEach(() => {
   discardAllSavers();
@@ -742,6 +745,128 @@ describe('Today: moving and trashing entries', () => {
     expect(textOf(trash[0].entry)).toContain('Synthetic: a draft to put away.');
     await waitFor(() => expect(slotTab('Morning')).toHaveTextContent('Not started'));
     expect(journalEditor()).toHaveTextContent('');
+  });
+});
+
+describe('Today: keyboard focus after a control goes away', () => {
+  /** Saves that fail like a full disk, and can be held until the test lets them through. */
+  function heldSaves(api: JournalApi) {
+    const control = { failing: false, held: null as Promise<void> | null };
+    const wrapped: JournalApi = {
+      ...api,
+      saveEntry: async (entry) => {
+        if (control.held) await control.held;
+        return control.failing
+          ? Promise.reject({ code: 'storage', message: ERROR_MESSAGES.storage })
+          : api.saveEntry(entry);
+      },
+    };
+    return { api: wrapped, control };
+  }
+
+  it('keeps focus on Try again while the save is retried, then returns it to the writing at its caret', async () => {
+    const user = userEvent.setup();
+    const journal = createJournal();
+    const { api, control } = heldSaves(journal.api);
+    await renderToday(api);
+    control.failing = true;
+    await typeInEditor(user, 'first second');
+    const alert = await screen.findByRole('alert');
+    // The person was revising after "first" when the save failed.
+    const editor = (journalEditor() as HTMLElement & { editor: Editor }).editor;
+    act(() => {
+      editor.commands.setTextSelection(6);
+    });
+
+    let release = () => {};
+    control.held = new Promise((resolve) => {
+      release = resolve;
+    });
+    await user.click(within(alert).getByRole('button', { name: 'Try again' }));
+    // While the journal answers, the notice stays with its button busy and focused.
+    const retry = within(screen.getByRole('alert')).getByRole('button', { name: 'Try again' });
+    expect(retry).toHaveAttribute('aria-busy', 'true');
+    expect(retry).toHaveFocus();
+
+    // The retry fails again: the notice and the focus on its button remain.
+    control.held = null;
+    act(() => release());
+    await waitFor(() => expect(retry).not.toHaveAttribute('aria-busy'));
+    expect(screen.getByText("Couldn't save")).toBeInTheDocument();
+    expect(retry).toHaveFocus();
+
+    control.failing = false;
+    await user.keyboard('{Enter}');
+    await waitForSaved();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(journalEditor()).toHaveFocus();
+    await user.keyboard('X');
+    expect(journalEditor()).toHaveTextContent('firstX second');
+  });
+
+  it('returns focus to the writing after the entry moves to another date and slot', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await api.saveEntry(draft('morning', DATE, 'Synthetic morning'));
+    await renderToday(api);
+    await user.click(screen.getByRole('button', { name: 'Change date or slot' }));
+    const dialog = screen.getByRole('dialog', { name: 'Change date or slot' });
+    await user.click(within(dialog).getByRole('button', { name: 'Friday 20 November 2026' }));
+    await user.click(within(dialog).getByRole('radio', { name: 'Evening' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Move entry' }));
+    const moved = await screen.findByRole('textbox', { name: 'Evening journal, Friday 20 November 2026' });
+    await waitFor(() => expect(moved).toHaveFocus());
+  });
+
+  it('returns focus to the writing after Reload saved version', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    const saved = await api.saveEntry(draft('morning', DATE, 'Synthetic: original.'));
+    await renderToday(api);
+    await api.saveEntry({ ...saved, document: { type: 'doc', content: [paragraph('Synthetic: changed elsewhere.')] } });
+    await typeInEditor(user, ' More words.');
+    const alert = await screen.findByRole('alert');
+    await user.click(within(alert).getByRole('button', { name: 'Reload saved version' }));
+    await waitFor(() => expect(journalEditor()).toHaveTextContent('Synthetic: changed elsewhere.'));
+    await waitFor(() => expect(journalEditor()).toHaveFocus());
+  });
+
+  it("returns focus to Try again while the day still can't be read, and to the writing once it opens", async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    const control = { failing: true };
+    const unreadable: JournalApi = {
+      ...api,
+      entriesOn: (date) =>
+        control.failing ? Promise.reject({ code: 'storage', message: ERROR_MESSAGES.storage }) : api.entriesOn(date),
+    };
+    renderWithProviders(<TodayView autosaveDelayMs={10} />, { api: unreadable });
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(ERROR_MESSAGES.storage);
+    await user.click(within(alert).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Try again' })).toHaveFocus());
+
+    control.failing = false;
+    await user.keyboard('{Enter}');
+    const editor = await screen.findByRole('textbox', { name: 'Morning journal, Sunday 22 November 2026' });
+    await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it('enters focus mode with the caret where the person left it', async () => {
+    const user = userEvent.setup();
+    const { api } = createJournal();
+    await renderToday(api);
+    await typeInEditor(user, 'first second');
+    const editor = (journalEditor() as HTMLElement & { editor: Editor }).editor;
+    act(() => {
+      editor.commands.setTextSelection(6);
+    });
+    await user.click(screen.getByRole('button', { name: 'Focus mode' }));
+    expect(journalEditor()).toHaveFocus();
+    await user.keyboard('X');
+    expect(journalEditor()).toHaveTextContent('firstX second');
+    await waitForSaved();
+    expect(textOf(await onlyEntry(api))).toBe('firstX second');
   });
 });
 

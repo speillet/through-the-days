@@ -36,6 +36,11 @@ The system SHALL communicate meaning beyond colour, support keyboard and VoiceOv
 - **WHEN** the person submits a new backup passphrase that is too short or does not match its confirmation, from the backup banner, Settings or the protected upgrade at startup
 - **THEN** nothing is sent to the journal, and focus moves to the first field to correct, the passphrase when it is too short and otherwise its confirmation, so VoiceOver reads that field's error.
 
+#### Scenario: Focus after a control goes away
+
+- **WHEN** the person moves an entry to another date or slot, reloads its saved version, or chooses Try again after Today could not open the day, and the control used goes away while the day opens again
+- **THEN** keyboard focus moves to the reopened writing, or back to Try again if the day still cannot be opened, instead of falling to the page itself.
+
 ### Requirement: Private defaults
 
 The system SHALL keep private content local by default and SHALL require a specific user-approved flow before sending or exporting any selected private data.

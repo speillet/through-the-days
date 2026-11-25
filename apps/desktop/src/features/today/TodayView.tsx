@@ -82,6 +82,7 @@ export function TodayView({ autosaveDelayMs, initialDate, initialSlot }: TodayVi
   const panelRef = useRef<HTMLDivElement>(null);
   const focusHeading = useRef(false);
   const focusEditor = useRef(false);
+  const retryRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -119,6 +120,14 @@ export function TodayView({ autosaveDelayMs, initialDate, initialSlot }: TodayVi
       workspaceRef.current?.focusEditor();
     }
   }, [ready]);
+
+  // The day could not be read after a control that went away asked for it: Try again takes the focus.
+  useEffect(() => {
+    if (!loadError || !(focusHeading.current || focusEditor.current)) return;
+    focusHeading.current = false;
+    focusEditor.current = false;
+    retryRef.current?.focus();
+  }, [loadError]);
 
   // Nothing is open on a day left over from before midnight: a new entry belongs to
   // today, so the view moves on to it, keeping the slot.
@@ -177,6 +186,12 @@ export function TodayView({ autosaveDelayMs, initialDate, initialSlot }: TodayVi
   function reload() {
     setBlocked(null);
     setGeneration((value) => value + 1);
+  }
+
+  /** Reads the day again for a control that goes away meanwhile; the writing then takes the focus. */
+  function reloadToWriting() {
+    focusEditor.current = true;
+    reload();
   }
 
   return (
@@ -239,7 +254,7 @@ export function TodayView({ autosaveDelayMs, initialDate, initialSlot }: TodayVi
           <Notice
             tone="error"
             actions={
-              <Button variant="secondary" size="small" onClick={reload}>
+              <Button ref={retryRef} variant="secondary" size="small" onClick={reloadToWriting}>
                 Try again
               </Button>
             }
@@ -262,14 +277,14 @@ export function TodayView({ autosaveDelayMs, initialDate, initialSlot }: TodayVi
               setFollowsToday(nextDate === today);
               setDate(nextDate);
               setSlot(nextSlot);
-              reload();
+              reloadToWriting();
             }}
             onTrashed={() => {
               setNotice('Entry moved to Trash. You can restore it from Trash for 30 days.');
               focusHeading.current = true;
               reload();
             }}
-            onReload={reload}
+            onReload={reloadToWriting}
           />
         ) : (
           <p className="today__loading" aria-busy="true">

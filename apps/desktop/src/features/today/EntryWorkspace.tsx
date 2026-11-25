@@ -5,6 +5,7 @@
 
 import { CalendarClock, FileText, Leaf, Maximize2, Minimize2, Trash2 } from 'lucide-react';
 import { useEffect, useId, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { flushSync } from 'react-dom';
 import type { Depth, Entry, Slot } from '../../api/types';
 import { Button } from '../../components/Button';
 import { classNames } from '../../components/classNames';
@@ -99,6 +100,7 @@ export function EntryWorkspace({
   const { focusMode, setFocusMode } = useFocusMode();
   const pageTitleId = useId();
   const editorId = useId();
+  const failureId = useId();
   const editorRef = useRef<JournalEditorHandle>(null);
   // Chosen before the first interaction; it becomes the new draft's depth.
   const [pendingDepth, setPendingDepth] = useState<Depth | null>(null);
@@ -126,6 +128,8 @@ export function EntryWorkspace({
   const { flush, saveNow } = autosave;
   const latest = autosave.current;
   const update = readOnly ? ignoreChange : autosave.update;
+  // A save requested after a failure (Try again, ⌘S) keeps the failure notice until the journal answers.
+  const retrying = autosave.state === 'saving' && autosave.error !== null;
 
   useImperativeHandle(
     ref,
@@ -179,8 +183,18 @@ export function EntryWorkspace({
 
   function toggleFocusMode() {
     const next = !focusMode;
-    setFocusMode(next);
-    if (next) editorRef.current?.focus();
+    // Lay the page out for focus mode first, so the caret is scrolled into view where it now is.
+    flushSync(() => setFocusMode(next));
+    if (next) editorRef.current?.focus('keep');
+  }
+
+  /** Once the retry is saved, its notice goes away with the focused button: the writing takes the focus back. */
+  async function retry() {
+    if (!(await saveNow())) return;
+    const active = document.activeElement;
+    if (active === null || active === document.body || document.getElementById(failureId)?.contains(active)) {
+      editorRef.current?.focus('keep');
+    }
   }
 
   const writeDirectly = () => editorRef.current?.focus();
@@ -241,11 +255,13 @@ export function EntryWorkspace({
             </h2>
             <SaveStatus state={autosave.state} />
           </header>
-          {autosave.state === 'failed' && autosave.error ? (
+          {(autosave.state === 'failed' || retrying) && autosave.error ? (
             <SaveFailure
+              id={failureId}
               error={autosave.error}
               needsReload={autosave.needsReload}
-              onRetry={() => void saveNow()}
+              retrying={retrying}
+              onRetry={() => void retry()}
               onReload={() => {
                 autosave.discard();
                 onReload();
