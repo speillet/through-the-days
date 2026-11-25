@@ -50,6 +50,11 @@ The application SHALL default to English en-GB dates and Monday-first calendars 
 - **WHEN** the Mac system language is French
 - **THEN** application labels remain English and date formatting follows en-GB.
 
+#### Scenario: Current offsets in the time-zone list
+
+- **WHEN** daylight saving changes a zone's UTC offset
+- **THEN** the time-zone list shows that zone with its new offset the next time it is shown, and searching for the new offset finds it.
+
 #### Scenario: Time-zone setting
 
 - **WHEN** the person changes the journal time zone

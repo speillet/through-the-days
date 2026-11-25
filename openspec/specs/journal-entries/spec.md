@@ -41,6 +41,11 @@ The system SHALL default new entries to the current civil date in the configured
 - **WHEN** an entry remains open when the clock crosses midnight
 - **THEN** subsequent saves keep its selected journal date.
 
+#### Scenario: Shown again after midnight
+
+- **WHEN** Today shows the current date with no entry open, and its window is reported hidden across midnight, then reported visible again without regaining focus
+- **THEN** Today moves on to the new date as soon as the window is reported visible, so the first answer or keystroke starts the entry on that date.
+
 #### Scenario: Travel
 
 - **WHEN** the configured time zone changes after entries were saved

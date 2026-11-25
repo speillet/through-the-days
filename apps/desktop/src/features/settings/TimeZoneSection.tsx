@@ -11,22 +11,33 @@ import { formatLongDate, supportedTimeZones } from '../../domain/dates';
 import { useToday } from '../../state/clock';
 import { usePreferences } from '../../state/preferences';
 
+/**
+ * Current time-zone rules change offsets only on a quarter hour of UTC time (some,
+ * such as St John's and Adelaide, at half past), so an offset read during one
+ * quarter hour holds until the next.
+ */
+const OFFSET_PERIOD_MS = 15 * 60 * 1000;
 const offsetCache = new Map<string, string>();
-let offsetCacheDay = '';
+let offsetCachePeriod = -1;
 
-/** "GMT+1" for a zone at the current moment; cached for the day. */
+/**
+ * "GMT+1" for a zone at the current moment, kept until the next quarter hour.
+ * Only the offsets are kept: a formatter for each of several hundred zones would
+ * hold megabytes for the rest of the session.
+ */
 function currentOffset(zone: string): string {
-  const day = new Date().toISOString().slice(0, 10);
-  if (day !== offsetCacheDay) {
+  const now = Date.now();
+  const period = Math.floor(now / OFFSET_PERIOD_MS);
+  if (period !== offsetCachePeriod) {
     offsetCache.clear();
-    offsetCacheDay = day;
+    offsetCachePeriod = period;
   }
   let offset = offsetCache.get(zone);
   if (offset === undefined) {
     try {
       offset =
         new Intl.DateTimeFormat('en-GB', { timeZone: zone, timeZoneName: 'shortOffset' })
-          .formatToParts(new Date())
+          .formatToParts(now)
           .find((part) => part.type === 'timeZoneName')?.value ?? '';
     } catch {
       offset = '';
