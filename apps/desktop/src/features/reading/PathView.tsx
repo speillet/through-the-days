@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useApi, toCommandError } from '../../api/client';
 import type { Milestone } from '../../api/types';
 import { Button } from '../../components/Button';
@@ -6,7 +6,6 @@ import { Dialog } from '../../components/Dialog';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Notice } from '../../components/Notice';
 import { addDays, formatLongDate, isIsoDate, isJournalDate, stepDays } from '../../domain/dates';
-import { addMonths, stepMonths } from '../../components/CalendarGrid';
 import { newId } from '../../domain/entry';
 import { useToday } from '../../state/clock';
 import { useNavigation } from '../../state/navigation';
@@ -15,6 +14,18 @@ import { EntryPreview, Filters, insightSources } from './shared';
 import { useReading, useReadingQuery, useReadingSelection } from './state';
 
 const RANGES = [7, 30, 90, 365];
+
+/** Items grouped by their journal date. */
+function byDate<T extends { date: string }>(items: readonly T[]): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const group = groups.get(item.date);
+    if (group) group.push(item);
+    else groups.set(item.date, [item]);
+  }
+  return groups;
+}
+
 export function PathView() {
   const api = useApi();
   const { today } = useToday();
@@ -35,12 +46,9 @@ export function PathView() {
     setBookRequest,
   } = useReading();
   const selected = date ?? today;
-  const from =
-    range === 0
-      ? pathCustomRange?.from || addDays(selected, -29)
-      : range === 365
-        ? addDays(addMonths(selected, -12), 1)
-        : addDays(selected, 1 - range);
+  // A preset, "1 year" (365 days) included, is that many days ending on the selected date and
+  // pages by its own length, so no date appears on two pages, 29 February included.
+  const from = range === 0 ? pathCustomRange?.from || addDays(selected, -29) : addDays(selected, 1 - range);
   const to = range === 0 ? pathCustomRange?.to || selected : selected;
   const span = Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000) + 1;
   const validRange = isIsoDate(from) && isIsoDate(to) && Number.isFinite(span) && span > 0;
@@ -60,6 +68,18 @@ export function PathView() {
     (milestone) => milestone.date >= from && milestone.date <= to,
   );
   const days = report.data?.days ?? [];
+  // Looked up by date: scanning every source again for each day of a long range froze the view.
+  const recordsOn = byDate(records);
+  const momentsOn = byDate(moments);
+  /** Whether a date has something in the selected layers. */
+  const shown = (date: string) => {
+    const sources = recordsOn.get(date);
+    return Boolean(
+      (layers.scores && sources) ||
+      (layers.wins && sources?.some((entry) => entry.wins.some((win) => win.includeInInsights))) ||
+      (layers.milestones && momentsOn.has(date)),
+    );
+  };
   function chooseRange(next: number) {
     if (range === 0) setDate(to);
     setRange(next);
@@ -81,7 +101,7 @@ export function PathView() {
       const nextTo = stepDays(to, direction * span);
       return nextFrom && nextTo ? () => setPathCustomRange({ from: nextFrom, to: nextTo }) : null;
     }
-    const end = range === 365 ? stepMonths(selected, direction * 12) : stepDays(selected, direction * range);
+    const end = stepDays(selected, direction * range);
     return end ? () => setDate(end) : null;
   }
   const panEarlier = panning(-1);
@@ -232,29 +252,16 @@ export function PathView() {
       ) : (
         <div className="path-chronology">
           {days.map((day, index) => {
-            const sources = records.filter((entry) => entry.date === day.date);
+            const sources = recordsOn.get(day.date) ?? [];
             const wins = sources.flatMap((entry) =>
               entry.wins.filter((win) => win.includeInInsights).map((win) => ({ entry, win })),
             );
-            const dated = layers.milestones ? moments.filter((moment) => moment.date === day.date) : [];
-            const hasContent =
-              (layers.scores && sources.length) || (layers.wins && wins.length) || dated.length;
-            if (!hasContent) {
-              const empty = (at: number) => {
-                const date = days[at]?.date;
-                return (
-                  date &&
-                  !(layers.scores && records.some((e) => e.date === date)) &&
-                  !(
-                    layers.wins &&
-                    records.some((e) => e.date === date && e.wins.some((w) => w.includeInInsights))
-                  ) &&
-                  !(layers.milestones && moments.some((m) => m.date === date))
-                );
-              };
-              if (index > 0 && empty(index - 1)) return null;
+            const dated = layers.milestones ? (momentsOn.get(day.date) ?? []) : [];
+            if (!shown(day.date)) {
+              // One notice covers a run of empty days, from its first day.
+              if (index > 0 && !shown(days[index - 1].date)) return null;
               let end = index;
-              while (end + 1 < days.length && empty(end + 1)) end++;
+              while (end + 1 < days.length && !shown(days[end + 1].date)) end++;
               return (
                 <p className="path-gap" key={day.date}>
                   No records in the selected layers from {formatLongDate(day.date)}
@@ -341,7 +348,14 @@ function MilestoneDialog({ milestone, onClose }: { milestone: Milestone; onClose
   const [value, setValue] = useState(milestone);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const titleField = useRef<HTMLInputElement>(null);
   async function save() {
+    // The journal keeps no milestone without a title; ask for one instead of reporting its refusal.
+    if (!value.title.trim()) {
+      setError('Add a title before saving this milestone.');
+      titleField.current?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -385,6 +399,7 @@ function MilestoneDialog({ milestone, onClose }: { milestone: Milestone; onClose
         <label className="reading-field">
           Title
           <input
+            ref={titleField}
             tabIndex={0}
             value={value.title}
             onChange={(e) => setValue({ ...value, title: e.target.value })}

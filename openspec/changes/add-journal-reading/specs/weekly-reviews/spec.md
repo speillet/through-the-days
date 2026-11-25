@@ -27,6 +27,16 @@ Weekly Review SHALL be user-initiated, use Monday–Sunday ISO weeks in the conf
 - **WHEN** the person opens a weekly review offline without AI
 - **THEN** deterministic counts, source navigation, and manual reflection remain usable.
 
+#### Scenario: New week while writing notes
+
+- **WHEN** no week is chosen and the clock passes midnight while the person writes the shown week's notes, or before those notes are saved
+- **THEN** a new day in the same week keeps the review in place, and a new week waits until the notes are saved and no longer being edited, so they keep their text, focus and week.
+
+#### Scenario: Week that ends in year 10000
+
+- **WHEN** the person reviews the week of Monday 27 December 9999, which ends on Sunday 2 January 10000
+- **THEN** its counts, sources and notes load and save as in any other week.
+
 #### Scenario: Source load failure
 
 - **WHEN** weekly counts load but the source list fails or is still loading

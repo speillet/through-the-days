@@ -85,6 +85,24 @@ it('zooms out from a custom range without narrowing it, and pans by the displaye
   await waitFor(() => expect(screen.queryByText('Opening recorded moments…')).not.toBeInTheDocument());
 });
 
+it('pages a one-year range by 365 days, so no date appears on two pages, 29 February included', async () => {
+  const api = await journal();
+  render(<App api={api} initialView="trends" />);
+  const user = userEvent.setup();
+  fireEvent.change(await screen.findByLabelText('Ending on'), { target: { value: '2024-02-29' } });
+  await user.click(screen.getByRole('button', { name: 'The Path So Far' }));
+  await user.click(await screen.findByRole('button', { name: '1 year' }));
+  const shown = (range: string) => screen.getByText(new RegExp(`^${range}\\.`));
+  expect(shown('Thursday 2 March 2023 to Thursday 29 February 2024')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Later range' }));
+  expect(shown('Friday 1 March 2024 to Friday 28 February 2025')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Earlier range' }));
+  expect(shown('Thursday 2 March 2023 to Thursday 29 February 2024')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Earlier range' }));
+  expect(shown('Wednesday 2 March 2022 to Wednesday 1 March 2023')).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByText('Opening recorded moments…')).not.toBeInTheDocument());
+});
+
 it('opens an exact weekly source despite journal filters and returns to the same authored review', async () => {
   const api = await journal();
   render(<App api={api} initialView="journal" />);
