@@ -5,8 +5,8 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Notice } from '../../components/Notice';
-import { addDays, formatLongDate } from '../../domain/dates';
-import { addMonths } from '../../components/CalendarGrid';
+import { addDays, formatLongDate, isIsoDate, isJournalDate, stepDays } from '../../domain/dates';
+import { addMonths, stepMonths } from '../../components/CalendarGrid';
 import { newId } from '../../domain/entry';
 import { useToday } from '../../state/clock';
 import { useNavigation } from '../../state/navigation';
@@ -43,7 +43,7 @@ export function PathView() {
         : addDays(selected, 1 - range);
   const to = range === 0 ? pathCustomRange?.to || selected : selected;
   const span = Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000) + 1;
-  const validRange = Number.isFinite(span) && span > 0;
+  const validRange = isIsoDate(from) && isIsoDate(to) && Number.isFinite(span) && span > 0;
   const sourceRequest = { ...filters, from, to };
   const request = useReadingSelection(sourceRequest);
   const key = JSON.stringify(request);
@@ -73,19 +73,24 @@ export function PathView() {
       chooseRange(RANGES[Math.max(0, Math.min(RANGES.length - 1, RANGES.indexOf(range) + direction))]);
     }
   }
-  function pan(direction: -1 | 1) {
+  /** Moves the range one length earlier or later; null when it would pass 1 January 0001 or 31 December 9999. */
+  function panning(direction: -1 | 1): (() => void) | null {
+    if (!validRange) return null;
     if (range === 0) {
-      setPathCustomRange({
-        from: addDays(from, direction * span),
-        to: addDays(to, direction * span),
-      });
-    } else {
-      setDate(range === 365 ? addMonths(selected, direction * 12) : addDays(selected, direction * range));
+      const nextFrom = stepDays(from, direction * span);
+      const nextTo = stepDays(to, direction * span);
+      return nextFrom && nextTo ? () => setPathCustomRange({ from: nextFrom, to: nextTo }) : null;
     }
+    const end = range === 365 ? stepMonths(selected, direction * 12) : stepDays(selected, direction * range);
+    return end ? () => setDate(end) : null;
   }
+  const panEarlier = panning(-1);
+  const panLater = panning(1);
+  // A custom range moved to end today keeps its length, unless it would then start before 1 January 0001.
+  const todayFrom = validRange ? stepDays(today, 1 - span) : null;
   function endToday() {
-    if (range === 0) setPathCustomRange({ from: addDays(today, 1 - span), to: today });
-    else setDate(today);
+    if (range !== 0) setDate(today);
+    else if (todayFrom) setPathCustomRange({ from: todayFrom, to: today });
   }
   function openBook(id: string) {
     setBookId(id);
@@ -156,7 +161,8 @@ export function PathView() {
               lang="en-GB"
               value={from}
               onChange={(e) => {
-                if (e.target.value) setPathCustomRange({ from: e.target.value, to });
+                // An empty field, or a year outside 0001–9999 (date fields take six digits), keeps the range.
+                if (isJournalDate(e.target.value)) setPathCustomRange({ from: e.target.value, to });
               }}
             />
           </label>
@@ -168,20 +174,20 @@ export function PathView() {
               lang="en-GB"
               value={to}
               onChange={(e) => {
-                if (e.target.value) setPathCustomRange({ from, to: e.target.value });
+                if (isJournalDate(e.target.value)) setPathCustomRange({ from, to: e.target.value });
               }}
             />
           </label>
         </div>
       ) : null}
       <div className="reading-actions">
-        <Button onClick={() => pan(-1)} disabled={!validRange}>
+        <Button onClick={() => panEarlier?.()} disabled={!panEarlier}>
           Earlier range
         </Button>
-        <Button onClick={() => pan(1)} disabled={!validRange}>
+        <Button onClick={() => panLater?.()} disabled={!panLater}>
           Later range
         </Button>
-        <Button onClick={endToday} disabled={!validRange}>
+        <Button onClick={endToday} disabled={!validRange || (range === 0 && !todayFrom)}>
           End today
         </Button>
       </div>

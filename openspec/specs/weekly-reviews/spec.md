@@ -32,6 +32,11 @@ Weekly Review SHALL be user-initiated, use Monday–Sunday ISO weeks in the conf
 - **WHEN** weekly counts load but the source list fails or is still loading
 - **THEN** the view shows its loading state or a recoverable error with retry instead of claiming that the week is empty; authored notes remain usable.
 
+#### Scenario: First or last journal week
+
+- **WHEN** moving one week from the selected date would pass 1 January 0001 or 31 December 9999
+- **THEN** Previous week or Next week is unavailable and the review keeps its selected date.
+
 ### Requirement: Distinct reviewed evidence
 
 The review SHALL count approved canonical wins separately from reported actions, link each highlight to its dated source, and identify unavailable exercise functionality without inventing counts. Exercise counts and experiment outcomes are added by the subsequent CBT change.

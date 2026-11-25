@@ -22,6 +22,11 @@ The timeline SHALL offer 7/14/30-day ranges ending at the viewed journal date, d
 - **WHEN** the person hides every metric series
 - **THEN** the preference is retained and no score is forced into view.
 
+#### Scenario: Ending date outside the journal dates
+
+- **WHEN** the person types a Trends ending date after 31 December 9999, such as a year with a stray fifth digit
+- **THEN** the timeline keeps its previous ending date and range, and every view remains usable.
+
 ### Requirement: Explicit observations and missing data
 
 Progress views SHALL include nullable perceived progress when selected, preserve Morning/Evening observations, label any explicitly selected aggregation, show sample sizes and coverage, and treat missing values as gaps rather than zero.

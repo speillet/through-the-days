@@ -50,7 +50,8 @@ export function previewReport(entries: Entry[], request: SearchRequest): Reading
       (request.hasWin == null || entry.wins.some((win) => win.includeInInsights) === request.hasWin),
   );
   const days: ReadingReport['days'] = [];
-  for (let date = from; date <= to; date = addDays(date, 1)) {
+  // Stops on `to` itself: the day after 9999-12-31 has a five-digit year, which sorts before it as text.
+  for (let date = from; ; date = addDays(date, 1)) {
     days.push({
       date,
       observations: selected
@@ -58,6 +59,7 @@ export function previewReport(entries: Entry[], request: SearchRequest): Reading
         .sort((a, b) => (a.slot === b.slot ? 0 : a.slot === 'morning' ? -1 : 1))
         .map(({ id, slot, mood, energy, pride, progress }) => ({ id, slot, mood, energy, pride, progress })),
     });
+    if (date === to) break;
   }
   const measure = (metric: ScoreMetric) => {
     const values = selected.flatMap((entry) => (entry[metric] == null ? [] : [entry[metric]!]));

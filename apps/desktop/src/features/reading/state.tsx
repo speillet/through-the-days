@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import type { SearchRequest } from '../../api/types';
 import { toCommandError, useApi } from '../../api/client';
+import { isJournalDate } from '../../domain/dates';
 import { registerFlusher } from '../../state/flush';
 import { usePreferences } from '../../state/preferences';
 import { WeeklyNotesStore } from './notes';
@@ -17,7 +18,12 @@ function useReadingState() {
       notes.dispose();
     };
   }, [notes]);
-  const [date, setDate] = useState<string | null>(null);
+  const [date, storeDate] = useState<string | null>(null);
+  // The date every reading view shares; null follows today. Anything else must be a journal
+  // date: a typed five-digit year or a step past the last date is ignored, never rendered.
+  const setDate = useCallback((next: string | null) => {
+    if (next === null || isJournalDate(next)) storeDate(next);
+  }, []);
   const [bookId, setBookId] = useState<string | null>(null);
   const [bookRequest, setBookRequest] = useState<SearchRequest | null>(null);
   const [returnView, setReturnView] = useState<ReadingOrigin>('calendar');
