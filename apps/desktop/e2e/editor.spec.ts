@@ -79,23 +79,28 @@ test('reopens a slot on its saved writing after switching slots, and saves the n
   await page.goto('/');
   const morning = journalPage(page, 'Morning');
   await morning.click();
-  await page.keyboard.type('Fictional morning words.');
-  await expect.poll(async () => (await savedEntries(page)).map((entry) => entry.revision)).toEqual([1]);
+  const originalText = 'Fictional morning words.';
+  await page.keyboard.type(originalText);
+  await expect.poll(async () => (await savedEntries(page)).map(documentText)).toEqual([originalText]);
   await expect(saveStatus(page)).toHaveText('Saved');
+  const [original] = await savedEntries(page);
 
   await page.getByRole('tab', { name: /^Evening/ }).click();
   await expect(journalPage(page, 'Evening')).toBeVisible();
   await page.getByRole('tab', { name: /^Morning/ }).click();
-  await expect(morning).toHaveText('Fictional morning words.');
+  await expect(morning).toHaveText(originalText);
   await expect(page.getByRole('tab', { name: /^Morning/ })).toContainText('Draft');
 
   // Write directly puts the caret after the last word.
   await page.getByRole('button', { name: 'Write directly' }).click();
   await expect(morning).toBeFocused();
-  await page.keyboard.type(' More.');
+  await page.keyboard.type(' More');
+  await expect.poll(async () => (await savedEntries(page)).map(documentText)).toEqual([`${originalText} More`]);
+  await page.keyboard.type('.');
   await expect
-    .poll(async () => (await savedEntries(page)).map((entry) => [documentText(entry), entry.revision]))
-    .toEqual([['Fictional morning words. More.', 2]]);
+    .poll(async () => (await savedEntries(page)).map((entry) => [entry.id, documentText(entry)]))
+    .toEqual([[original.id, `${originalText} More.`]]);
+  expect((await savedEntries(page))[0].revision).toBeGreaterThan(original.revision);
   await expect(saveStatus(page)).toHaveText('Saved');
   await expect(page.getByRole('alert')).toHaveCount(0);
 });

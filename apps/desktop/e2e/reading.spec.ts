@@ -65,25 +65,18 @@ test('weekly notes survive restart and excluding a source immediately hides its 
 });
 
 for (const colorScheme of ['light', 'dark'] as const) {
-  test(`reading views have no serious accessibility violations (${colorScheme})`, async ({ page }) => {
-    await page.emulateMedia({ colorScheme });
-    await seedJournal(page, {
-      active: [entry('2026-11-22', 'morning', 'Synthetic accessible writing.', { mood: 5, energy: 3 })],
-    });
-    for (const view of [
-      'Calendar',
-      'My Journal',
-      'Book View',
-      'Trends',
-      'Weekly Review',
-      'The Path So Far',
-    ] as const) {
+  for (const view of ['Calendar', 'My Journal', 'Book View', 'Trends', 'Weekly Review', 'The Path So Far'] as const) {
+    test(`${view} has no serious accessibility violations (${colorScheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme });
+      await seedJournal(page, {
+        active: [entry('2026-11-22', 'morning', 'Synthetic accessible writing.', { mood: 5, energy: 3 })],
+      });
       await openView(page, view);
       await expect(page.getByRole('heading', { level: 1, name: view })).toBeVisible();
       await expect(page.getByText(/Opening (saved|recorded|your|this)/)).toHaveCount(0);
       await expectNoSeriousViolations(page, `${view} (${colorScheme})`);
-    }
-  });
+    });
+  }
 }
 
 test('historical timelines keep both slots, gaps, hidden-series preferences and keyboard source navigation', async ({
