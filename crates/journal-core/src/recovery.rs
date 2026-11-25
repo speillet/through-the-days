@@ -80,6 +80,10 @@ impl Journal {
     /// staged in-memory copy with the migration steps, then validated and copied into a new
     /// database with this build's schema, before anything is copied into the live journal. Any
     /// failure leaves the live journal unchanged.
+    ///
+    /// A backup that cannot be read, decrypted or validated is [`Error::Restore`]. A failure to
+    /// write the validated copy into the live journal, such as a full disk, is reported like any
+    /// other failed write ([`Error::Storage`], or [`Error::Damaged`] when the file cannot be read).
     pub fn restore_from(&mut self, path: &Path, passphrase: &str) -> Result<(), Error> {
         let restored = {
             let plaintext = decrypt(path, passphrase).map_err(|_| Error::Restore)?;
@@ -88,7 +92,7 @@ impl Journal {
         // The backup API commits the whole copy in one destination transaction or rolls it back.
         Backup::new(&restored, &mut self.connection)
             .and_then(|backup| backup.run_to_completion(256, Duration::ZERO, None))
-            .map_err(|_| Error::Restore)?;
+            .map_err(Error::from)?;
         configure(&self.connection)
     }
 }
@@ -700,5 +704,42 @@ mod tests {
         let staged = staged_copy(&plaintext).unwrap();
         assert_eq!(temp_store(&staged), 2);
         assert_eq!(temp_store(&canonical_copy(&staged).unwrap()), 2);
+    }
+
+    /// local-data-protection — Safe restore: a valid backup that the live journal cannot take,
+    /// as on a full disk, is a storage failure rather than an invalid backup, and the live
+    /// journal keeps its content.
+    #[test]
+    fn a_live_journal_that_cannot_take_the_restored_copy_reports_a_storage_failure() {
+        let directory = tempfile::tempdir().unwrap();
+        let folder = backup_folder(directory.path());
+        let source = Journal::open(&directory.path().join("source.sqlite")).unwrap();
+        // Enough writing that the backup needs more pages than a journal with one entry.
+        for day in 1..=9 {
+            let mut entry = Entry::draft(&format!("2026-11-0{day}"), Slot::Morning);
+            let text = "Synthetic paragraph that makes the backup larger. ".repeat(80);
+            entry.document = json!({"type": "doc", "content": [{"type": "paragraph", "content": [
+                {"type": "text", "text": text}
+            ]}]});
+            source.save(entry).unwrap();
+        }
+        let backup = source.backup_to(&folder, PASSPHRASE, NOW).unwrap();
+        let (mut live, kept) = journal_with_entry(directory.path());
+        let pages: i64 = live
+            .connection
+            .pragma_query_value(None, "page_count", |row| row.get(0))
+            .unwrap();
+        // The live journal cannot grow any more, as when its disk is full.
+        let limit: i64 = live
+            .connection
+            .pragma_update_and_check(None, "max_page_count", pages, |row| row.get(0))
+            .unwrap();
+        assert_eq!(limit, pages);
+
+        assert_eq!(
+            live.restore_from(&backup.path, PASSPHRASE),
+            Err(Error::Storage)
+        );
+        assert_eq!(live.list().unwrap(), vec![kept]);
     }
 }

@@ -1,19 +1,21 @@
 // A Monday-first month grid for choosing a journal date, with English month and
 // weekday names. One day is in the Tab order; arrow keys move by day and week,
 // Home/End to the start or end of the week, Page Up/Down by month (with Shift, by
-// year). Enter or Space chooses the focused day.
+// year). Enter or Space chooses the focused day. Paging and moves stop at the first
+// and last journal dates (1 January 0001 and 31 December 9999).
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
-  addDays,
   daysInMonth,
   formatLongDate,
   formatMonth,
   monthGrid,
   parseIsoDate,
+  stepDays,
   toIsoDate,
   weekdayIndex,
+  withinJournalDates,
   WEEKDAY_NAMES,
   WEEKDAY_SHORT_NAMES,
 } from '../domain/dates';
@@ -57,6 +59,11 @@ export function addMonths(date: string, amount: number): string {
   return toIsoDate({ year, month, day: Math.min(parsed.day, daysInMonth(year, month)) });
 }
 
+/** The same day `amount` months away, or null when that step would pass the first or last journal date. */
+export function stepMonths(date: string, amount: number): string | null {
+  return withinJournalDates(addMonths(date, amount), amount);
+}
+
 function inMonth(date: string, { year, month }: Month): boolean {
   const parsed = parseIsoDate(date);
   return parsed !== null && parsed.year === year && parsed.month === month;
@@ -96,48 +103,51 @@ export function CalendarGrid({
     setVisible(monthOf(date));
   }
 
-  function showMonth(amount: number) {
-    const next = addMonths(focused, amount);
-    setFocused(next);
-    setVisible(monthOf(next));
+  function showMonth(date: string | null) {
+    if (date === null) return;
+    setFocused(date);
+    setVisible(monthOf(date));
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, date: string) {
     let target: string | null = null;
     switch (event.key) {
       case 'ArrowLeft':
-        target = addDays(date, -1);
+        target = stepDays(date, -1);
         break;
       case 'ArrowRight':
-        target = addDays(date, 1);
+        target = stepDays(date, 1);
         break;
       case 'ArrowUp':
-        target = addDays(date, -7);
+        target = stepDays(date, -7);
         break;
       case 'ArrowDown':
-        target = addDays(date, 7);
+        target = stepDays(date, 7);
         break;
       case 'Home':
-        target = addDays(date, -weekdayIndex(date));
+        target = stepDays(date, -weekdayIndex(date));
         break;
       case 'End':
-        target = addDays(date, 6 - weekdayIndex(date));
+        target = stepDays(date, 6 - weekdayIndex(date));
         break;
       case 'PageUp':
-        target = addMonths(date, event.shiftKey ? -12 : -1);
+        target = stepMonths(date, event.shiftKey ? -12 : -1);
         break;
       case 'PageDown':
-        target = addMonths(date, event.shiftKey ? 12 : 1);
+        target = stepMonths(date, event.shiftKey ? 12 : 1);
         break;
       default:
         return;
     }
     event.preventDefault();
-    focusDate(target);
+    // A move past the first or last journal date leaves focus where it is.
+    if (target !== null) focusDate(target);
   }
 
   const weeks = monthGrid(visible.year, visible.month);
   const tabbable = inMonth(focused, visible) ? focused : toIsoDate({ ...visible, day: 1 });
+  const previousMonth = stepMonths(focused, -1);
+  const nextMonth = stepMonths(focused, 1);
 
   return (
     <div className={classNames('calendar', className)}>
@@ -148,7 +158,8 @@ export function CalendarGrid({
           className="calendar__step"
           aria-label="Previous month"
           icon={<ChevronLeft size={16} />}
-          onClick={() => showMonth(-1)}
+          disabled={previousMonth === null}
+          onClick={() => showMonth(previousMonth)}
         />
         <p id={labelId} className="calendar__month" aria-live="polite">
           {formatMonth(visible.year, visible.month)}
@@ -159,7 +170,8 @@ export function CalendarGrid({
           className="calendar__step"
           aria-label="Next month"
           icon={<ChevronRight size={16} />}
-          onClick={() => showMonth(1)}
+          disabled={nextMonth === null}
+          onClick={() => showMonth(nextMonth)}
         />
       </div>
       <table ref={gridRef} role="grid" aria-labelledby={labelId} className="calendar__grid">
@@ -174,9 +186,11 @@ export function CalendarGrid({
           </tr>
         </thead>
         <tbody>
-          {weeks.map((week) => (
-            <tr key={week[0].date}>
-              {week.map((day) => {
+          {weeks.map((week, row) => (
+            <tr key={row}>
+              {week.map((day, column) => {
+                // No journal date exists before 1 January 0001 or after 31 December 9999.
+                if (day === null) return <td key={`none-${column}`} role="gridcell" />;
                 const selected = day.date === value;
                 const isToday = day.date === today;
                 return (

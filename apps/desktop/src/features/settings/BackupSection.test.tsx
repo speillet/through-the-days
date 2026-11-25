@@ -51,6 +51,28 @@ async function setUpBackups(user: User) {
   await screen.findByText('Today’s backup is done.');
 }
 
+/**
+ * macOS Keychain refuses every change, as when its prompt is cancelled: the native shell
+ * still changes the session, and its reply says what Keychain did not do.
+ */
+function keychainRefuses(api: JournalApi) {
+  const setBackupPassphrase = api.setBackupPassphrase.bind(api);
+  const forgetBackupPassphrase = api.forgetBackupPassphrase.bind(api);
+  vi.spyOn(api, 'setBackupPassphrase').mockImplementation(async (passphrase, remember) => {
+    // A refused store leaves a passphrase remembered before where it was.
+    const rememberedBefore = (await api.backupStatus()).remembered;
+    const warning = rememberedBefore ? 'notReplaced' : 'notRemembered';
+    return {
+      ...(await setBackupPassphrase(passphrase, false)),
+      keychainWarning: remember ? warning : 'notRemoved',
+    };
+  });
+  vi.spyOn(api, 'forgetBackupPassphrase').mockImplementation(async () => ({
+    ...(await forgetBackupPassphrase()),
+    keychainWarning: 'notRemoved',
+  }));
+}
+
 /** The status details (folder, passphrase, last backup, count). */
 function facts() {
   const list = document.querySelector<HTMLElement>('dl.backup-facts');
@@ -257,6 +279,8 @@ describe('Backups settings', () => {
       folderPath: '~/Documents/Synthetic backups',
       passphraseAvailable: true,
       remembered: false,
+      keychainPending: false,
+      keychainWarning: null,
       lastSuccessDate: '2026-11-20',
       lastSuccessAt: 1795165200,
       lastError: {
@@ -312,6 +336,68 @@ describe('Backups settings', () => {
     expect(screen.getByRole('button', { name: 'Change backup folder…' })).toBeVisible();
   });
 
+  it('keeps a passphrase macOS Keychain could not remember for this session and makes the due backup', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    keychainRefuses(api);
+    await renderSection(api);
+    await user.click(screen.getByRole('button', { name: 'Set passphrase…' }));
+    await setPassphrase(user, PASSPHRASE, { remember: true });
+
+    expect(
+      await screen.findByText(
+        'Passphrase saved for this session, but macOS Keychain could not remember it. The app will ask for it again after it restarts.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('Passphrase saved and remembered in macOS Keychain.')).not.toBeInTheDocument();
+    expect(await screen.findByText('Today’s backup is done.')).toBeInTheDocument();
+    expect(facts()).toHaveTextContent('Entered for this session only.');
+    await expect(api.backupStatus()).resolves.toMatchObject({ state: 'upToDate', remembered: false, backupCount: 1 });
+  });
+
+  it('backs up with a new passphrase when macOS Keychain could not remove the old one, and says how to', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    keychainRefuses(api);
+    await renderSection(api);
+    await user.click(screen.getByRole('button', { name: 'Back up now' }));
+    await setPassphrase(user, PASSPHRASE);
+
+    expect(await screen.findByText(/^Backup complete\./)).toBeVisible();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const passphraseGroup = screen.getByRole('heading', { level: 3, name: 'Backup passphrase' })
+      .parentElement as HTMLElement;
+    expect(passphraseGroup).toHaveTextContent(
+      'Passphrase saved for this session, but macOS Keychain could not remove the passphrase it may have remembered before. The app no longer uses that one. You can delete it yourself in the Keychain Access app: search for “throughthedays”.',
+    );
+    expect(facts()).toHaveTextContent('Entered for this session only.');
+    expect(facts()).toHaveTextContent('Backups kept1 of up to 30');
+  });
+
+  it('forgets the passphrase even when macOS Keychain cannot remove it, and says how to remove it', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE, true);
+    keychainRefuses(api);
+    await renderSection(api);
+    expect(facts()).toHaveTextContent('Remembered in macOS Keychain on this Mac.');
+    await user.click(screen.getByRole('button', { name: 'Forget passphrase' }));
+
+    expect(
+      await screen.findByText(
+        'The app forgot the passphrase and will ask for it when the next backup is due, but macOS Keychain could not remove it, so it may still be stored there. You can delete it yourself in the Keychain Access app: search for “throughthedays”.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/The passphrase was forgotten on this Mac/)).not.toBeInTheDocument();
+    expect(facts()).toHaveTextContent('Not entered in this session.');
+    expect(screen.queryByRole('button', { name: 'Forget passphrase' })).not.toBeInTheDocument();
+    await expect(api.backupStatus()).resolves.toMatchObject({ passphraseAvailable: false, remembered: false });
+  });
+
   it('keeps the Keychain choice when a remembered passphrase is changed', async () => {
     const user = userEvent.setup();
     const api = createTestApi();
@@ -321,5 +407,29 @@ describe('Backups settings', () => {
     await user.click(screen.getByRole('button', { name: 'Change passphrase…' }));
     const dialog = screen.getByRole('dialog', { name: 'Change the backup passphrase' });
     expect(within(dialog).getByRole('checkbox', { name: 'Remember in macOS Keychain' })).toBeChecked();
+  });
+
+  it('says when macOS Keychain could not replace a remembered passphrase, and how to delete the earlier one', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE, true);
+    keychainRefuses(api);
+    await renderSection(api);
+    expect(facts()).toHaveTextContent('Remembered in macOS Keychain on this Mac.');
+    await user.click(screen.getByRole('button', { name: 'Change passphrase…' }));
+    // Remember stays ticked, so the app asks Keychain to replace the earlier passphrase.
+    await setPassphrase(user, NEW_PASSPHRASE);
+
+    expect(
+      await screen.findByText(
+        'Passphrase saved for this session, but macOS Keychain could not remember it. The app will ask for it again after it restarts. Keychain may still hold the passphrase it remembered before, which the app no longer uses. You can delete it yourself in the Keychain Access app: search for “throughthedays”.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('Passphrase saved and remembered in macOS Keychain.')).not.toBeInTheDocument();
+    expect(facts()).toHaveTextContent('Entered for this session only.');
+    expect(screen.getByRole('button', { name: 'Forget passphrase' })).toBeInTheDocument();
+    expect(api.setBackupPassphrase).toHaveBeenCalledWith(NEW_PASSPHRASE, true);
   });
 });

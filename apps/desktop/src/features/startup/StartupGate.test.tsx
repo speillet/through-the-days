@@ -1,6 +1,6 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiProvider, type JournalApi } from '../../api/client';
 import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES, MEMORY_STORAGE_KEY } from '../../api/memory';
 import type { StartupStatus } from '../../api/types';
@@ -8,7 +8,11 @@ import { newDraft } from '../../domain/entry';
 import { useStartup, StartupProvider, type StartupContextValue } from '../../state/startup';
 import { createTestApi, TEST_NOW } from '../../test/render';
 import { ERASED_NOTICE } from '../settings/EraseSection';
-import { STILL_NOT_OPEN, StartupGate, UPGRADED_NOTICE } from './StartupGate';
+import { KEYCHAIN_HINT_DELAY_MS, STILL_NOT_OPEN, StartupGate, UPGRADED_NOTICE } from './StartupGate';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const PASSPHRASE = 'fictional-lighthouse-maple';
 const DATA_LOCATION = '/Users/fictional/Library/Application Support/com.throughthedays.app';
@@ -74,6 +78,41 @@ describe('startup gate', () => {
     vi.spyOn(api, 'startupStatus').mockReturnValue(new Promise<StartupStatus>(() => {}));
     renderGate(api);
     expect(screen.getByRole('status')).toHaveTextContent('Opening your journal…');
+  });
+
+  it('says after a few seconds that opening waits for an answer to a macOS Keychain prompt', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const api = createTestApi();
+    vi.spyOn(api, 'startupStatus').mockReturnValue(new Promise<StartupStatus>(() => {}));
+    // An older journal waits for the passphrase remembered in Keychain, whose prompt is unanswered.
+    const waiting = { ...(await api.backupStatus()), remembered: true, keychainPending: true };
+    vi.spyOn(api, 'backupStatus').mockResolvedValue(waiting);
+    renderGate(api);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(KEYCHAIN_HINT_DELAY_MS - 1);
+    });
+    expect(screen.queryByText(/Keychain/)).not.toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    // The status cannot tell when the prompt is answered, so the hint also covers the upgrade after it.
+    expect(screen.getByText(/^Waiting for macOS Keychain: answer its prompt/)).toHaveTextContent(
+      'Waiting for macOS Keychain: answer its prompt, which may be behind this window, to use your remembered backup passphrase. After you answer it, the app may take a few more seconds to back up and upgrade your journal.',
+    );
+    expect(screen.getByText('Opening your journal…')).toBeInTheDocument();
+  });
+
+  it('never mentions Keychain while opening waits for something else', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const api = createTestApi();
+    vi.spyOn(api, 'startupStatus').mockReturnValue(new Promise<StartupStatus>(() => {}));
+    const backupStatus = vi.spyOn(api, 'backupStatus');
+    renderGate(api);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(KEYCHAIN_HINT_DELAY_MS);
+    });
+    expect(backupStatus).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Keychain/)).not.toBeInTheDocument();
   });
 
   it('reads the status again when it could not be read', async () => {

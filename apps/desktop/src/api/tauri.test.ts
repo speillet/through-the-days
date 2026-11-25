@@ -196,6 +196,7 @@ describe('native journal commands', () => {
       { code: 'safetyBackupFailed', message: 'A safety backup of your current journal could not be made.' },
       { code: 'backupRegistry', message: 'This folder’s list of backups is damaged.' },
       { code: 'backupFolder', message: 'The backup folder is not available.' },
+      { code: 'backupUnavailable', message: 'The backup is not available.' },
     ];
     let next = 0;
     mockIPC(() => {

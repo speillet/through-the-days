@@ -45,6 +45,8 @@ function failedStatus(overrides: Partial<BackupStatus> = {}): BackupStatus {
     folderPath: '~/Documents/Synthetic backups',
     passphraseAvailable: true,
     remembered: false,
+    keychainPending: false,
+    keychainWarning: null,
     lastSuccessDate: '2026-11-21',
     lastSuccessAt: 1795251600,
     lastError: {
@@ -253,6 +255,48 @@ describe('backup banner', () => {
     expect(alert).toHaveTextContent(`${ERROR_MESSAGES.backupFolder} Earlier backups are not affected.`);
     expect(within(alert).getByRole('button', { name: 'Try again' })).toBeInTheDocument();
     expect(within(alert).getByRole('button', { name: 'Choose another folder…' })).toBeInTheDocument();
+  });
+
+  it('makes the due backup when macOS Keychain refuses the change, and says how to remove what it kept', async () => {
+    const user = userEvent.setup();
+    const api = await folderChosen();
+    const setBackupPassphrase = api.setBackupPassphrase.bind(api);
+    // The native shell keeps the passphrase for the session and says what Keychain did not do.
+    vi.spyOn(api, 'setBackupPassphrase').mockImplementation(async (passphrase) => ({
+      ...(await setBackupPassphrase(passphrase, false)),
+      keychainWarning: 'notRemoved',
+    }));
+    renderBanner(api);
+    await user.click(await screen.findByRole('button', { name: 'Enter passphrase' }));
+    const dialog = await enterPassphrase(user, PASSPHRASE);
+    await user.click(within(dialog).getByRole('button', { name: 'Save and back up' }));
+
+    expect(await screen.findByText('Today’s backup is done.')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await expect(api.listBackups()).resolves.toHaveLength(1);
+    const warning = screen
+      .getByText(/macOS Keychain could not remove the passphrase it may have remembered before/)
+      .closest('.notice') as HTMLElement;
+    expect(warning).toHaveTextContent(
+      'You can delete it yourself in the Keychain Access app: search for “throughthedays”.',
+    );
+    await user.click(within(warning).getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText(/macOS Keychain could not remove/)).not.toBeInTheDocument();
+    expect(screen.getByText('Today’s backup is done.')).toBeInTheDocument();
+  });
+
+  it('says when the launch still waits for macOS Keychain, and still offers to enter the passphrase', async () => {
+    const api = await folderChosen();
+    const waiting: BackupStatus = { ...(await api.backupStatus()), remembered: true, keychainPending: true };
+    vi.spyOn(api, 'runDailyBackup').mockImplementation(async () => ({ ...waiting }));
+    vi.spyOn(api, 'backupStatus').mockImplementation(async () => ({ ...waiting }));
+    renderBanner(api);
+    const banner = await screen.findByRole('group', { name: 'Backup status' });
+    expect(banner).toHaveTextContent('A backup is due');
+    expect(banner).toHaveTextContent(
+      'Waiting for macOS Keychain: answer its prompt, which may be behind this window, to use your remembered backup passphrase. You can also enter the passphrase yourself, and keep writing in the meantime.',
+    );
+    expect(within(banner).getByRole('button', { name: 'Enter passphrase' })).toBeInTheDocument();
   });
 
   it('keeps a remembered passphrase remembered when it is entered again', async () => {

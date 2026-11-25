@@ -56,7 +56,12 @@ export interface JournalApi {
   backupStatus(): Promise<BackupStatus>;
   /** Opens the native folder picker; cancelling leaves the status unchanged. */
   chooseBackupFolder(): Promise<BackupStatus>;
+  /**
+   * Keeps a new passphrase for this session, remembered in Keychain only when asked. A
+   * Keychain failure never undoes the change; the status's keychainWarning reports it.
+   */
   setBackupPassphrase(passphrase: string, remember: boolean): Promise<BackupStatus>;
+  /** Forgets the session passphrase and removes it from Keychain; see keychainWarning. */
   forgetBackupPassphrase(): Promise<BackupStatus>;
   backupNow(): Promise<BackupStatus>;
   runDailyBackup(): Promise<BackupStatus>;
@@ -64,11 +69,13 @@ export interface JournalApi {
   /** Opens the native file picker; resolves null when cancelled. */
   chooseRestoreFile(): Promise<PickedBackup | null>;
   /**
-   * Verifies the chosen backup, then replaces the journal with it. When a safety backup of
-   * the current journal is needed but cannot be made because that journal cannot be read,
-   * the restore is refused (safetyBackupFailed) unless withoutSafetyBackup is true. Without an
-   * open journal (a failed or unsupported start, or an older journal waiting for its upgrade),
-   * that journal is kept aside.
+   * Verifies the chosen backup, then replaces the journal with it. A backup that cannot be
+   * reached is backupUnavailable; one that cannot be decrypted or validated is restore. When a
+   * safety backup of the current journal is needed but cannot be made because that journal
+   * cannot be read, the restore is refused (safetyBackupFailed) unless withoutSafetyBackup is
+   * true. Any other safety-backup failure, such as backupFolder, cancels the restore whatever
+   * withoutSafetyBackup says. Without an open journal (a failed or unsupported start, or an
+   * older journal waiting for its upgrade), that journal is kept aside.
    */
   restoreBackup(
     source: RestoreSource,
@@ -112,6 +119,7 @@ const ERROR_CODES: ReadonlySet<string> = new Set<ErrorCode>([
   'damaged',
   'backupRegistry',
   'backupFolder',
+  'backupUnavailable',
   'safetyBackupFailed',
   'notReady',
   'needsFolder',

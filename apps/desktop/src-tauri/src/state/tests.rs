@@ -12,16 +12,24 @@
 
 use super::{
     AppState, ERASE_CONFIRMATION, OPEN_FAILED, RestoreOutcome, RestoreSource, StartupState,
-    backup::BackupState,
+    backup::{BackupState, KeychainWarning},
 };
-use crate::{error::CommandError, keychain::fake::FakeKeychain, paths::DataPaths};
+use crate::{
+    error::CommandError,
+    keychain::fake::FakeKeychain,
+    paths::{self, DataPaths},
+};
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use journal_core::{BackupPlan, Entry, Error, Journal, Slot, document_text, list_backups};
+use journal_core::{
+    BackupPlan, Entry, Error, Journal, Slot, document_text, list_backups, verify_backup,
+};
 use serde_json::{Value, json};
 use std::{
+    cell::RefCell,
     fs,
     os::unix::fs::{FileExt, PermissionsExt},
     path::{Path, PathBuf},
+    rc::Rc,
     sync::{Arc, mpsc},
     thread,
     time::Duration as Wait,
@@ -102,6 +110,40 @@ impl Fixture {
     fn journal_bytes(&self) -> Vec<u8> {
         fs::read(self.paths().journal).unwrap()
     }
+
+    /// A new fixture whose data folder holds a copy of the files in `data_dir`.
+    fn with_files_of(data_dir: &Path) -> Self {
+        let fixture = Self::new();
+        let copy = fixture.paths().data_dir;
+        fs::create_dir_all(&copy).unwrap();
+        for entry in fs::read_dir(data_dir).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_file() {
+                fs::copy(entry.path(), copy.join(entry.file_name())).unwrap();
+            }
+        }
+        fixture
+    }
+}
+
+/// Runs `operation`, copying the data folder of `fixture` at each interruption point it reaches.
+/// Each copy holds the files that a quit, a crash or a power cut at that point would leave.
+fn copies_at_interruptions<T>(
+    fixture: &Fixture,
+    operation: impl FnOnce() -> T,
+) -> (T, Vec<Fixture>) {
+    let data_dir = fixture.paths().data_dir;
+    let copies = Rc::new(RefCell::new(Vec::new()));
+    let observed = Rc::clone(&copies);
+    let result = paths::interruption::observe(
+        move || {
+            observed
+                .borrow_mut()
+                .push(Fixture::with_files_of(&data_dir))
+        },
+        operation,
+    );
+    (result, copies.take())
 }
 
 /// 22 November 2026 at noon in Paris, the default journal time zone.
@@ -299,7 +341,8 @@ fn first_launch_opens_an_empty_journal_and_asks_for_a_backup_folder() {
         serde_json::to_value(core.backup_status(noon())).unwrap(),
         json!({
             "state": "needsFolder", "folderName": null, "folderPath": null,
-            "passphraseAvailable": false, "remembered": false, "lastSuccessDate": null,
+            "passphraseAvailable": false, "remembered": false, "keychainPending": false,
+            "keychainWarning": null, "lastSuccessDate": null,
             "lastSuccessAt": null, "lastError": null, "retentionWarning": false, "backupCount": 0
         })
     );
@@ -1153,33 +1196,68 @@ fn the_passphrase_is_remembered_only_when_asked() {
     assert!(!fixture.stored_plan().remember);
 }
 
+/// local-data-protection — Keychain refuses a passphrase change: the change still applies to
+/// the session, and its reply says what Keychain did not do, so the due backup can run.
 #[test]
 fn a_keychain_failure_keeps_the_session_passphrase_and_writing_available() {
     let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
     fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.folder()),
         remember: true,
         ..BackupPlan::default()
     });
     fixture.keychain.contents().failing = true;
     let app = fixture.launch();
     assert_eq!(app.startup_status().state, StartupState::Ready);
-    assert!(!app.lock().backup_status(noon()).passphrase_available);
-
-    let error = app
-        .set_backup_passphrase(secret(PASSPHRASE), true, noon())
-        .unwrap_err();
-    assert_eq!(error, CommandError::keychain());
     let status = app.lock().backup_status(noon());
-    assert!(status.passphrase_available);
-    assert!(!status.remembered);
-    assert!(!fixture.stored_plan().remember);
+    // A refused read is over: nothing is pending any more.
+    assert!(status.remembered && !status.passphrase_available && !status.keychain_pending);
 
-    let error = app.forget_backup_passphrase(noon()).unwrap_err();
-    assert_eq!(error, CommandError::keychain());
-    assert!(!app.lock().backup_status(noon()).passphrase_available);
+    // Keychain cannot replace the remembered passphrase, so it may still hold the earlier one.
+    let status = app
+        .set_backup_passphrase(secret("synthetic replacement passphrase"), true, noon())
+        .unwrap();
+    assert_eq!(status.keychain_warning, Some(KeychainWarning::NotReplaced));
+    assert_eq!(status.state, BackupState::Due);
+    assert!(status.passphrase_available && !status.remembered);
+    assert!(!fixture.stored_plan().remember);
+    // The warning belongs to that reply only.
+    assert_eq!(app.lock().backup_status(noon()).keychain_warning, None);
+
+    // Once nothing is remembered, a refused store only leaves the new passphrase unremembered.
+    let status = app
+        .set_backup_passphrase(secret(PASSPHRASE), true, noon())
+        .unwrap();
+    assert_eq!(
+        status.keychain_warning,
+        Some(KeychainWarning::NotRemembered)
+    );
+    assert!(status.passphrase_available && !status.remembered);
+
+    // Neither a passphrase kept for this session only nor forgetting it can remove the item.
+    let status = app
+        .set_backup_passphrase(secret("another synthetic passphrase"), false, noon())
+        .unwrap();
+    assert_eq!(status.keychain_warning, Some(KeychainWarning::NotRemoved));
+    assert!(status.passphrase_available && !status.remembered);
+    let status = app.forget_backup_passphrase(noon()).unwrap();
+    assert_eq!(status.keychain_warning, Some(KeychainWarning::NotRemoved));
+    assert_eq!(status.state, BackupState::NeedsPassphrase);
+    assert!(!status.passphrase_available && !status.remembered);
+    assert!(!fixture.stored_plan().remember);
     app.lock()
         .save_entry(draft("2026-11-22", Slot::Evening, "Synthetic note."))
         .unwrap();
+
+    // The item Keychain kept is never read again, even once Keychain works.
+    assert_eq!(
+        fixture.keychain.contents().item.as_deref(),
+        Some(PASSPHRASE)
+    );
+    drop(app);
+    fixture.keychain.contents().failing = false;
+    let status = fixture.launch().lock().backup_status(noon());
+    assert!(!status.passphrase_available && !status.remembered);
 }
 
 #[test]
@@ -1218,10 +1296,13 @@ fn a_keychain_prompt_at_launch_never_keeps_the_journal_from_opening_or_saving() 
         .unwrap();
     let status = app.lock().backup_status(noon());
     assert!(status.remembered && !status.passphrase_available);
+    // The interface can say that the app waits for Keychain.
+    assert!(status.keychain_pending);
 
     fixture.keychain.answer();
     launching.join().unwrap();
-    assert!(app.lock().backup_status(noon()).passphrase_available);
+    let status = app.lock().backup_status(noon());
+    assert!(status.passphrase_available && !status.keychain_pending);
 }
 
 #[test]
@@ -1245,8 +1326,117 @@ fn a_keychain_prompt_while_remembering_the_passphrase_never_blocks_saving() {
     assert!(status.passphrase_available && status.remembered);
 }
 
-/// An older journal that the remembered passphrase can upgrade at launch is not reported as
-/// waiting for its upgrade while Keychain is still being read.
+/// local-data-protection — Keychain prompt unanswered with the journal open: a passphrase
+/// entered meanwhile does not wait for the launch's read, even when Keychain refuses to store
+/// it, and the late answer to that read never replaces it.
+#[test]
+fn a_keychain_prompt_at_launch_never_holds_up_a_new_passphrase() {
+    const NEW: &str = "synthetic passphrase typed during the prompt";
+    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
+    fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.folder()),
+        remember: true,
+        ..BackupPlan::default()
+    });
+    fixture.keychain.show_read_prompt();
+    let app = Arc::new(fixture.state());
+    let launching = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.launch(noon()))
+    };
+    fixture.keychain.wait_for_prompt();
+    let status = app.lock().backup_status(noon());
+    assert_eq!(status.state, BackupState::NeedsPassphrase);
+    assert!(status.keychain_pending);
+
+    // Keychain refuses to store the new passphrase, then lets the launch read the earlier one.
+    fixture.keychain.contents().failing = true;
+    let (sent, reply) = mpsc::channel();
+    let setting = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || {
+            sent.send(app.set_backup_passphrase(secret(NEW), true, noon()))
+                .unwrap();
+        })
+    };
+    let changed = reply.recv_timeout(Wait::from_secs(5));
+    fixture.keychain.contents().failing = false;
+    fixture.keychain.answer();
+    launching.join().unwrap();
+    setting.join().unwrap();
+    let status = changed
+        .expect("the new passphrase waited for the launch's Keychain prompt")
+        .unwrap();
+    assert_eq!(status.state, BackupState::Due);
+    // Keychain still holds the passphrase remembered before, and the reply says so.
+    assert_eq!(status.keychain_warning, Some(KeychainWarning::NotReplaced));
+    assert_eq!(
+        fixture.keychain.contents().item.as_deref(),
+        Some(PASSPHRASE)
+    );
+    // The launch's read no longer matters once a passphrase was entered.
+    assert!(!status.keychain_pending);
+
+    // The earlier passphrase read late is discarded: the day's backup uses the new one.
+    let status = app.lock().run_daily_backup(noon()).unwrap();
+    assert_eq!(status.state, BackupState::UpToDate);
+    assert!(!status.remembered && !status.keychain_pending);
+    let backup = app.lock().list_backups().unwrap().remove(0);
+    app.lock()
+        .restore_backup(
+            RestoreSource::Registered { name: backup.name },
+            NEW,
+            false,
+            noon(),
+        )
+        .unwrap();
+}
+
+/// Forgetting the passphrase during a Keychain prompt at launch does not wait for that prompt,
+/// even when Keychain cannot remove the item, and the late answer never brings it back.
+#[test]
+fn a_keychain_prompt_at_launch_never_holds_up_forgetting_the_passphrase() {
+    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
+    fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.folder()),
+        remember: true,
+        ..BackupPlan::default()
+    });
+    fixture.keychain.show_read_prompt();
+    let app = Arc::new(fixture.state());
+    let launching = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.launch(noon()))
+    };
+    fixture.keychain.wait_for_prompt();
+
+    fixture.keychain.contents().failing = true;
+    let (sent, reply) = mpsc::channel();
+    let forgetting = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || sent.send(app.forget_backup_passphrase(noon())).unwrap())
+    };
+    let forgotten = reply.recv_timeout(Wait::from_secs(5));
+    fixture.keychain.contents().failing = false;
+    fixture.keychain.answer();
+    launching.join().unwrap();
+    forgetting.join().unwrap();
+    let status = forgotten
+        .expect("forgetting waited for the launch's Keychain prompt")
+        .unwrap();
+    assert_eq!(status.keychain_warning, Some(KeychainWarning::NotRemoved));
+    assert!(!status.passphrase_available && !status.remembered && !status.keychain_pending);
+
+    // Keychain still held the passphrase when the launch read it, but it stays forgotten.
+    let status = app.lock().backup_status(noon());
+    assert_eq!(status.state, BackupState::NeedsPassphrase);
+    assert!(!status.passphrase_available && !status.remembered && !status.keychain_pending);
+    assert!(!fixture.stored_plan().remember);
+}
+
+/// local-data-protection — Keychain prompt unanswered before a protected upgrade: an older
+/// journal that the remembered passphrase can upgrade at launch is not reported as waiting for
+/// its upgrade while Keychain is still being read, and the journal is unchanged until then.
 #[test]
 fn an_older_journal_waits_for_the_remembered_passphrase_before_its_status_is_reported() {
     let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
@@ -1256,6 +1446,7 @@ fn an_older_journal_waits_for_the_remembered_passphrase_before_its_status_is_rep
         ..BackupPlan::default()
     });
     previous_journal(&fixture.paths().journal);
+    let original = fixture.journal_bytes();
     fixture.keychain.show_prompt();
     let app = Arc::new(fixture.state());
     let launching = {
@@ -1269,17 +1460,73 @@ fn an_older_journal_waits_for_the_remembered_passphrase_before_its_status_is_rep
         thread::spawn(move || reported.send(app.startup_status()).unwrap())
     };
     assert!(startup.recv_timeout(Wait::from_millis(300)).is_err());
-    // Backup settings stay available meanwhile.
-    assert_eq!(
-        app.lock().backup_status(noon()).state,
-        BackupState::NeedsPassphrase
-    );
+    // Backup settings stay available meanwhile, so the opening screen can say what it waits for.
+    let status = app.lock().backup_status(noon());
+    assert_eq!(status.state, BackupState::NeedsPassphrase);
+    assert!(status.keychain_pending);
+    assert_eq!(fixture.journal_bytes(), original);
 
     fixture.keychain.answer();
     assert_eq!(startup.recv().unwrap().state, StartupState::Ready);
     launching.join().unwrap();
     asking.join().unwrap();
     assert_eq!(list_backups(&fixture.folder()).unwrap().len(), 1);
+}
+
+/// local-data-protection — Passphrase typed while Keychain answers late: trying a failed start
+/// again can reach the protected upgrade while the launch still reads the remembered passphrase.
+/// When that read returns while the upgrade stores a newly typed passphrase, the launch waits
+/// for the upgrade, so the pre-migration backup uses the typed passphrase and the late read is
+/// dropped.
+#[test]
+fn a_late_keychain_read_at_launch_never_upgrades_with_a_replaced_passphrase() {
+    const NEW: &str = "synthetic passphrase typed for the upgrade";
+    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
+    fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.folder()),
+        remember: true,
+        ..BackupPlan::default()
+    });
+    let journal = fixture.paths().journal;
+    previous_journal(&journal);
+    // The first start fails, as when the file cannot be opened for a while.
+    fs::set_permissions(&journal, fs::Permissions::from_mode(0o000)).unwrap();
+    fixture.keychain.show_read_prompt();
+    let app = Arc::new(fixture.state());
+    let launching = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.launch(noon()))
+    };
+    fixture.keychain.wait_for_prompt();
+    assert_eq!(app.startup_status().state, StartupState::Failed);
+    fs::set_permissions(&journal, fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(
+        app.retry_startup(noon()).state,
+        StartupState::NeedsMigration
+    );
+
+    // The person types a new passphrase to remember, and Keychain asks before storing it.
+    fixture.keychain.show_prompt();
+    let upgrading = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.migrate_journal(Some(secret(NEW)), true, noon()))
+    };
+    fixture.keychain.wait_for_prompts(2);
+    // The launch's read is answered first, with the passphrase the upgrade replaces.
+    fixture.keychain.answer_read();
+    thread::sleep(Wait::from_millis(300));
+    fixture.keychain.answer();
+    let startup = upgrading.join().unwrap().unwrap();
+    launching.join().unwrap();
+    assert_eq!(startup.state, StartupState::Ready);
+
+    // One pre-migration backup, made with the typed passphrase that Keychain now remembers.
+    let backups = list_backups(&fixture.folder()).unwrap();
+    assert_eq!(backups.len(), 1);
+    verify_backup(&fixture.folder().join(&backups[0].name), NEW).unwrap();
+    assert_eq!(fixture.keychain.contents().item.as_deref(), Some(NEW));
+    let status = app.lock().backup_status(noon());
+    assert!(status.passphrase_available && status.remembered && !status.keychain_pending);
 }
 
 /// D-10: backup settings that cannot be read are reported, and kept as they are until the person
@@ -1359,7 +1606,7 @@ fn restore_publishes_a_safety_backup_first_and_brings_back_the_backed_up_journal
             .lock()
             .restore_backup(source, PASSPHRASE, false, noon())
             .unwrap_err();
-        assert_eq!(error.code, "restore");
+        assert_eq!(error, CommandError::backup_unavailable());
     }
     // A wrong passphrase fails before a safety backup could prune an older backup.
     let error = app
@@ -1466,10 +1713,11 @@ fn restoring_the_oldest_of_thirty_backups_survives_its_pruning_by_the_safety_bac
     assert_eq!(app.lock().list_backups().unwrap().len(), 30);
 }
 
-/// D-8: a restore stopped by its safety backup says so, the backup status keeps the cause, and
-/// the person can confirm restoring without one.
+/// local-data-protection — Safe restore: a safety backup that fails while the current journal
+/// can be read cancels the restore with its cause, even when the person would confirm going
+/// ahead without one. Reconnecting the drive is enough to restore with a safety backup.
 #[test]
-fn a_failed_safety_backup_stops_the_restore_until_the_person_confirms() {
+fn a_failed_safety_backup_of_a_readable_journal_cancels_the_restore() {
     let fixture = Fixture::new();
     let app = fixture.launch();
     let drive = fixture.backups.path().join("synthetic drive");
@@ -1490,10 +1738,15 @@ fn a_failed_safety_backup_stops_the_restore_until_the_person_confirms() {
     )
     .unwrap();
     app.lock()
-        .save_entry(draft("2026-11-22", Slot::Evening, "Synthetic later entry."))
+        .save_entry(draft(
+            "2026-11-22",
+            Slot::Evening,
+            "Synthetic evening note.",
+        ))
         .unwrap();
     // The backup drive is unplugged.
-    fs::rename(&drive, fixture.backups.path().join("unplugged")).unwrap();
+    let unplugged = fixture.backups.path().join("unplugged");
+    fs::rename(&drive, &unplugged).unwrap();
     app.lock().pick_restore_file(Some(copy));
 
     // The chosen backup is checked first: a wrong passphrase is reported as such.
@@ -1502,29 +1755,144 @@ fn a_failed_safety_backup_stops_the_restore_until_the_person_confirms() {
         .restore_backup(RestoreSource::Picked, WRONG_PASSPHRASE, false, noon())
         .unwrap_err();
     assert_eq!(error, CommandError::from(Error::Restore));
-    let error = app
-        .lock()
-        .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
-        .unwrap_err();
-    assert_eq!(error, CommandError::safety_backup_failed());
-    assert_eq!(app.lock().list_entries().unwrap().len(), 2);
+    for without_safety_backup in [false, true] {
+        let error = app
+            .lock()
+            .restore_backup(
+                RestoreSource::Picked,
+                PASSPHRASE,
+                without_safety_backup,
+                noon(),
+            )
+            .unwrap_err();
+        assert_eq!(
+            error,
+            CommandError::from(Error::BackupFolder),
+            "{without_safety_backup}"
+        );
+        assert_eq!(app.lock().list_entries().unwrap().len(), 2);
+    }
     assert_eq!(
         app.lock().backup_status(noon()).last_error,
         Some(CommandError::from(Error::BackupFolder))
     );
 
+    fs::rename(&unplugged, &drive).unwrap();
+    let restored_at = noon() + Duration::minutes(5);
     let outcome = app
         .lock()
-        .restore_backup(RestoreSource::Picked, PASSPHRASE, true, noon())
+        .restore_backup(RestoreSource::Picked, PASSPHRASE, false, restored_at)
         .unwrap();
     assert_eq!(
         outcome,
         RestoreOutcome {
             entries: 1,
-            safety_backup: false,
+            safety_backup: true,
             set_aside: None
         }
     );
+    assert_eq!(app.lock().list_entries().unwrap(), vec![kept]);
+    // The evening note written after the last backup is in the safety backup.
+    let safety = app.lock().list_backups().unwrap().remove(0);
+    assert_eq!(safety.created_at, restored_at.timestamp());
+    let check = TempDir::new().unwrap();
+    let mut replaced = Journal::open(&check.path().join("check.sqlite")).unwrap();
+    replaced
+        .restore_from(&drive.join(&safety.name), PASSPHRASE)
+        .unwrap();
+    let mut texts: Vec<_> = replaced.list().unwrap().iter().map(text_of).collect();
+    texts.sort();
+    assert_eq!(texts, ["Synthetic evening note.", "Synthetic kept entry."]);
+}
+
+/// local-data-protection — Safe restore: a backup that cannot be reached, on a disconnected
+/// drive or behind an unreadable list of backups, is reported as unavailable rather than as a
+/// wrong passphrase or an invalid backup, and the journal is unchanged.
+#[test]
+fn a_backup_that_cannot_be_reached_is_reported_as_unavailable() {
+    let fixture = Fixture::new();
+    let app = fixture.launch();
+    let drive = fixture.backups.path().join("synthetic drive");
+    fs::create_dir(&drive).unwrap();
+    app.choose_backup_folder(drive.clone(), noon()).unwrap();
+    app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
+        .unwrap();
+    app.lock()
+        .save_entry(draft("2026-11-22", Slot::Morning, "Synthetic kept entry."))
+        .unwrap();
+    app.lock().backup_now(noon()).unwrap();
+    let backup = app.lock().list_backups().unwrap().remove(0);
+    let registered = || RestoreSource::Registered {
+        name: backup.name.clone(),
+    };
+    let elsewhere = TempDir::new().unwrap();
+    let copy = elsewhere.path().join("synthetic copy.ttd.age");
+    fs::copy(drive.join(&backup.name), &copy).unwrap();
+    app.lock()
+        .save_entry(draft(
+            "2026-11-22",
+            Slot::Evening,
+            "Synthetic evening note.",
+        ))
+        .unwrap();
+    let unavailable = |source: RestoreSource| {
+        let error = app
+            .lock()
+            .restore_backup(source, PASSPHRASE, false, noon())
+            .unwrap_err();
+        assert_eq!(error, CommandError::backup_unavailable());
+        assert_eq!(app.lock().list_entries().unwrap().len(), 2);
+    };
+
+    // The drive is unplugged while its backups are listed in Settings.
+    let unplugged = fixture.backups.path().join("unplugged");
+    fs::rename(&drive, &unplugged).unwrap();
+    unavailable(registered());
+    fs::rename(&unplugged, &drive).unwrap();
+    // The folder's list of backups was damaged since it was shown.
+    let registry = drive.join(".through-the-days-backups.json");
+    let listed = fs::read(&registry).unwrap();
+    fs::write(&registry, b"synthetic damaged registry").unwrap();
+    unavailable(registered());
+    fs::write(&registry, listed).unwrap();
+    // A picked file that was removed since it was chosen.
+    app.lock().pick_restore_file(Some(copy.clone()));
+    fs::remove_file(&copy).unwrap();
+    unavailable(RestoreSource::Picked);
+
+    assert_eq!(app.lock().list_backups().unwrap(), vec![backup]);
+    assert!(
+        names_in(&fixture.paths().data_dir)
+            .iter()
+            .all(|name| !name.starts_with(".ttd-"))
+    );
+}
+
+/// local-data-protection — Safe restore: a private copy of the backup that cannot be written in
+/// the data folder is a storage failure, not a wrong passphrase, and the journal is unchanged.
+#[test]
+fn a_restore_that_cannot_copy_its_backup_reports_a_storage_failure() {
+    let fixture = Fixture::new();
+    let app = ready_with_backups(&fixture);
+    let kept = app
+        .lock()
+        .save_entry(draft("2026-11-22", Slot::Morning, "Synthetic kept entry."))
+        .unwrap();
+    app.lock().backup_now(noon()).unwrap();
+    let backup = app.lock().list_backups().unwrap().remove(0);
+    let data_dir = fixture.paths().data_dir;
+    fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o500)).unwrap();
+    let error = app
+        .lock()
+        .restore_backup(
+            RestoreSource::Registered { name: backup.name },
+            PASSPHRASE,
+            false,
+            noon(),
+        )
+        .unwrap_err();
+    fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(error, CommandError::from(Error::Storage));
     assert_eq!(app.lock().list_entries().unwrap(), vec![kept]);
 }
 
@@ -1616,9 +1984,18 @@ fn a_journal_that_cannot_be_opened_is_kept_aside_and_replaced_from_a_backup_file
         let unreadable = fixture.journal_bytes();
         let app = fixture.launch();
         assert_eq!(app.startup_status().state, state);
-        app.lock().pick_restore_file(Some(backup.clone()));
 
-        // A wrong passphrase moves nothing.
+        // A backup file that cannot be read, or a wrong passphrase, moves nothing.
+        let gone = original
+            .folder()
+            .join("ttd-1-on-an-unplugged-drive.ttd.age");
+        app.lock().pick_restore_file(Some(gone));
+        let error = app
+            .lock()
+            .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
+            .unwrap_err();
+        assert_eq!(error, CommandError::backup_unavailable());
+        app.lock().pick_restore_file(Some(backup.clone()));
         let error = app
             .lock()
             .restore_backup(RestoreSource::Picked, WRONG_PASSPHRASE, false, noon())
@@ -1659,6 +2036,165 @@ fn a_journal_that_cannot_be_opened_is_kept_aside_and_replaced_from_a_backup_file
         assert_eq!(app.lock().list_entries().unwrap(), vec![kept.clone()]);
         assert_eq!(fs::read(data_dir.join(&name)).unwrap(), unreadable);
     }
+}
+
+/// A synthetic write-ahead log beside a journal that cannot be opened.
+const UNREADABLE_LOG: &[u8] = b"synthetic write-ahead log of the unreadable journal";
+
+/// What a launch after an interrupted restore from the startup screen opened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reopened {
+    /// The journal that could not be opened, unchanged, with its log.
+    Unchanged,
+    /// The complete restored journal, with the other one kept aside.
+    Restored,
+}
+
+/// Checks a launch that followed an interrupted restore from the startup screen: it opened either
+/// the journal that could not be opened, unchanged, or the complete restored journal with the
+/// other one kept aside, never an empty journal, and no file of the restore remains.
+fn reopened_after_interruption(
+    fixture: &Fixture,
+    app: &AppState,
+    unopened: StartupState,
+    unreadable: &[u8],
+    kept: &Entry,
+) -> Reopened {
+    let data_dir = fixture.paths().data_dir;
+    let names = names_in(&data_dir);
+    assert!(
+        names
+            .iter()
+            .all(|name| !name.starts_with(".ttd-") && name != "restore-in-progress.json"),
+        "{names:?}"
+    );
+    let aside: Vec<&str> = names
+        .iter()
+        .map(String::as_str)
+        .filter(|name| name.starts_with("journal.unreadable-"))
+        .collect();
+    let startup = app.startup_status();
+    if startup.state != StartupState::Ready {
+        assert_eq!(startup.state, unopened);
+        assert_eq!(fixture.journal_bytes(), unreadable);
+        assert_eq!(
+            fs::read(data_dir.join("journal.sqlite-wal")).unwrap(),
+            UNREADABLE_LOG
+        );
+        assert!(aside.is_empty(), "{names:?}");
+        return Reopened::Unchanged;
+    }
+    assert_eq!(startup.message, None);
+    assert_eq!(app.lock().list_entries().unwrap(), vec![kept.clone()]);
+    let name = format!("journal.unreadable-{}.sqlite", noon().timestamp());
+    assert!(
+        aside.iter().all(|aside| aside.starts_with(&name)),
+        "{names:?}"
+    );
+    assert_eq!(fs::read(data_dir.join(&name)).unwrap(), unreadable);
+    assert_eq!(
+        fs::read(data_dir.join(format!("{name}-wal"))).unwrap(),
+        UNREADABLE_LOG
+    );
+    Reopened::Restored
+}
+
+/// local-data-protection — Safe restore / Interrupted restore: a restore from the startup screen
+/// can stop at any moment, when the person quits or the Mac crashes or loses power. The next
+/// launch opens either the journal that could not be opened, unchanged, or the complete restored
+/// journal, never an empty one, and no restore file remains. A launch that stops while it
+/// settles an interrupted restore leaves files that the following launch settles the same way.
+#[test]
+fn a_restore_from_the_startup_screen_that_stops_at_any_moment_never_opens_an_empty_journal() {
+    let original = Fixture::new();
+    let app = ready_with_backups(&original);
+    let kept = app
+        .lock()
+        .save_entry(draft(
+            "2026-11-21",
+            Slot::Evening,
+            "Synthetic evening to recover.",
+        ))
+        .unwrap();
+    app.lock().backup_now(noon()).unwrap();
+    let backup = original
+        .folder()
+        .join(app.lock().list_backups().unwrap().remove(0).name);
+    drop(app);
+
+    for (create, state) in [
+        (damaged_header as fn(&Path), StartupState::Failed),
+        (newer_journal, StartupState::Unsupported),
+    ] {
+        let fixture = Fixture::new();
+        let data_dir = fixture.paths().data_dir;
+        fs::create_dir_all(&data_dir).unwrap();
+        create(&fixture.paths().journal);
+        fs::write(data_dir.join("journal.sqlite-wal"), UNREADABLE_LOG).unwrap();
+        let unreadable = fixture.journal_bytes();
+        let app = fixture.launch();
+        assert_eq!(app.startup_status().state, state);
+        app.lock().pick_restore_file(Some(backup.clone()));
+
+        let (outcome, stops) = copies_at_interruptions(&fixture, || {
+            app.lock()
+                .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
+        });
+        assert_eq!(outcome.unwrap().entries, 1);
+        let mut reopened = Vec::new();
+        for stop in &stops {
+            let (app, launch_stops) = copies_at_interruptions(stop, || stop.launch());
+            let first = reopened_after_interruption(stop, &app, state, &unreadable, &kept);
+            for launch_stop in &launch_stops {
+                let app = launch_stop.launch();
+                let next =
+                    reopened_after_interruption(launch_stop, &app, state, &unreadable, &kept);
+                assert_eq!(next, first);
+            }
+            reopened.push(first);
+        }
+        // Stops before the restored journal takes the journal's place keep the journal as it
+        // was; every later stop keeps the restored journal.
+        let replaced = reopened
+            .iter()
+            .position(|outcome| *outcome == Reopened::Restored)
+            .unwrap();
+        assert!(replaced > 0, "{reopened:?}");
+        assert!(
+            reopened[replaced..]
+                .iter()
+                .all(|outcome| *outcome == Reopened::Restored),
+            "{reopened:?}"
+        );
+    }
+}
+
+/// local-data-protection — Safe restore / Interrupted restore: when the marker of an interrupted
+/// restore cannot be settled, the start fails rather than create an empty journal where one was
+/// kept aside. Erasing all app data removes the marker.
+#[test]
+fn a_restore_marker_that_cannot_be_settled_fails_the_start_until_app_data_is_erased() {
+    let fixture = Fixture::new();
+    let paths = fixture.paths();
+    fs::create_dir_all(&paths.data_dir).unwrap();
+    let kept = paths.data_dir.join("journal.unreadable-1795363200.sqlite");
+    damaged_header(&kept);
+    fs::write(&paths.restore_marker, b"synthetic damaged marker").unwrap();
+
+    let app = fixture.launch();
+    let startup = app.startup_status();
+    assert_eq!(
+        (startup.state, startup.message.as_deref()),
+        (StartupState::Failed, Some(OPEN_FAILED))
+    );
+    assert_eq!(app.retry_startup(noon()).state, StartupState::Failed);
+    assert!(!paths.journal.exists());
+    assert!(kept.exists());
+
+    let startup = app.erase_app_data(ERASE_CONFIRMATION, noon()).unwrap();
+    assert_eq!(startup.state, StartupState::Ready);
+    assert!(!paths.restore_marker.exists());
+    assert!(!kept.exists());
 }
 
 #[test]
@@ -1715,7 +2251,7 @@ fn a_new_mac_restores_with_only_the_backup_file_and_its_passphrase() {
         .lock()
         .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
         .unwrap_err();
-    assert_eq!(error.code, "restore");
+    assert_eq!(error, CommandError::backup_unavailable());
     assert!(names_in(&clean.folder()).is_empty());
     assert_eq!(app.lock().pick_restore_file(None), None);
 }
@@ -1742,12 +2278,14 @@ fn erasing_removes_app_data_and_secrets_but_never_the_backup_folder() {
     .unwrap();
     fs::write(fixture.folder().join("synthetic notes.txt"), b"synthetic").unwrap();
     let folder_before = names_in(&fixture.folder());
-    // Leftover temporary copies and journals that a restore kept aside are app data too.
+    // Leftover temporary copies, journals that a restore kept aside and the marker of an
+    // interrupted restore are app data too.
     let leftovers = [
         ".ttd-incomplete-synthetic",
         ".ttd-restore-staging-synthetic",
         "journal.unreadable-1795363200.sqlite",
         "journal.unreadable-1795363200.sqlite-wal",
+        "restore-in-progress.json",
     ]
     .map(|name| fixture.paths().data_dir.join(name));
     for leftover in &leftovers {

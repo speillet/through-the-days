@@ -5,7 +5,9 @@
 //! platforms have no store: nothing is remembered and the passphrase lives for the session.
 //!
 //! Any operation can wait for the person to answer a macOS prompt, for example after a rebuild
-//! changed the app's signature, so callers never hold the journal while they use the store.
+//! changed the app's signature, so callers never hold the journal while they use the store. The
+//! launch reads the store while a passphrase change may store or delete, so it is shared between
+//! threads.
 
 use zeroize::Zeroizing;
 
@@ -23,7 +25,7 @@ pub const ACCOUNT: &str = "backup-passphrase";
 pub struct KeychainError;
 
 /// Where a remembered backup passphrase is kept between sessions.
-pub trait SecretStore: Send {
+pub trait SecretStore: Send + Sync {
     /// The remembered passphrase, or `None` when nothing is stored.
     fn read(&self) -> Result<Option<Zeroizing<String>>, KeychainError>;
     /// Stores `passphrase`, replacing any earlier one.
@@ -118,12 +120,21 @@ pub mod fake {
         pub failing: bool,
     }
 
-    /// Operations wait while `holding` is set, like a Keychain prompt nobody has answered yet.
+    /// What waits, like a Keychain prompt nobody has answered yet.
     #[derive(Debug, Default)]
     struct Prompt {
-        holding: bool,
+        /// Reads wait for the prompt.
+        reads: bool,
+        /// Stores and deletes wait for the prompt.
+        changes: bool,
         /// Operations waiting for the prompt to be answered.
         waiting: usize,
+    }
+
+    impl Prompt {
+        fn holds(&self, reading: bool) -> bool {
+            if reading { self.reads } else { self.changes }
+        }
     }
 
     /// A shared handle: the test keeps one clone to inspect what the shell stored.
@@ -146,19 +157,43 @@ pub mod fake {
 
         /// Makes every later operation wait, as if macOS showed a prompt, until [`Self::answer`].
         pub fn show_prompt(&self) {
-            self.prompt().holding = true;
+            let mut prompt = self.prompt();
+            prompt.reads = true;
+            prompt.changes = true;
+        }
+
+        /// Makes later reads wait until [`Self::answer`] while stores and deletes go through, as
+        /// a prompt that only reading the item asks for.
+        pub fn show_read_prompt(&self) {
+            let mut prompt = self.prompt();
+            prompt.reads = true;
+            prompt.changes = false;
         }
 
         /// Answers the prompt: waiting operations continue.
         pub fn answer(&self) {
-            self.prompt().holding = false;
+            let mut prompt = self.prompt();
+            prompt.reads = false;
+            prompt.changes = false;
+            self.prompt.1.notify_all();
+        }
+
+        /// Answers the prompt that reads wait for: waiting reads continue, while stores and
+        /// deletes keep waiting until [`Self::answer`].
+        pub fn answer_read(&self) {
+            self.prompt().reads = false;
             self.prompt.1.notify_all();
         }
 
         /// Waits until an operation is waiting for the prompt.
         pub fn wait_for_prompt(&self) {
+            self.wait_for_prompts(1);
+        }
+
+        /// Waits until `count` operations are waiting for the prompt.
+        pub fn wait_for_prompts(&self, count: usize) {
             let mut prompt = self.prompt();
-            while prompt.waiting == 0 {
+            while prompt.waiting < count {
                 prompt = self
                     .prompt
                     .1
@@ -171,11 +206,14 @@ pub mod fake {
             self.prompt.0.lock().unwrap_or_else(PoisonError::into_inner)
         }
 
-        fn pass_prompt(&self) {
+        fn pass_prompt(&self, reading: bool) {
             let mut prompt = self.prompt();
+            if !prompt.holds(reading) {
+                return;
+            }
             prompt.waiting += 1;
             self.prompt.1.notify_all();
-            while prompt.holding {
+            while prompt.holds(reading) {
                 prompt = self
                     .prompt
                     .1
@@ -188,7 +226,7 @@ pub mod fake {
 
     impl SecretStore for FakeKeychain {
         fn read(&self) -> Result<Option<Zeroizing<String>>, KeychainError> {
-            self.pass_prompt();
+            self.pass_prompt(true);
             let contents = self.contents();
             if contents.failing {
                 return Err(KeychainError);
@@ -197,7 +235,7 @@ pub mod fake {
         }
 
         fn store(&self, passphrase: &str) -> Result<(), KeychainError> {
-            self.pass_prompt();
+            self.pass_prompt(false);
             let mut contents = self.contents();
             if contents.failing {
                 return Err(KeychainError);
@@ -207,7 +245,7 @@ pub mod fake {
         }
 
         fn delete(&self) -> Result<(), KeychainError> {
-            self.pass_prompt();
+            self.pass_prompt(false);
             let mut contents = self.contents();
             if contents.failing {
                 return Err(KeychainError);

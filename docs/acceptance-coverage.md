@@ -46,6 +46,7 @@ Every numbered case in the [product acceptance tests](acceptance-tests.md), link
 - Completion integrity and score-range scenarios add validation beyond case 2; optional pride has its separate 1–10 range.
 - Case 7 includes goal-counters — Transparent time and visibility when goals are delivered.
 - Case 12 also uses local-persistence — Safe migrations and local-data-protection — Encrypted local backups before real use.
+- Case 12 also uses desktop-shell — Stored display preferences: preferences that cannot be read are kept until an explicit reset, and a restored journal keeps its backup's display preferences.
 - Case 13 also uses local-persistence — Progressive autosave and errors.
 - Case 20 combines llm-assistance consent, chatgpt-import source identity, conversation-analysis provenance, and approved-exports preview/approval.
 - Case 22 also uses calendar-reading — Local search and filtering and chatgpt-import — Separate original-language store.

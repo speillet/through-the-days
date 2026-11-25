@@ -3,21 +3,25 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { createMemoryApi, createMemoryStorage, type MemoryApiOptions } from './api/memory';
+import { flushAll, hasPending } from './state/flush';
 import { TEST_NOW } from './test/render';
 
 // The shell is tested with stand-ins for views owned by other features, so these
 // tests describe the shell's own contract whatever those views render.
 vi.mock('./features/today/TodayView', async () => {
-  const { createElement } = await import('react');
+  const { createElement, useState } = await import('react');
   const { useFocusMode } = await import('./state/focus');
   return {
     TodayView() {
       const { focusMode, setFocusMode } = useFocusMode();
+      const [failing, setFailing] = useState(false);
+      if (failing) throw new Error('Synthetic view failure');
       return createElement(
         'div',
         null,
         createElement('h1', null, 'Synthetic Today'),
         createElement('button', { type: 'button', onClick: () => setFocusMode(!focusMode) }, 'Toggle focus mode'),
+        createElement('button', { type: 'button', onClick: () => setFailing(true) }, 'Simulate a view failure'),
       );
     },
   };
@@ -228,6 +232,81 @@ describe('application shell', () => {
     expect(await textScale()).toBe(100);
   });
 
+  it('ignores the text-size shortcuts while a dialog is open', async () => {
+    const user = userEvent.setup();
+    const { api } = await openWorkspace();
+    const writes = vi.spyOn(api, 'setPreferences');
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Erase all app data…' }));
+    expect(screen.getByRole('alertdialog', { name: 'Erase all app data?' })).toBeInTheDocument();
+
+    await user.keyboard('{Meta>}={/Meta}');
+    await user.keyboard('{Meta>}-{/Meta}');
+    expect(writes).not.toHaveBeenCalled();
+    expect(document.documentElement.style.fontSize).toBe('');
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    await user.keyboard('{Meta>}={/Meta}');
+    await vi.waitFor(async () => expect((await api.getPreferences()).textScale).toBe(115));
+  });
+
+  it('keeps the display preferences of a restored backup when Command-plus is pressed during the restore', async () => {
+    const user = userEvent.setup();
+    const passphrase = 'fictional-harbour-compass';
+    const storage = createMemoryStorage();
+    const earlier = createMemoryApi({ storage, now: () => TEST_NOW });
+    const backedUp = await earlier.setPreferences({
+      ...(await earlier.getPreferences()),
+      timeZone: 'America/New_York',
+      theme: 'dark',
+    });
+    await earlier.chooseBackupFolder();
+    await earlier.setBackupPassphrase(passphrase, false);
+    await earlier.backupNow();
+    await earlier.setPreferences({ ...backedUp, timeZone: 'Europe/Paris', theme: 'light' });
+
+    const { api } = await openWorkspace({ storage });
+    // As with the journal lock in the native app, a preference write sent while the
+    // restore runs waits for it, then commits over the restored journal.
+    let finishRestore = () => {};
+    const restoring = new Promise<void>((resolve) => {
+      finishRestore = resolve;
+    });
+    let restored: Promise<unknown> = Promise.resolve();
+    const restoreBackup = api.restoreBackup.bind(api);
+    const restore = vi.spyOn(api, 'restoreBackup').mockImplementation((...args) => {
+      const outcome = restoring.then(() => restoreBackup(...args));
+      restored = outcome;
+      return outcome;
+    });
+    const setPreferences = api.setPreferences.bind(api);
+    const writes = vi.spyOn(api, 'setPreferences').mockImplementation(async (preferences) => {
+      await restored;
+      return setPreferences(preferences);
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light');
+    await user.click(await screen.findByRole('button', { name: /^Restore the backup from/ }));
+    const dialog = screen.getByRole('alertdialog', { name: 'Restore this backup?' });
+    await user.type(within(dialog).getByLabelText('Passphrase for this backup'), passphrase);
+    await user.click(within(dialog).getByRole('button', { name: 'Replace journal and restore' }));
+    await vi.waitFor(() => expect(restore).toHaveBeenCalledTimes(1));
+    expect(within(dialog).getByRole('button', { name: 'Restoring…' })).toBeInTheDocument();
+
+    await user.keyboard('{Meta>}={/Meta}');
+    expect(writes).not.toHaveBeenCalled();
+
+    finishRestore();
+    expect(await screen.findByText(/^Backup restored:/)).toBeInTheDocument();
+    expect(await screen.findByText('America/New York')).toBeInTheDocument();
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+    expect(document.documentElement.style.fontSize).toBe('');
+    expect(writes).not.toHaveBeenCalled();
+    await expect(api.getPreferences()).resolves.toEqual(backedUp);
+  });
+
   it('shows the backup banner above every view', async () => {
     const user = userEvent.setup();
     await openWorkspace();
@@ -266,5 +345,54 @@ describe('application shell', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument();
     await user.click(within(confirmation).getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByText('Synthetic restore complete.')).not.toBeInTheDocument();
+  });
+
+  it('replaces only a failing view with a recoverable message until the person retries or navigates', async () => {
+    // React also reports the caught failure on the console; this test reads the screen.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const user = userEvent.setup();
+    await openWorkspace();
+    await user.click(screen.getByRole('button', { name: 'Toggle focus mode' }));
+    await user.click(screen.getByRole('button', { name: 'Simulate a view failure' }));
+
+    const failure = await screen.findByRole('alert');
+    expect(failure).toHaveTextContent("This view couldn't be shown.");
+    expect(failure).toHaveTextContent('Your saved entries are not affected.');
+    expect(screen.queryByRole('heading', { name: 'Synthetic Today' })).not.toBeInTheDocument();
+    // The rest of the workspace stays: focus mode ends so the navigation returns, and the status area remains.
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
+    expect(screen.getByText('Synthetic backup banner')).toBeInTheDocument();
+
+    await user.click(within(failure).getByRole('button', { name: 'Try again' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Synthetic Today' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Simulate a view failure' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("This view couldn't be shown.");
+    await user.click(within(nav).getByRole('button', { name: 'Trash' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Synthetic Trash' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.click(within(nav).getByRole('button', { name: 'Today' }));
+    expect(screen.getByRole('heading', { level: 1, name: 'Synthetic Today' })).toBeInTheDocument();
+  });
+
+  it('keeps unsaved weekly notes waiting for close and quit when another view fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const user = userEvent.setup();
+    const { api } = await openWorkspace();
+    const save = vi
+      .spyOn(api, 'saveWeeklyNotes')
+      .mockRejectedValue({ code: 'storage', message: 'Synthetic notes save failure.' });
+    await user.click(screen.getByRole('button', { name: 'Weekly Review' }));
+    await user.type(await screen.findByRole('textbox', { name: 'Your notes' }), 'Synthetic pending note.');
+    expect(await screen.findByText('Synthetic notes save failure.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Today' }));
+    await user.click(screen.getByRole('button', { name: 'Simulate a view failure' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("This view couldn't be shown.");
+    // Closing the window and quitting flush through this registry before they proceed.
+    expect(hasPending()).toBe(true);
+    save.mockRestore();
+    await flushAll();
+    expect(hasPending()).toBe(false);
+    expect((await api.weeklyReview('2026-11-22')).notes).toBe('Synthetic pending note.');
   });
 });

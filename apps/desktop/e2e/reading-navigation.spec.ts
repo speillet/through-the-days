@@ -66,3 +66,28 @@ test('the timeline preserves filters, layers, source slots and custom ranges thr
   await page.getByRole('button', { name: '1 year', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Zoom out' })).toBeDisabled();
 });
+
+test('a fifth year digit typed into a reading date keeps the page, its view and its date', async ({ page }) => {
+  await seedJournal(page, {
+    active: [entry('2026-11-20', 'morning', 'Synthetic dated writing.', { mood: 4, energy: 6 })],
+  });
+  await openView(page, 'Trends');
+  const ending = page.getByLabel('Ending on', { exact: true });
+  await expect(ending).toHaveValue('2026-11-22');
+  // Date fields accept six-digit years: "2026" followed by a stray "1" gives 20261-11-24.
+  await ending.fill('20261-11-24');
+  await expect(page.getByRole('heading', { level: 1, name: 'Trends' })).toBeVisible();
+  await expect(ending).toHaveValue('2026-11-22');
+  await expect(
+    page.getByText('Monday 9 November 2026 to Sunday 22 November 2026', { exact: true }),
+  ).toBeVisible();
+
+  await openView(page, 'The Path So Far');
+  await page.getByRole('button', { name: 'Custom range' }).click();
+  const to = page.getByLabel('To', { exact: true });
+  await to.fill('20261-11-24');
+  await expect(to).toHaveValue('2026-11-22');
+  await page.getByRole('button', { name: '30 days', exact: true }).click();
+  await openView(page, 'Calendar');
+  await expect(page.getByRole('grid', { name: 'November 2026' })).toBeVisible();
+});

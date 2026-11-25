@@ -2,16 +2,21 @@
 
 mod common;
 
-use common::document;
-use journal_core::{Entry, Journal, Slot};
+use common::{NOW, document};
+use journal_core::{Entry, Journal, Milestone, Slot};
 use std::{
     os::unix::process::ExitStatusExt,
     path::{Path, PathBuf},
     process::Command,
+    thread,
+    time::Duration,
 };
 
 const CRASH_TEST: &str = "crash_after_saved_acknowledgement_restores_the_exact_revision";
 const CHILD_DATABASE: &str = "TTD_TEST_CRASH_CHILD_DATABASE";
+/// How long another connection keeps the journal's write lock: well within the journal's
+/// three-second wait for a lock.
+const LOCK_HOLD: Duration = Duration::from_millis(200);
 
 /// local-persistence — Atomic acknowledged revisions / Crash after saved acknowledgment.
 ///
@@ -89,4 +94,72 @@ fn partially_answered_check_in_is_restored_without_requiring_completion() {
         (restored.energy, restored.pride, restored.progress),
         (None, None, None)
     );
+}
+
+/// local-persistence — Progressive autosave and errors (a lock released within the wait is not a
+/// save failure; a lock held past it still fails, as
+/// `stale_or_locked_save_keeps_the_last_acknowledged_aggregate` in `tests/journal.rs` checks).
+///
+/// Another connection, such as a second copy of the app, holds the journal's write lock for a
+/// moment. Every operation that reads before it writes waits for that lock and succeeds, instead
+/// of failing at once: SQLite never waits to turn a read transaction into a write transaction.
+#[test]
+fn writers_wait_for_another_connections_write_lock_instead_of_failing() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.sqlite");
+    let journal = Journal::open(&path).unwrap();
+    let mut morning = journal
+        .save(Entry::draft("2026-11-22", Slot::Morning))
+        .unwrap();
+    let evening = journal
+        .save(Entry::draft("2026-11-21", Slot::Evening))
+        .unwrap();
+    journal.trash(&evening.id, evening.revision, NOW).unwrap();
+
+    morning.document = document("Synthetic: saved while another connection was writing.");
+    let morning = while_another_connection_writes(&path, || journal.save(morning)).unwrap();
+    assert_eq!(morning.revision, 2);
+    let evening =
+        while_another_connection_writes(&path, || journal.restore(&evening.id, NOW)).unwrap();
+    assert_eq!(evening.revision, 2);
+    let review = while_another_connection_writes(&path, || {
+        journal.save_weekly_notes("2026-11-22", "Synthetic weekly notes.", 0)
+    })
+    .unwrap();
+    assert_eq!(review.revision, 1);
+    let review = while_another_connection_writes(&path, || {
+        journal.generate_weekly_summary("2026-11-22", review.revision)
+    })
+    .unwrap();
+    assert!(review.summary.is_some());
+    let milestone = while_another_connection_writes(&path, || {
+        journal.save_milestone(Milestone::new("2026-11-22", "Synthetic milestone"))
+    })
+    .unwrap();
+    assert_eq!(milestone.revision, 1);
+
+    drop(journal);
+    let reopened = Journal::open(&path).unwrap();
+    assert_eq!(reopened.get(&morning.id).unwrap(), morning);
+    assert_eq!(reopened.get(&evening.id).unwrap(), evening);
+    let stored = reopened.weekly_review("2026-11-22").unwrap();
+    assert_eq!(
+        (stored.notes.as_str(), stored.summary),
+        ("Synthetic weekly notes.", review.summary)
+    );
+    assert_eq!(reopened.milestones().unwrap(), vec![milestone]);
+}
+
+/// Runs `operation` while another connection holds the journal's write lock, which it releases
+/// after [`LOCK_HOLD`] without changing anything.
+fn while_another_connection_writes<T>(journal: &Path, operation: impl FnOnce() -> T) -> T {
+    let other = rusqlite::Connection::open(journal).unwrap();
+    other.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let release = thread::spawn(move || {
+        thread::sleep(LOCK_HOLD);
+        other.execute_batch("COMMIT").unwrap();
+    });
+    let result = operation();
+    release.join().unwrap();
+    result
 }

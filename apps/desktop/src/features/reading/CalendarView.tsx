@@ -49,9 +49,7 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
             Search matches words in titles and writing, ignoring letter case and Latin accents.
           </p>
           {entries.length ? (
-            entries.map((entry) => (
-              <EntryPreview key={`${entry.id}:${entry.revision}`} entry={entry} origin="journal" />
-            ))
+            entries.map((entry) => <EntryPreview key={entry.id} entry={entry} origin="journal" />)
           ) : (
             <p>No entries match these filters.</p>
           )}
@@ -100,9 +98,7 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
           <section className="calendar-reading__preview" aria-label="Selected date">
             <h2>{formatLongDate(selected)}</h2>
             {selectedEntries.length ? (
-              selectedEntries.map((entry) => (
-                <EntryPreview key={`${entry.id}:${entry.revision}`} entry={entry} />
-              ))
+              selectedEntries.map((entry) => <EntryPreview key={entry.id} entry={entry} />)
             ) : (
               <p>No saved entry on this date.</p>
             )}

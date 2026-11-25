@@ -2,9 +2,9 @@
 //!
 //! The renderer reaches the journal only through the commands in `commands.rs`: it never sends
 //! filesystem paths or SQL. The journal itself is `journal-core`; this crate adds the
-//! application data folder, startup and migration, the backup folder and passphrase (native
-//! dialogs and Keychain), restore, erasure, the native appearance, metadata-only diagnostics and
-//! a quit that waits for pending saves.
+//! application data folder, a single running copy of the installed app, startup and migration,
+//! the backup folder and passphrase (native dialogs and Keychain), restore, erasure, the native
+//! appearance, metadata-only diagnostics and a quit that waits for pending saves.
 
 mod appearance;
 mod commands;
@@ -15,6 +15,7 @@ mod keychain;
 #[cfg(target_os = "macos")]
 mod menu;
 mod paths;
+mod single_instance;
 #[cfg(debug_assertions)]
 mod smoke;
 mod state;
@@ -24,7 +25,8 @@ use tauri::{App, Manager};
 
 /// Starts the application.
 pub fn run() {
-    let builder = tauri::Builder::default()
+    // First: a second copy of the app must exit before anything else touches the data folder.
+    let builder = single_instance::guard(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
         .manage(exit::ExitGate::default())
         .setup(setup)
@@ -86,6 +88,9 @@ pub fn run() {
 /// passphrase read from Keychain, without holding the journal: a Keychain prompt never keeps
 /// the journal from opening or writing from continuing. Publishing a pre-migration backup can
 /// also take a while, so the launch never runs on the main thread.
+///
+/// A second copy of a release build never gets here: the single-instance guard ends it while the
+/// app is being built.
 fn setup(app: &mut App) -> Result<(), Box<dyn Error>> {
     let platform_dir = app.path().app_data_dir().ok();
     let Some(data_dir) =
