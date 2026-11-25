@@ -64,10 +64,13 @@ export interface JournalApi {
   /** Opens the native file picker; resolves null when cancelled. */
   chooseRestoreFile(): Promise<PickedBackup | null>;
   /**
-   * Verifies the chosen backup, then replaces the journal with it. When a safety backup of
-   * the current journal is needed but cannot be made because that journal cannot be read,
-   * the restore is refused (safetyBackupFailed) unless withoutSafetyBackup is true. Without an
-   * open journal (a failed or unsupported start), the unreadable journal is kept aside.
+   * Verifies the chosen backup, then replaces the journal with it. A backup that cannot be
+   * reached is backupUnavailable; one that cannot be decrypted or validated is restore. When a
+   * safety backup of the current journal is needed but cannot be made because that journal
+   * cannot be read, the restore is refused (safetyBackupFailed) unless withoutSafetyBackup is
+   * true. Any other safety-backup failure, such as backupFolder, cancels the restore whatever
+   * withoutSafetyBackup says. Without an open journal (a failed or unsupported start), the
+   * unreadable journal is kept aside.
    */
   restoreBackup(
     source: RestoreSource,
@@ -111,6 +114,7 @@ const ERROR_CODES: ReadonlySet<string> = new Set<ErrorCode>([
   'damaged',
   'backupRegistry',
   'backupFolder',
+  'backupUnavailable',
   'safetyBackupFailed',
   'notReady',
   'needsFolder',

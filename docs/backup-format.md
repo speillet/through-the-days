@@ -152,6 +152,10 @@ Restoring replaces the entire journal (entries, trash and preferences) with the 
 
 **Safety backup (desktop app).** Before replacing a journal that contains entries, the desktop app publishes a regular backup of it when a folder is chosen and the passphrase is available in this session. If that safety backup fails, the restore is cancelled.
 
+When the current journal cannot be read, because a read fails or its snapshot reports `damaged` (see [Damaged journal files](#damaged-journal-files)), no safety backup of it can be made: the restore stops with `safetyBackupFailed`, and the person can then confirm replacing the journal without one. Any other failure, such as `backupFolder` for a disconnected drive, cancels the restore with that error even with this confirmation, and the restore dialog names the cause.
+
+**Choosing the backup (desktop app).** A registered backup is restored only while the chosen folder still lists it, and a picked file only while it can be read. The app first copies the encrypted file into its data folder, because the safety backup may prune the backup being restored. A backup that cannot be reached, for example on a disconnected drive, fails with `backupUnavailable` rather than `restore`, so the passphrase is not put in doubt; a copy that cannot be written in the data folder fails with `storage`. In both cases the journal is unchanged.
+
 Restored trash entries keep their original deletion time. Those whose 30 days have passed are removed by the next trash purge, at launch or while the app is open. Until then they cannot be restored from the trash: `journal-core` refuses to restore any trashed entry whose 30 days have passed, as if it were already gone (`notFound`).
 
 The passphrase rule is not applied when restoring, so every backup stays restorable with the passphrase it was created with.
@@ -225,6 +229,10 @@ If the backup cannot be made, the journal stays at its earlier version, unchange
 | Clock behind a registered backup | The new backup is kept; when pruning is due, nothing is deleted and a retention warning is reported. |
 | Pruning cannot complete safely | Retention warning; the new backup is still valid. |
 | Live journal damaged | Reads and backups report `damaged`; a validated backup can replace the journal. |
+| Live journal cannot take the restored copy, such as on a full disk | `storage`; the replacement is rolled back and the journal is unchanged. |
+| Backup to restore cannot be reached (desktop app): its drive is disconnected, the file was moved or the folder's registry cannot be read | `backupUnavailable`; the journal is unchanged. |
+| Safety backup fails while the current journal can be read (desktop app) | The restore is cancelled with the safety backup's error, such as `backupFolder`, even if the person would confirm restoring without one; the journal is unchanged. |
+| Current journal cannot be read for its safety backup (desktop app) | `safetyBackupFailed`; the journal is replaced without a safety backup only after the person confirms it. |
 
 Errors contain fixed English messages and stable codes. They never contain journal text, paths or passphrases. The codes `journal-core` uses for backups and recovery:
 
@@ -237,6 +245,8 @@ Errors contain fixed English messages and stable codes. They never contain journ
 | `restore` | The backup could not be decrypted or validated; the journal is unchanged. |
 | `passphrase` | A new backup's passphrase has fewer than 12 characters. |
 | `damaged` | Part of the live journal file cannot be read. |
+
+The desktop app adds two restore codes: `backupUnavailable`, when the backup chosen for a restore cannot be found or read, and `safetyBackupFailed`, when the current journal cannot be read for its safety backup and the restore waits for the person's confirmation. Only `restore` asks the person to check the passphrase.
 
 ## Live journal durability
 
@@ -285,6 +295,7 @@ The `journal-core` tests exercise this contract with real temporary SQLite datab
 | Pre-migration backup required; failed migration leaves the journal intact | `migration.rs`, `schema.rs` |
 | Migration of frozen version-1 content, and frozen version-2 content still loading | `migration.rs`: `existing_journal_waits_for_recovery_then_migrates_with_nullable_progress`, `frozen_current_version_payload_still_loads_with_every_field` |
 | Damaged pages, headers and schemas reported as `damaged`, never changed, and replaceable from a backup | `damaged.rs` |
+| A live journal that cannot take a valid restored copy reports `storage` and keeps its content | `src/recovery.rs`: `a_live_journal_that_cannot_take_the_restored_copy_reports_a_storage_failure` |
 | Trash past its 30 days cannot be restored before the purge | `journal.rs`: `trash_past_its_thirty_days_cannot_be_restored_before_the_purge` |
 | Permanently deleted, purged and deleted-milestone text leaves the open journal's database file and write-ahead log; a log that a crash left is folded in when the journal opens | `journal.rs`: `permanent_deletion_removes_the_entry_text_from_the_live_database_file`, `purging_expired_trash_removes_the_entry_text_from_the_open_journal_files`, `opening_folds_in_a_log_that_still_holds_deleted_text_after_a_crash`; `reading.rs`: `deleting_a_milestone_removes_its_title_and_notes_from_the_open_journal_files` |
 | Live journal and upgrade connections request full flushes | `src/store.rs`: `journal_connections_request_full_flushes_for_commits_and_checkpoints`, `the_upgrade_connection_requests_full_flushes_without_changing_the_file` |

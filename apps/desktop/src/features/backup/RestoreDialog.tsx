@@ -1,7 +1,9 @@
 // Restores one backup after asking for the passphrase it was made with. The journal
 // verifies the backup before replacing anything, so every failure leaves the current
-// journal as it was; the dialog says so. When the current journal cannot be read, no
-// safety backup of it can be made, and restoring then needs an explicit confirmation.
+// journal as it was; the dialog says so and names the cause. When the current journal
+// cannot be read, no safety backup of it can be made, and restoring then needs an
+// explicit confirmation; any other failed safety backup cancels the restore. Only a
+// backup that could not be decrypted or validated empties the passphrase field.
 // Opened from the startup screen, there is no open journal: the one that can't be
 // opened is kept aside in the data folder and a new journal is made from the backup.
 
@@ -104,12 +106,12 @@ function OpenRestoreDialog({
       const failure = toCommandError(caught);
       setError(restoreFailureMessage(failure));
       setBusy(false);
-      if (failure.code === 'safetyBackupFailed' && !withoutSafetyBackup) {
-        // The backup itself was verified, so its passphrase stays for the confirmed restore.
-        setConfirmWithout(true);
-      } else {
+      // Only an unreadable current journal can be replaced without a safety backup.
+      setConfirmWithout(failure.code === 'safetyBackupFailed' && !withoutSafetyBackup);
+      // Only a backup that could not be decrypted or validated puts the passphrase in doubt.
+      // After any other failure, such as a disconnected drive, it stays for another try.
+      if (failure.code === 'restore') {
         setPassphrase('');
-        setConfirmWithout(false);
         passphraseRef.current?.focus();
       }
     }

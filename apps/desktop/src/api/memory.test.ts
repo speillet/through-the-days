@@ -662,7 +662,27 @@ describe('memory journal: backups', () => {
   it('returns null when there is no backup file to pick', async () => {
     const { api } = setup();
     await expect(api.chooseRestoreFile()).resolves.toBeNull();
-    await expect(api.restoreBackup({ kind: 'picked' }, PASSPHRASE)).rejects.toEqual(commandError('restore'));
+    await expect(api.restoreBackup({ kind: 'picked' }, PASSPHRASE)).rejects.toEqual(commandError('backupUnavailable'));
+  });
+
+  it('reports a backup that is no longer in the folder as unavailable, not as a wrong passphrase', async () => {
+    const { api, storage } = setup();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE, false);
+    await api.saveEntry(withText(draft('2026-11-20'), 'Synthetic backed-up entry.'));
+    await api.backupNow();
+    const [backup] = await api.listBackups();
+    await api.chooseRestoreFile();
+    await api.saveEntry(withText(draft('2026-11-22'), 'Synthetic newer entry.'));
+    const before = await api.listEntries();
+    // The backup file leaves the folder after it was listed and picked.
+    damageStore(storage, (stored) => {
+      stored.folder = [];
+    });
+    for (const source of [{ kind: 'registered', name: backup.name }, { kind: 'picked' }] as const) {
+      await expect(api.restoreBackup(source, PASSPHRASE)).rejects.toEqual(commandError('backupUnavailable'));
+    }
+    await expect(api.listEntries()).resolves.toEqual(before);
   });
 });
 
@@ -729,6 +749,9 @@ describe('memory journal: messages', () => {
     );
     expect(ERROR_MESSAGES.backupFolder).toBe(
       "The backup folder is not available or can't be written to. Reconnect the drive or choose another folder.",
+    );
+    expect(ERROR_MESSAGES.backupUnavailable).toBe(
+      'The backup is not available. Reconnect the drive that holds it or choose another backup. Your current journal is unchanged.',
     );
     expect(ERROR_MESSAGES.safetyBackupFailed).toBe(
       'A safety backup of your current journal could not be made, so nothing was restored. If your current journal is damaged, you can restore without a safety backup.',

@@ -77,6 +77,8 @@ export const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = Object.freeze
     "This folder's list of backups is damaged or was made by a newer version. Choose a different backup folder; the backups already in it can still be restored with Choose a backup file…",
   backupFolder:
     "The backup folder is not available or can't be written to. Reconnect the drive or choose another folder.",
+  backupUnavailable:
+    'The backup is not available. Reconnect the drive that holds it or choose another backup. Your current journal is unchanged.',
   safetyBackupFailed:
     'A safety backup of your current journal could not be made, so nothing was restored. If your current journal is damaged, you can restore without a safety backup.',
   notReady: 'The journal is not open yet. Finish the step on screen first.',
@@ -946,9 +948,10 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
       } else {
         name = pickedBackup;
       }
-      // The chosen backup is always verified first: a wrong passphrase changes nothing.
+      // The chosen backup is always verified first: a backup that is gone, or a wrong passphrase, changes nothing.
       const backup = state.folder.find((item) => item.name === name);
-      if (!backup || typeof passphrase !== 'string' || fingerprint(passphrase) !== backup.fingerprint) {
+      if (!backup) throw failure('backupUnavailable');
+      if (typeof passphrase !== 'string' || fingerprint(passphrase) !== backup.fingerprint) {
         throw failure('restore');
       }
 

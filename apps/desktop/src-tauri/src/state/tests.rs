@@ -1234,7 +1234,7 @@ fn restore_publishes_a_safety_backup_first_and_brings_back_the_backed_up_journal
             .lock()
             .restore_backup(source, PASSPHRASE, false, noon())
             .unwrap_err();
-        assert_eq!(error.code, "restore");
+        assert_eq!(error, CommandError::backup_unavailable());
     }
     // A wrong passphrase fails before a safety backup could prune an older backup.
     let error = app
@@ -1341,10 +1341,11 @@ fn restoring_the_oldest_of_thirty_backups_survives_its_pruning_by_the_safety_bac
     assert_eq!(app.lock().list_backups().unwrap().len(), 30);
 }
 
-/// D-8: a restore stopped by its safety backup says so, the backup status keeps the cause, and
-/// the person can confirm restoring without one.
+/// local-data-protection — Safe restore: a safety backup that fails while the current journal
+/// can be read cancels the restore with its cause, even when the person would confirm going
+/// ahead without one. Reconnecting the drive is enough to restore with a safety backup.
 #[test]
-fn a_failed_safety_backup_stops_the_restore_until_the_person_confirms() {
+fn a_failed_safety_backup_of_a_readable_journal_cancels_the_restore() {
     let fixture = Fixture::new();
     let app = fixture.launch();
     let drive = fixture.backups.path().join("synthetic drive");
@@ -1365,10 +1366,15 @@ fn a_failed_safety_backup_stops_the_restore_until_the_person_confirms() {
     )
     .unwrap();
     app.lock()
-        .save_entry(draft("2026-11-22", Slot::Evening, "Synthetic later entry."))
+        .save_entry(draft(
+            "2026-11-22",
+            Slot::Evening,
+            "Synthetic evening note.",
+        ))
         .unwrap();
     // The backup drive is unplugged.
-    fs::rename(&drive, fixture.backups.path().join("unplugged")).unwrap();
+    let unplugged = fixture.backups.path().join("unplugged");
+    fs::rename(&drive, &unplugged).unwrap();
     app.lock().pick_restore_file(Some(copy));
 
     // The chosen backup is checked first: a wrong passphrase is reported as such.
@@ -1377,29 +1383,144 @@ fn a_failed_safety_backup_stops_the_restore_until_the_person_confirms() {
         .restore_backup(RestoreSource::Picked, WRONG_PASSPHRASE, false, noon())
         .unwrap_err();
     assert_eq!(error, CommandError::from(Error::Restore));
-    let error = app
-        .lock()
-        .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
-        .unwrap_err();
-    assert_eq!(error, CommandError::safety_backup_failed());
-    assert_eq!(app.lock().list_entries().unwrap().len(), 2);
+    for without_safety_backup in [false, true] {
+        let error = app
+            .lock()
+            .restore_backup(
+                RestoreSource::Picked,
+                PASSPHRASE,
+                without_safety_backup,
+                noon(),
+            )
+            .unwrap_err();
+        assert_eq!(
+            error,
+            CommandError::from(Error::BackupFolder),
+            "{without_safety_backup}"
+        );
+        assert_eq!(app.lock().list_entries().unwrap().len(), 2);
+    }
     assert_eq!(
         app.lock().backup_status(noon()).last_error,
         Some(CommandError::from(Error::BackupFolder))
     );
 
+    fs::rename(&unplugged, &drive).unwrap();
+    let restored_at = noon() + Duration::minutes(5);
     let outcome = app
         .lock()
-        .restore_backup(RestoreSource::Picked, PASSPHRASE, true, noon())
+        .restore_backup(RestoreSource::Picked, PASSPHRASE, false, restored_at)
         .unwrap();
     assert_eq!(
         outcome,
         RestoreOutcome {
             entries: 1,
-            safety_backup: false,
+            safety_backup: true,
             set_aside: None
         }
     );
+    assert_eq!(app.lock().list_entries().unwrap(), vec![kept]);
+    // The evening note written after the last backup is in the safety backup.
+    let safety = app.lock().list_backups().unwrap().remove(0);
+    assert_eq!(safety.created_at, restored_at.timestamp());
+    let check = TempDir::new().unwrap();
+    let mut replaced = Journal::open(&check.path().join("check.sqlite")).unwrap();
+    replaced
+        .restore_from(&drive.join(&safety.name), PASSPHRASE)
+        .unwrap();
+    let mut texts: Vec<_> = replaced.list().unwrap().iter().map(text_of).collect();
+    texts.sort();
+    assert_eq!(texts, ["Synthetic evening note.", "Synthetic kept entry."]);
+}
+
+/// local-data-protection — Safe restore: a backup that cannot be reached, on a disconnected
+/// drive or behind an unreadable list of backups, is reported as unavailable rather than as a
+/// wrong passphrase or an invalid backup, and the journal is unchanged.
+#[test]
+fn a_backup_that_cannot_be_reached_is_reported_as_unavailable() {
+    let fixture = Fixture::new();
+    let app = fixture.launch();
+    let drive = fixture.backups.path().join("synthetic drive");
+    fs::create_dir(&drive).unwrap();
+    app.choose_backup_folder(drive.clone(), noon()).unwrap();
+    app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
+        .unwrap();
+    app.lock()
+        .save_entry(draft("2026-11-22", Slot::Morning, "Synthetic kept entry."))
+        .unwrap();
+    app.lock().backup_now(noon()).unwrap();
+    let backup = app.lock().list_backups().unwrap().remove(0);
+    let registered = || RestoreSource::Registered {
+        name: backup.name.clone(),
+    };
+    let elsewhere = TempDir::new().unwrap();
+    let copy = elsewhere.path().join("synthetic copy.ttd.age");
+    fs::copy(drive.join(&backup.name), &copy).unwrap();
+    app.lock()
+        .save_entry(draft(
+            "2026-11-22",
+            Slot::Evening,
+            "Synthetic evening note.",
+        ))
+        .unwrap();
+    let unavailable = |source: RestoreSource| {
+        let error = app
+            .lock()
+            .restore_backup(source, PASSPHRASE, false, noon())
+            .unwrap_err();
+        assert_eq!(error, CommandError::backup_unavailable());
+        assert_eq!(app.lock().list_entries().unwrap().len(), 2);
+    };
+
+    // The drive is unplugged while its backups are listed in Settings.
+    let unplugged = fixture.backups.path().join("unplugged");
+    fs::rename(&drive, &unplugged).unwrap();
+    unavailable(registered());
+    fs::rename(&unplugged, &drive).unwrap();
+    // The folder's list of backups was damaged since it was shown.
+    let registry = drive.join(".through-the-days-backups.json");
+    let listed = fs::read(&registry).unwrap();
+    fs::write(&registry, b"synthetic damaged registry").unwrap();
+    unavailable(registered());
+    fs::write(&registry, listed).unwrap();
+    // A picked file that was removed since it was chosen.
+    app.lock().pick_restore_file(Some(copy.clone()));
+    fs::remove_file(&copy).unwrap();
+    unavailable(RestoreSource::Picked);
+
+    assert_eq!(app.lock().list_backups().unwrap(), vec![backup]);
+    assert!(
+        names_in(&fixture.paths().data_dir)
+            .iter()
+            .all(|name| !name.starts_with(".ttd-"))
+    );
+}
+
+/// local-data-protection — Safe restore: a private copy of the backup that cannot be written in
+/// the data folder is a storage failure, not a wrong passphrase, and the journal is unchanged.
+#[test]
+fn a_restore_that_cannot_copy_its_backup_reports_a_storage_failure() {
+    let fixture = Fixture::new();
+    let app = ready_with_backups(&fixture);
+    let kept = app
+        .lock()
+        .save_entry(draft("2026-11-22", Slot::Morning, "Synthetic kept entry."))
+        .unwrap();
+    app.lock().backup_now(noon()).unwrap();
+    let backup = app.lock().list_backups().unwrap().remove(0);
+    let data_dir = fixture.paths().data_dir;
+    fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o500)).unwrap();
+    let error = app
+        .lock()
+        .restore_backup(
+            RestoreSource::Registered { name: backup.name },
+            PASSPHRASE,
+            false,
+            noon(),
+        )
+        .unwrap_err();
+    fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(error, CommandError::from(Error::Storage));
     assert_eq!(app.lock().list_entries().unwrap(), vec![kept]);
 }
 
@@ -1491,9 +1612,18 @@ fn a_journal_that_cannot_be_opened_is_kept_aside_and_replaced_from_a_backup_file
         let unreadable = fixture.journal_bytes();
         let app = fixture.launch();
         assert_eq!(app.startup_status().state, state);
-        app.lock().pick_restore_file(Some(backup.clone()));
 
-        // A wrong passphrase moves nothing.
+        // A backup file that cannot be read, or a wrong passphrase, moves nothing.
+        let gone = original
+            .folder()
+            .join("ttd-1-on-an-unplugged-drive.ttd.age");
+        app.lock().pick_restore_file(Some(gone));
+        let error = app
+            .lock()
+            .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
+            .unwrap_err();
+        assert_eq!(error, CommandError::backup_unavailable());
+        app.lock().pick_restore_file(Some(backup.clone()));
         let error = app
             .lock()
             .restore_backup(RestoreSource::Picked, WRONG_PASSPHRASE, false, noon())
@@ -1590,7 +1720,7 @@ fn a_new_mac_restores_with_only_the_backup_file_and_its_passphrase() {
         .lock()
         .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
         .unwrap_err();
-    assert_eq!(error.code, "restore");
+    assert_eq!(error, CommandError::backup_unavailable());
     assert!(names_in(&clean.folder()).is_empty());
     assert_eq!(app.lock().pick_restore_file(None), None);
 }

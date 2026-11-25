@@ -111,6 +111,7 @@ export type ErrorCode =
   | 'damaged'
   | 'backupRegistry'
   | 'backupFolder'
+  | 'backupUnavailable'
   | 'safetyBackupFailed'
   | 'notReady'
   | 'needsFolder'

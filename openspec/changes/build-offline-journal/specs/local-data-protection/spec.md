@@ -62,12 +62,27 @@ The system SHALL provide encrypted local backups and a tested restore path befor
 
 ### Requirement: Safe restore
 
-The system SHALL validate a backup before making it active and SHALL preserve the current journal when decryption or integrity validation fails.
+The system SHALL validate a backup before making it active and SHALL preserve the current journal when the backup cannot be reached, decrypted or validated, or when the safety backup of a readable current journal fails. When a backup folder and the session passphrase are available and the current journal holds entries, the system SHALL publish a safety backup of it before replacing it, and SHALL skip that safety backup only if the journal cannot be read and the person explicitly confirms it.
 
 #### Scenario: Wrong credential or corrupt backup
 
 - **WHEN** the person attempts to restore a backup that cannot be decrypted or validated
 - **THEN** restore fails clearly and the current journal remains intact.
+
+#### Scenario: Backup no longer reachable
+
+- **WHEN** the person restores a backup whose drive was disconnected, or whose file was moved, after it was chosen
+- **THEN** restore fails with an explanation that the backup is unavailable, without asking to check the passphrase, and the current journal remains intact.
+
+#### Scenario: Safety backup fails
+
+- **WHEN** the safety backup made before replacing a readable journal fails, for example because the backup drive was disconnected
+- **THEN** the restore is cancelled with an explanation of that cause, no confirmation can replace the journal without that safety backup, and the current journal remains intact.
+
+#### Scenario: Unreadable current journal
+
+- **WHEN** the current journal cannot be read to make its safety backup
+- **THEN** the restore replaces it only after the person explicitly confirms restoring without a safety backup.
 
 #### Scenario: Clean restore
 

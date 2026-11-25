@@ -14,7 +14,7 @@ use journal_core::{Error, Journal, erase_journal_files, list_backups, verify_bac
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File, OpenOptions},
-    io,
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
@@ -81,14 +81,16 @@ impl Core {
 
     /// Replaces the journal with a validated backup.
     ///
-    /// The chosen backup is verified first, so a wrong passphrase or a damaged file changes
-    /// nothing. When the current journal holds any entry, including trash, and a folder and the
-    /// session passphrase are available, a safety backup of it is published before it is
-    /// replaced. If the journal cannot be read for that, or the safety backup fails, the restore
-    /// stops with `safetyBackupFailed`, unless `without_safety_backup` confirms that it may go
-    /// ahead without one. When the start failed or found a journal this version cannot open,
-    /// the backup replaces the journal file instead (see [`Self::restore_at_startup`]). A failed
-    /// restore leaves the journal unchanged.
+    /// The chosen backup is copied and verified first, so a backup that cannot be reached
+    /// (`backupUnavailable`), a wrong passphrase or a damaged file changes nothing. When the
+    /// current journal holds any entry, including trash, and a folder and the session passphrase
+    /// are available, a safety backup of it is published before it is replaced. If the journal
+    /// cannot be read for that, the restore stops with `safetyBackupFailed`, unless
+    /// `without_safety_backup` confirms that it may go ahead without one. Any other failure of
+    /// the safety backup, such as a disconnected backup drive, cancels the restore with its own
+    /// error. When the start failed or found a journal this version cannot open, the backup
+    /// replaces the journal file instead (see [`Self::restore_at_startup`]). A failed restore
+    /// leaves the journal unchanged.
     pub fn restore_backup(
         &mut self,
         source: RestoreSource,
@@ -106,7 +108,7 @@ impl Core {
         let source = self.restore_source(&source)?;
         // The safety backup can prune the oldest registered backup, which may be the one being
         // restored, so the restore reads a private copy (ciphertext only) taken beforehand.
-        let staged = StagedCopy::of(&source, &self.paths.data_dir).map_err(|_| Error::Restore)?;
+        let staged = StagedCopy::of(&source, &self.paths.data_dir)?;
         verify_backup(staged.path(), passphrase)?;
         let safety_backup = self.safety_backup(without_safety_backup, now)?;
         let journal = self.journal.as_mut().ok_or_else(CommandError::not_ready)?;
@@ -138,7 +140,7 @@ impl Core {
     ) -> Result<RestoreOutcome, CommandError> {
         paths::create_private_dir(&self.paths.data_dir).map_err(|_| Error::Storage)?;
         let source = self.restore_source(source)?;
-        let staged = StagedCopy::of(&source, &self.paths.data_dir).map_err(|_| Error::Restore)?;
+        let staged = StagedCopy::of(&source, &self.paths.data_dir)?;
         verify_backup(staged.path(), passphrase)?;
         let set_aside =
             SetAside::move_journal(&self.paths.journal, now.timestamp()).map_err(|_| {
@@ -176,6 +178,13 @@ impl Core {
         })
     }
 
+    /// The file to restore. A registered name must still be listed in the chosen folder, and a
+    /// file must have been picked.
+    ///
+    /// A folder that is unavailable lists no backups, so a backup on a disconnected drive, one
+    /// removed since the list was shown, and a list of backups that can no longer be read are
+    /// all `backupUnavailable`, as is a restore with no picked file. None of them is a reason to
+    /// doubt the passphrase.
     fn restore_source(&self, source: &RestoreSource) -> Result<PathBuf, CommandError> {
         match source {
             RestoreSource::Registered { name } => {
@@ -186,24 +195,32 @@ impl Core {
                     .ok_or_else(CommandError::needs_folder)?;
                 let registered = is_backup_name(name)
                     && list_backups(folder)
-                        .map_err(|_| Error::Restore)?
+                        .map_err(|error| {
+                            diagnostics::record("list backups to restore", error.code());
+                            CommandError::backup_unavailable()
+                        })?
                         .iter()
                         .any(|backup| backup.name == *name);
                 if !registered {
-                    return Err(Error::Restore.into());
+                    return Err(CommandError::backup_unavailable());
                 }
                 Ok(folder.join(name))
             }
-            RestoreSource::Picked => self.picked.clone().ok_or_else(|| Error::Restore.into()),
+            RestoreSource::Picked => self
+                .picked
+                .clone()
+                .ok_or_else(CommandError::backup_unavailable),
         }
     }
 
     /// Publishes a safety backup of a journal that holds any entry, including trash, whenever a
     /// folder and the session passphrase make that possible. Returns whether one was published.
     ///
-    /// A journal that cannot be read, or a safety backup that fails, stops the restore unless
-    /// `without_safety_backup` confirms going ahead without one. The cause of a failed backup
-    /// stays visible in the backup status.
+    /// Only a journal that cannot be read, including one whose snapshot reports `damaged`, may
+    /// be replaced without a safety backup: the restore stops with `safetyBackupFailed` unless
+    /// `without_safety_backup` confirms going ahead. Any other failure, such as an unavailable
+    /// folder or a backup that fails validation, cancels the restore with its own error, and the
+    /// backup status keeps it.
     fn safety_backup(
         &mut self,
         without_safety_backup: bool,
@@ -212,18 +229,21 @@ impl Core {
         if self.plan.folder.is_none() || self.passphrase.is_none() {
             return Ok(false);
         }
-        let published = match self.holds_entries() {
+        match self.holds_entries() {
             Ok(false) => return Ok(false),
-            Ok(true) => self.publish_safety_backup(now),
-            Err(error) => {
-                diagnostics::record("read journal before restore", error.code);
-                Err(error)
-            }
-        };
-        match published {
-            Ok(()) => Ok(true),
-            Err(_) if without_safety_backup => Ok(false),
-            Err(_) => Err(CommandError::safety_backup_failed()),
+            Ok(true) => match self.publish_safety_backup(now) {
+                Ok(()) => return Ok(true),
+                // The snapshot could not read part of the journal.
+                Err(error) if error.code == Error::Damaged.code() => {}
+                Err(error) => return Err(error),
+            },
+            Err(error) => diagnostics::record("read journal before restore", error.code),
+        }
+        // The journal cannot be read, so no safety backup of it can ever be made.
+        if without_safety_backup {
+            Ok(false)
+        } else {
+            Err(CommandError::safety_backup_failed())
         }
     }
 
@@ -259,11 +279,15 @@ impl Core {
 struct StagedCopy(PathBuf);
 
 impl StagedCopy {
-    fn of(source: &Path, folder: &Path) -> io::Result<Self> {
+    /// Copies `source` into `folder`. A source that cannot be opened or read is
+    /// `backupUnavailable`, one larger than any backup is `restore`, and a copy that cannot be
+    /// written into `folder` is `storage`.
+    fn of(source: &Path, folder: &Path) -> Result<Self, CommandError> {
         static COPIES: AtomicU64 = AtomicU64::new(0);
-        let mut input = File::open(source)?;
-        if input.metadata()?.len() > MAXIMUM_BACKUP_BYTES {
-            return Err(io::ErrorKind::InvalidData.into());
+        let unavailable = |_| CommandError::backup_unavailable();
+        let mut input = File::open(source).map_err(unavailable)?;
+        if input.metadata().map_err(unavailable)?.len() > MAXIMUM_BACKUP_BYTES {
+            return Err(Error::Restore.into());
         }
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -277,9 +301,23 @@ impl StagedCopy {
         options.write(true).create_new(true);
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        let mut output = options.open(folder.join(&name))?;
+        let mut output = options
+            .open(folder.join(&name))
+            .map_err(|_| Error::Storage)?;
         let staged = Self(folder.join(name));
-        io::copy(&mut input, &mut output)?;
+        // Reads and writes are told apart: a drive removed during the copy is not a full disk.
+        let mut buffer = vec![0_u8; 64 * 1024];
+        loop {
+            let length = match input.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(length) => length,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(_) => return Err(CommandError::backup_unavailable()),
+            };
+            output
+                .write_all(&buffer[..length])
+                .map_err(|_| Error::Storage)?;
+        }
         Ok(staged)
     }
 
