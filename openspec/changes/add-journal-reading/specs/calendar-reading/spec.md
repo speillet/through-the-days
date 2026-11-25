@@ -41,6 +41,11 @@ The calendar SHALL show the same current saved entry content and check-in values
 - **WHEN** the person saves a changed energy score and opens the calendar preview
 - **THEN** the preview shows that saved value without a stale independent copy.
 
+#### Scenario: Refresh keeps the reading place
+
+- **WHEN** an autosave, another saved change or the person's return to the app refreshes an open reading view such as Calendar or My Journal
+- **THEN** the view keeps showing its content, browsed month, keyboard focus and text selection until the current saved version replaces that content, and a failed refresh shows its error instead of the earlier content.
+
 ### Requirement: Local search and filtering
 
 The system SHALL provide local full-text search and combinable journal filters while preserving exact source navigation and original-language excerpts.
