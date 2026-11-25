@@ -241,6 +241,8 @@ impl Journal {
         Ok(milestone)
     }
 
+    /// Deletes a milestone at `revision`. Its title and notes leave the journal files as with
+    /// [`Journal::permanently_delete`].
     pub fn delete_milestone(&self, id: &str, revision: u32) -> Result<(), Error> {
         if self.connection.execute(
             "DELETE FROM timeline_milestones WHERE id=?1 AND json_extract(payload,'$.revision')=?2",
@@ -249,6 +251,7 @@ impl Journal {
         {
             return Err(Error::Conflict);
         }
+        self.checkpoint();
         Ok(())
     }
 }

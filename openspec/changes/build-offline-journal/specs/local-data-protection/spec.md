@@ -32,6 +32,11 @@ The system SHALL retain deleted entries in local trash for 30 days, permit resto
 - **WHEN** the person explicitly confirms permanent deletion of a trashed entry
 - **THEN** the entry is removed from the application's retained journal records and the app explains that earlier backups may still contain it.
 
+#### Scenario: Deleted text leaves the live journal files
+
+- **WHEN** a confirmed permanent deletion or an expiry purge removes a trashed entry
+- **THEN** the live journal files in the application data folder no longer contain the entry's text once the removal completes, without waiting for the application to quit, and a launch after an interrupted session removes any of that text that remained.
+
 ### Requirement: Accurate live-store protection
 
 The application SHALL describe its MVP live journal as protected by macOS session/disk controls, without claiming application-level SQLite encryption or assuming FileVault is enabled.

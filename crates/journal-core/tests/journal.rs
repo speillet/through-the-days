@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{DAY, NOW, contains, document, nested_document};
+use common::{DAY, NOW, document, files_containing, names_in, nested_document};
 use journal_core::{Action, Depth, Entry, Error, Journal, Preferences, Slot, Win};
 use serde_json::json;
 
@@ -692,7 +692,9 @@ fn trash_operations_distinguish_stale_revisions_from_missing_entries() {
     assert!(journal.trash_items().unwrap().is_empty());
 }
 
-/// local-data-protection — Thirty-day recoverable trash / Explicit permanent deletion.
+/// local-data-protection — Thirty-day recoverable trash / Explicit permanent deletion, Deleted
+/// text leaves the live journal files: the text leaves the database file and its write-ahead
+/// log as soon as the deletion returns, while the journal stays open.
 #[test]
 fn permanent_deletion_removes_the_entry_text_from_the_live_database_file() {
     let directory = tempfile::tempdir().unwrap();
@@ -706,24 +708,104 @@ fn permanent_deletion_removes_the_entry_text_from_the_live_database_file() {
         .save(Entry::draft("2026-11-22", Slot::Evening))
         .unwrap();
     drop(journal);
-    assert!(
-        contains(&std::fs::read(&path).unwrap(), marker),
+    assert_eq!(
+        files_containing(directory.path(), marker),
+        ["journal.sqlite"],
         "the marker reaches the file first"
     );
 
     let journal = Journal::open(&path).unwrap();
     journal.trash(&entry.id, entry.revision, NOW).unwrap();
+    assert_eq!(
+        files_containing(directory.path(), marker),
+        ["journal.sqlite", "journal.sqlite-wal"],
+        "a trashed entry keeps its text, and the move to trash logs its page"
+    );
     journal.permanently_delete(&entry.id).unwrap();
     assert_eq!(journal.restore(&entry.id, NOW), Err(Error::NotFound));
+    assert!(
+        files_containing(directory.path(), marker).is_empty(),
+        "while the journal is open"
+    );
     drop(journal);
-    for file in std::fs::read_dir(directory.path()).unwrap() {
-        let file = file.unwrap().path();
-        assert!(
-            !contains(&std::fs::read(&file).unwrap(), marker),
-            "{}",
-            file.display()
-        );
+    assert!(
+        files_containing(directory.path(), marker).is_empty(),
+        "after it closes"
+    );
+}
+
+/// local-data-protection — Thirty-day recoverable trash / Retention expires, Deleted text leaves
+/// the live journal files: the purge removes an expired entry's text from the journal files
+/// while the journal stays open.
+#[test]
+fn purging_expired_trash_removes_the_entry_text_from_the_open_journal_files() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.sqlite");
+    let marker = b"Synthetic marker 5b1d: a fictional sentence past its retention";
+    let journal = Journal::open(&path).unwrap();
+    let mut expired = Entry::draft("2026-10-20", Slot::Evening);
+    expired.document = document(std::str::from_utf8(marker).unwrap());
+    let expired = journal.save(expired).unwrap();
+    journal
+        .trash(&expired.id, expired.revision, NOW - 31 * DAY)
+        .unwrap();
+    let kept = journal
+        .save(Entry::draft("2026-11-22", Slot::Morning))
+        .unwrap();
+    drop(journal);
+    assert_eq!(
+        files_containing(directory.path(), marker),
+        ["journal.sqlite"],
+        "the marker reaches the file first"
+    );
+
+    let journal = Journal::open(&path).unwrap();
+    journal.purge_expired(NOW).unwrap();
+    assert!(journal.trash_items().unwrap().is_empty());
+    assert_eq!(journal.list().unwrap(), vec![kept]);
+    assert!(files_containing(directory.path(), marker).is_empty());
+}
+
+/// local-data-protection — Thirty-day recoverable trash / Deleted text leaves the live journal
+/// files: when the app stops after a deletion commits but before its checkpoint, the log it
+/// leaves still holds the deleted text. Opening the journal folds that log into the database
+/// file and empties it.
+#[test]
+fn opening_folds_in_a_log_that_still_holds_deleted_text_after_a_crash() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.sqlite");
+    let marker = b"Synthetic marker 2e8d: a fictional sentence deleted just before a crash";
+    let journal = Journal::open(&path).unwrap();
+    let mut entry = Entry::draft("2026-11-22", Slot::Morning);
+    entry.document = document(std::str::from_utf8(marker).unwrap());
+    let entry = journal.save(entry).unwrap();
+    let kept = journal
+        .save(Entry::draft("2026-11-22", Slot::Evening))
+        .unwrap();
+    drop(journal);
+    let journal = Journal::open(&path).unwrap();
+    journal.trash(&entry.id, entry.revision, NOW).unwrap();
+    // A deletion that commits without a checkpoint, then the files exactly as a crash leaves them.
+    let deletion = rusqlite::Connection::open(&path).unwrap();
+    deletion.execute_batch("PRAGMA secure_delete=ON;").unwrap();
+    deletion
+        .execute("DELETE FROM journal_entries WHERE id=?1", [&entry.id])
+        .unwrap();
+    let crashed = tempfile::tempdir().unwrap();
+    for name in names_in(directory.path()) {
+        std::fs::copy(directory.path().join(&name), crashed.path().join(&name)).unwrap();
     }
+    drop((deletion, journal));
+    assert_eq!(
+        files_containing(crashed.path(), marker),
+        ["journal.sqlite", "journal.sqlite-wal"],
+        "the crash leaves the deleted text in both files"
+    );
+
+    let reopened = Journal::open(&crashed.path().join("journal.sqlite")).unwrap();
+    assert!(reopened.trash_items().unwrap().is_empty());
+    assert_eq!(reopened.list().unwrap(), vec![kept]);
+    assert!(files_containing(crashed.path(), marker).is_empty());
 }
 
 /// local-data-protection — Thirty-day recoverable trash / Retention expires: ordinary restoration
