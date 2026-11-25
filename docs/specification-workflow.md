@@ -69,13 +69,15 @@ Application checks (Rust needs rustup; the pinned toolchain installs itself):
 npm ci
 npm run check          # TypeScript
 npm test               # component, state and guard tests (Vitest)
-npm run test:e2e       # WebKit and Chromium end-to-end tests with synthetic data
+npm run test:e2e       # WebKit and Chromium against the bundled frontend with synthetic data
 npm run test:rust      # journal-core and native shell tests
 npm run tauri --workspace @through-the-days/desktop -- build --debug --bundles app
 npm run smoke:native   # drives the debug app natively with a throwaway data folder
 ~~~
 
 Development builds keep their data in a separate com.throughthedays.app.dev folder; the smoke check uses a temporary folder. Never point a development build at a real journal.
+
+Playwright builds the frontend into a test-only directory and serves it on localhost. The browser preview keeps synthetic records in Web Storage, and the test fixture rejects requests to external hosts. Set `TTD_E2E_PORT` to a free port to start a fresh server when working in multiple checkouts.
 
 Install a supported Node.js version, then use the lockfile for the specification tooling:
 
