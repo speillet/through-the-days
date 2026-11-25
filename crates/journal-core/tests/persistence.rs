@@ -127,10 +127,9 @@ fn writers_wait_for_another_connections_write_lock_instead_of_failing() {
     })
     .unwrap();
     assert_eq!(review.revision, 1);
-    let review = while_another_connection_writes(&path, || {
-        journal.generate_weekly_summary("2026-11-22", review.revision)
-    })
-    .unwrap();
+    let review =
+        while_another_connection_writes(&path, || journal.generate_weekly_summary("2026-11-22"))
+            .unwrap();
     assert!(review.summary.is_some());
     let milestone = while_another_connection_writes(&path, || {
         journal.save_milestone(Milestone::new("2026-11-22", "Synthetic milestone"))

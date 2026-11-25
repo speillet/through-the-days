@@ -164,8 +164,8 @@ describe('Erase app data', () => {
     const saved = await api.saveEntry(newDraft('2026-11-22', 'morning', 'Europe/Paris'));
     await api.trashEntry(saved.id, saved.revision);
     await api.saveEntry(newDraft('2026-11-22', 'evening', 'Europe/Paris'));
-    const notes = await api.saveWeeklyNotes('2026-11-22', 'Fictional weekly notes to erase.', 0);
-    expect((await api.generateWeeklySummary('2026-11-22', notes.revision)).summary).not.toBeNull();
+    await api.saveWeeklyNotes('2026-11-22', 'Fictional weekly notes to erase.', 0);
+    expect((await api.generateWeeklySummary('2026-11-22')).summary).not.toBeNull();
     await api.saveMilestone({
       id: '00000000-0000-4000-8000-000000000024',
       date: '2026-11-21',

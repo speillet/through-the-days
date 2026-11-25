@@ -114,9 +114,9 @@ describe('native journal commands', () => {
       ],
       [
         'generateWeeklySummary',
-        () => api.generateWeeklySummary('2026-11-16', 1),
+        () => api.generateWeeklySummary('2026-11-16'),
         'generate_weekly_summary',
-        { date: '2026-11-16', revision: 1 },
+        { date: '2026-11-16' },
       ],
       ['clearReadingSummaries', () => api.clearReadingSummaries(), 'clear_reading_summaries', {}],
       ['listMilestones', () => api.listMilestones(), 'list_milestones', {}],

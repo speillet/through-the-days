@@ -2288,9 +2288,7 @@ fn erasing_removes_app_data_and_secrets_but_never_the_backup_folder() {
         let review = journal
             .save_weekly_notes("2026-11-22", "Synthetic weekly notes to erase.", 0)
             .unwrap();
-        journal
-            .generate_weekly_summary(&review.week_start, review.revision)
-            .unwrap();
+        journal.generate_weekly_summary(&review.week_start).unwrap();
         journal
             .save_milestone(journal_core::Milestone::new(
                 "2026-11-21",

@@ -144,6 +144,9 @@ impl Journal {
         })
     }
 
+    /// Saves the authored notes of the week holding `date` when its notes revision is still
+    /// `revision`, and advances that revision. The reply is built before the commit, so an error
+    /// means nothing was written.
     pub fn save_weekly_notes(
         &self,
         date: &str,
@@ -159,22 +162,22 @@ impl Journal {
         stored.notes = notes.into();
         stored.revision = stored.revision.checked_add(1).ok_or(Error::Conflict)?;
         transaction.execute("INSERT INTO weekly_reviews(week_start,payload) VALUES(?1,?2) ON CONFLICT(week_start) DO UPDATE SET payload=excluded.payload",params![start,serde_json::to_string(&stored)?])?;
+        let review = self.weekly_review(&start)?;
         transaction.commit()?;
-        self.weekly_review(&start)
+        Ok(review)
     }
 
-    pub fn generate_weekly_summary(
-        &self,
-        date: &str,
-        revision: u32,
-    ) -> Result<WeeklyReview, Error> {
+    /// Replaces the week's disposable local summary and its source fingerprint, which alone
+    /// marks the summary stale. The authored notes and their revision are left to notes saves,
+    /// so a save based on the revision read before this one still succeeds. A week without a
+    /// stored review is created with empty notes at revision 1: stored revisions are positive.
+    /// The reply is built before the commit, so an error means nothing was written.
+    pub fn generate_weekly_summary(&self, date: &str) -> Result<WeeklyReview, Error> {
         let request = self.week_request(date)?;
         let start = request.from.as_deref().ok_or(Error::Date)?;
         let transaction = self.write_transaction()?;
         let mut stored = self.stored_review(start)?;
-        if stored.revision != revision {
-            return Err(Error::Conflict);
-        }
+        stored.revision = stored.revision.max(1);
         let report = self.reading_report(&request)?;
         stored.summary = Some(format!(
             "{} recorded {} out of 7, with {} saved {}, {} approved small {} and {} reported {}. Saved drafts are included. Missing scores are left out; this is a description of recorded information, not a judgement of the week.",
@@ -200,10 +203,10 @@ impl Journal {
             },
         ));
         stored.fingerprint = Some(self.week_fingerprint(&request)?);
-        stored.revision = stored.revision.checked_add(1).ok_or(Error::Conflict)?;
         transaction.execute("INSERT INTO weekly_reviews(week_start,payload) VALUES(?1,?2) ON CONFLICT(week_start) DO UPDATE SET payload=excluded.payload",params![start,serde_json::to_string(&stored)?])?;
+        let review = self.weekly_review(start)?;
         transaction.commit()?;
-        self.weekly_review(start)
+        Ok(review)
     }
 
     pub fn clear_reading_summaries(&self) -> Result<(), Error> {

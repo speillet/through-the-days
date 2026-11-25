@@ -73,12 +73,32 @@ Weekly Review SHALL separate user notes from optional labelled deterministic loc
 #### Scenario: Notes edited during generation
 
 - **WHEN** the person edits notes while a local summary is being generated
-- **THEN** the newer text remains editable and saves on the acknowledged review revision without a permanent conflict, including after navigation.
+- **THEN** the newer text remains editable and saves on the acknowledged notes revision without a permanent conflict, including after navigation.
 
 #### Scenario: Summary generation fails during editing
 
 - **WHEN** local summary generation fails while the person edits notes
 - **THEN** the error is reported separately and current and subsequent authored notes can still be saved.
+
+#### Scenario: Summary keeps the notes revision
+
+- **WHEN** a local summary is generated or regenerated for a week whose notes are saved
+- **THEN** the notes and their revision are unchanged, so a notes save based on the revision read before generation succeeds, and only the source fingerprint marks the summary stale.
+
+#### Scenario: Failed weekly write
+
+- **WHEN** the journal reports an error for a notes save or a local summary
+- **THEN** nothing from that request is stored, and the notes can be saved again on their current revision.
+
+#### Scenario: Reply lost after a weekly write
+
+- **WHEN** a notes save or a local summary is stored but the interface receives a failure instead of its reply
+- **THEN** the app does not treat that write as a change made elsewhere: the notes, including text typed or deleted since, reach Saved after at most one retry or with the next autosave, are not shown as Saved before then, and closing, quitting, restore and erasure then no longer wait for them.
+
+#### Scenario: Notes changed elsewhere
+
+- **WHEN** a notes save is refused because the stored notes changed since Weekly Review last saved or loaded them
+- **THEN** the app reads the week again instead of resending: when the stored notes equal the text being saved, or the text of an earlier save that reported an error and so may have been stored with its reply lost, it adopts their revision and saves any newer text on it; when only the revision changed, it sends the text again once; otherwise it keeps the person's text unsaved and offers "Keep my text", which saves it over the stored notes, or "Load saved text", which replaces it with them.
 
 #### Scenario: Restore authored weekly notes
 

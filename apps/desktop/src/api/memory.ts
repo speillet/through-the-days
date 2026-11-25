@@ -753,18 +753,22 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
       const current = records[week] ?? {weekStart:week,notes:'',revision:0,summary:null,fingerprint:null};
       if (revision !== current.revision) throw failure('conflict');
       records[week] = {...current,notes,revision:revision+1};
+      // As in journal-core, the reply is built before the commit: a failure writes nothing.
+      const review = previewWeek(entries,date,records[week]);
       commit(loaded);
-      return previewWeek(entries,date,records[week]);
+      return review;
     },
-    async generateWeeklySummary(date, revision) {
+    // The summary never checks or advances the notes revision; its fingerprint marks it stale.
+    // A week without a stored review starts at revision 1, as in journal-core.
+    async generateWeeklySummary(date) {
       const loaded = load(); const entries = activeEntries(loaded.state); const week = isoWeekStart(date);
       const records = loaded.state.journal.weeklyReviews ??= {};
       const current = records[week] ?? {weekStart:week,notes:'',revision:0,summary:null,fingerprint:null};
-      if (revision !== current.revision) throw failure('conflict');
       const view = previewWeek(entries,date,current);
-      records[week] = {...current,revision:revision+1,summary:localSummary(view.report),fingerprint:previewFingerprint(entries,view.weekStart,view.weekEnd)};
+      records[week] = {...current,revision:Math.max(current.revision,1),summary:localSummary(view.report),fingerprint:previewFingerprint(entries,view.weekStart,view.weekEnd)};
+      const review = previewWeek(entries,date,records[week]);
       commit(loaded);
-      return previewWeek(entries,date,records[week]);
+      return review;
     },
     async clearReadingSummaries() {
       requireReady(); const loaded = load();

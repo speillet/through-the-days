@@ -34,8 +34,8 @@ describe('Privacy information', () => {
   it('keeps authored records when clearing local summaries and says earlier backups still contain them', async () => {
     const user = userEvent.setup();
     const api = createTestApi();
-    const notes = await api.saveWeeklyNotes('2026-11-22', 'Fictional weekly notes to keep.', 0);
-    expect((await api.generateWeeklySummary('2026-11-22', notes.revision)).summary).not.toBeNull();
+    await api.saveWeeklyNotes('2026-11-22', 'Fictional weekly notes to keep.', 0);
+    expect((await api.generateWeeklySummary('2026-11-22')).summary).not.toBeNull();
     const milestone = await api.saveMilestone({
       id: '00000000-0000-4000-8000-000000000024',
       date: '2026-11-21',
