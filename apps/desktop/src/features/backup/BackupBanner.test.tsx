@@ -116,19 +116,20 @@ describe('backup banner', () => {
     renderBanner(api);
     await user.click(await screen.findByRole('button', { name: 'Enter passphrase' }));
 
+    // Focus moves to the field to correct, so VoiceOver reads its error.
     let dialog = await enterPassphrase(user, 'too short');
     await user.click(within(dialog).getByRole('button', { name: 'Save and back up' }));
-    expect(within(dialog).getByLabelText('Backup passphrase')).toHaveAccessibleDescription(
-      /Use at least 12 characters\./,
-    );
+    const passphraseField = within(dialog).getByLabelText('Backup passphrase');
+    expect(passphraseField).toHaveAccessibleDescription(/Use at least 12 characters\./);
+    expect(passphraseField).toHaveFocus();
 
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     await user.click(screen.getByRole('button', { name: 'Enter passphrase' }));
     dialog = await enterPassphrase(user, PASSPHRASE, `${PASSPHRASE}!`);
     await user.click(within(dialog).getByRole('button', { name: 'Save and back up' }));
-    expect(within(dialog).getByLabelText('Confirm passphrase')).toHaveAccessibleDescription(
-      /The two passphrases don’t match\./,
-    );
+    const confirmationField = within(dialog).getByLabelText('Confirm passphrase');
+    expect(confirmationField).toHaveAccessibleDescription(/The two passphrases don’t match\./);
+    expect(confirmationField).toHaveFocus();
     expect(setPassphrase).not.toHaveBeenCalled();
     await expect(api.backupStatus()).resolves.toMatchObject({ state: 'needsPassphrase', backupCount: 0 });
   });

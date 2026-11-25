@@ -31,6 +31,11 @@ The system SHALL communicate meaning beyond colour, support keyboard and VoiceOv
 - **WHEN** the person enables reduced motion
 - **THEN** nonessential animation is disabled without preventing navigation or writing.
 
+#### Scenario: New backup passphrase to correct
+
+- **WHEN** the person submits a new backup passphrase that is too short or does not match its confirmation, from the backup banner, Settings or the protected upgrade at startup
+- **THEN** nothing is sent to the journal, and focus moves to the first field to correct, the passphrase when it is too short and otherwise its confirmation, so VoiceOver reads that field's error.
+
 ### Requirement: Private defaults
 
 The system SHALL keep private content local by default and SHALL require a specific user-approved flow before sending or exporting any selected private data.

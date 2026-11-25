@@ -7,7 +7,7 @@
 // can be restored or erased in the same way. Otherwise nothing here changes the journal except "Back up and upgrade", which the journal performs only after the
 // backup succeeds.
 
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { toCommandError, useApi } from '../../api/client';
 import type { BackupStatus, RestoreOutcome, StartupStatus } from '../../api/types';
 import { Button } from '../../components/Button';
@@ -16,6 +16,7 @@ import { APP_NAME } from '../../domain/copy';
 import { useStartup } from '../../state/startup';
 import {
   EMPTY_PASSPHRASE,
+  focusFirstProblem,
   PassphraseFields,
   PassphraseGuidance,
   type PassphraseValues,
@@ -268,6 +269,8 @@ function ProtectedUpgrade({ status }: { status: StartupStatus }) {
   const api = useApi();
   const { setStatus } = useStartup();
   const formId = useId();
+  const passphraseRef = useRef<HTMLInputElement>(null);
+  const confirmationRef = useRef<HTMLInputElement>(null);
   const [backup, setBackup] = useState<BackupStatus | null>(null);
   const [values, setValues] = useState<PassphraseValues>(EMPTY_PASSPHRASE);
   const [problems, setProblems] = useState<PassphraseProblems>({});
@@ -334,7 +337,10 @@ function ProtectedUpgrade({ status }: { status: StartupStatus }) {
     }
     const found = newPassphraseProblems(values.passphrase, values.confirmation);
     setProblems(found);
-    if (hasProblems(found)) return;
+    if (hasProblems(found)) {
+      focusFirstProblem(found, passphraseRef, confirmationRef);
+      return;
+    }
     await migrate('upgrade', values.passphrase, values.remember);
   }
 
@@ -401,7 +407,13 @@ function ProtectedUpgrade({ status }: { status: StartupStatus }) {
             </>
           ) : null}
           <PassphraseGuidance />
-          <PassphraseFields values={values} onChange={setValues} problems={problems} />
+          <PassphraseFields
+            values={values}
+            onChange={setValues}
+            problems={problems}
+            passphraseRef={passphraseRef}
+            confirmationRef={confirmationRef}
+          />
         </div>
 
         {busy === 'upgrade' || busy === 'session' ? (

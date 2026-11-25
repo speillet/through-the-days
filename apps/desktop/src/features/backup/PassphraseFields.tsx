@@ -2,7 +2,7 @@
 // twice so a slip of the finger cannot lock away future backups, an optional
 // "show" switch, and the opt-in Keychain choice (off unless the person ticks it).
 
-import { useState, type Ref } from 'react';
+import { useState, type Ref, type RefObject } from 'react';
 import { TextField } from '../../components/TextField';
 import { Checkbox } from './Checkbox';
 import { PASSPHRASE_MIN_LENGTH, type PassphraseProblems } from './status';
@@ -21,9 +21,30 @@ export interface PassphraseFieldsProps {
   problems?: PassphraseProblems;
   disabled?: boolean;
   passphraseRef?: Ref<HTMLInputElement>;
+  confirmationRef?: Ref<HTMLInputElement>;
 }
 
-export function PassphraseFields({ values, onChange, problems = {}, disabled, passphraseRef }: PassphraseFieldsProps) {
+/**
+ * Moves focus to the first field with a problem, as Erase and Restore do, so VoiceOver reads
+ * its error instead of staying silent on the button that was pressed.
+ */
+export function focusFirstProblem(
+  problems: PassphraseProblems,
+  passphraseRef: RefObject<HTMLInputElement | null>,
+  confirmationRef: RefObject<HTMLInputElement | null>,
+) {
+  if (problems.passphrase) passphraseRef.current?.focus();
+  else if (problems.confirmation) confirmationRef.current?.focus();
+}
+
+export function PassphraseFields({
+  values,
+  onChange,
+  problems = {},
+  disabled,
+  passphraseRef,
+  confirmationRef,
+}: PassphraseFieldsProps) {
   const [visible, setVisible] = useState(false);
   const type = visible ? 'text' : 'password';
   return (
@@ -43,6 +64,7 @@ export function PassphraseFields({ values, onChange, problems = {}, disabled, pa
         onChange={(event) => onChange({ ...values, passphrase: event.currentTarget.value })}
       />
       <TextField
+        ref={confirmationRef}
         label="Confirm passphrase"
         type={type}
         autoComplete="new-password"
