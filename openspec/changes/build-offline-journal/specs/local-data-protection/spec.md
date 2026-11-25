@@ -96,7 +96,7 @@ The system SHALL validate a backup before making it active and SHALL preserve th
 
 ### Requirement: Portable backup recovery
 
-Backups SHALL be recoverable on another Mac with a dedicated backup passphrase and SHALL offer optional passphrase storage in macOS Keychain without requiring it.
+Backups SHALL be recoverable on another Mac with a dedicated backup passphrase and SHALL offer optional passphrase storage in macOS Keychain without requiring it. A Keychain failure SHALL NOT undo a passphrase change; after a change in Settings or the backup banner, the app SHALL say what Keychain did not do. A remembered passphrase read at launch SHALL NOT hold up or override a passphrase change, and the app SHALL say when a due backup or opening the journal waits for that read.
 
 #### Scenario: New Mac restoration
 
@@ -107,6 +107,21 @@ Backups SHALL be recoverable on another Mac with a dedicated backup passphrase a
 
 - **WHEN** the person declines to remember the backup passphrase
 - **THEN** the passphrase is not retained for future sessions and journal writing remains available.
+
+#### Scenario: Keychain refuses a passphrase change
+
+- **WHEN** macOS Keychain refuses to store or remove the backup passphrase while the person sets, changes or forgets it in Settings or from the backup banner
+- **THEN** the change still applies to the current session, a due backup proceeds with a newly entered passphrase, and the app says what Keychain did not do: the passphrase was not remembered, one remembered before may remain in Keychain, or both, with how to delete one that may remain.
+
+#### Scenario: Keychain prompt unanswered with the journal open
+
+- **WHEN** a backup is due on an open journal while reading the remembered passphrase at launch waits for an answer to a macOS Keychain prompt, which may open behind the window
+- **THEN** the backup banner says that the app waits for Keychain, journal writing remains available, a passphrase entered or forgotten meanwhile does not wait for that read, and the late answer never replaces it.
+
+#### Scenario: Keychain prompt unanswered before a protected upgrade
+
+- **WHEN** an existing journal needs its protected upgrade and the launch waits for an answer to a macOS Keychain prompt to read the remembered passphrase for the pre-migration backup
+- **THEN** after a few seconds the opening screen says that the app waits for Keychain and that the backup and upgrade follow the answer, and the journal stays unchanged until then.
 
 ### Requirement: Protected secrets and logs
 
@@ -149,3 +164,8 @@ Before migrating an existing journal, the system SHALL create a consistent encry
 
 - **WHEN** the pre-migration backup cannot be completed or validated
 - **THEN** the existing journal remains intact and no unprotected schema upgrade proceeds.
+
+#### Scenario: Passphrase typed while Keychain answers late
+
+- **WHEN** the person upgrades an existing journal with a newly typed passphrase while the launch is still reading the remembered passphrase from macOS Keychain
+- **THEN** the pre-migration backup is encrypted with the typed passphrase, even when Keychain answers the launch's read first.

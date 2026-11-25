@@ -56,7 +56,12 @@ export interface JournalApi {
   backupStatus(): Promise<BackupStatus>;
   /** Opens the native folder picker; cancelling leaves the status unchanged. */
   chooseBackupFolder(): Promise<BackupStatus>;
+  /**
+   * Keeps a new passphrase for this session, remembered in Keychain only when asked. A
+   * Keychain failure never undoes the change; the status's keychainWarning reports it.
+   */
   setBackupPassphrase(passphrase: string, remember: boolean): Promise<BackupStatus>;
+  /** Forgets the session passphrase and removes it from Keychain; see keychainWarning. */
   forgetBackupPassphrase(): Promise<BackupStatus>;
   backupNow(): Promise<BackupStatus>;
   runDailyBackup(): Promise<BackupStatus>;
