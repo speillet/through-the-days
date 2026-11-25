@@ -26,6 +26,11 @@ The system SHALL maintain one authoritative editable document and derive Markdow
 - **WHEN** the person changes formatted text and generates its Markdown representation
 - **THEN** the export reflects the current document, preserving text and supported structure.
 
+#### Scenario: Export code, line breaks and list numbers
+
+- **WHEN** the person generates the Markdown of an entry with a code line made only of backticks, a line break in a heading, line breaks in a row or at the start or end of a paragraph (even with only white space after the last one), or a numbered list that starts at 0
+- **THEN** the Markdown keeps that line inside its code block, the heading on one line, every line break without adding a literal backslash, and the list's first number.
+
 ### Requirement: Mac editing controls
 
 The editor SHALL provide standard Command-B, Command-I, and explicit Command-S behavior, with a hideable toolbar and distraction-free focus mode.
