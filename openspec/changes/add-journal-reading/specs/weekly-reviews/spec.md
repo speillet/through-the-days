@@ -88,12 +88,12 @@ Weekly Review SHALL separate user notes from optional labelled deterministic loc
 #### Scenario: Reply lost after a weekly write
 
 - **WHEN** a notes save or a local summary is stored but the interface receives a failure instead of its reply
-- **THEN** the notes reach Saved after at most one retry, without a conflict, and closing, quitting, restore and erasure no longer wait for them.
+- **THEN** the app does not treat that write as a change made elsewhere: the notes, including text typed or deleted since, reach Saved after at most one retry or with the next autosave, are not shown as Saved before then, and closing, quitting, restore and erasure then no longer wait for them.
 
 #### Scenario: Notes changed elsewhere
 
 - **WHEN** a notes save is refused because the stored notes changed since Weekly Review last saved or loaded them
-- **THEN** the app reads the week again instead of resending: it adopts the stored revision when the stored notes equal the text being saved, sends the text again when only the revision changed, and otherwise keeps the person's text unsaved and offers "Keep my text", which saves it over the stored notes, or "Load saved text", which replaces it with them.
+- **THEN** the app reads the week again instead of resending: when the stored notes equal the text being saved, or the text of an earlier save that reported an error and so may have been stored with its reply lost, it adopts their revision and saves any newer text on it; when only the revision changed, it sends the text again once; otherwise it keeps the person's text unsaved and offers "Keep my text", which saves it over the stored notes, or "Load saved text", which replaces it with them.
 
 #### Scenario: Restore authored weekly notes
 

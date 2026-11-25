@@ -41,7 +41,11 @@ export interface JournalApi {
   weeklyReview(date: string): Promise<WeeklyReview>;
   /** Refused with conflict unless the week's notes are still at revision; advances it. */
   saveWeeklyNotes(date: string, notes: string, revision: number): Promise<WeeklyReview>;
-  /** Replaces the local summary; the notes and their revision stay as they are. */
+  /**
+   * Replaces the local summary. Saved notes and their revision are unchanged, but a week with no
+   * stored review is created with empty notes at revision 1, so a caller holding revision 0 must
+   * read the week again before saving.
+   */
   generateWeeklySummary(date: string): Promise<WeeklyReview>;
   clearReadingSummaries(): Promise<void>;
   listMilestones(): Promise<Milestone[]>;

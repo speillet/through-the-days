@@ -15,6 +15,11 @@ interface NotesDraft {
   /** The stored text this draft starts from, at revision. */
   saved: string;
   revision: number;
+  /**
+   * Texts sent on revision whose save failed with an error other than a conflict. Each may have
+   * been stored with only its reply lost, so stored notes equal to one are this draft's own write.
+   */
+  unconfirmed: string[];
   saving: boolean;
   error: string | null;
   /** Nothing is sent while set: the person keeps their text or loads this one. */
@@ -23,6 +28,34 @@ interface NotesDraft {
 type NotesApi = Pick<JournalApi, 'saveWeeklyNotes' | 'weeklyReview'>;
 type GenerateSummary = (date: string) => Promise<WeeklyReview>;
 type Choice = (draft: NotesDraft, stored: NotesConflict) => void;
+
+function draftAt(notes: string, revision: number): NotesDraft {
+  return {
+    value: notes,
+    saved: notes,
+    revision,
+    unconfirmed: [],
+    saving: false,
+    error: null,
+    conflict: null,
+  };
+}
+
+/** The journal holds notes at revision: later saves start from them. */
+function adopt(draft: NotesDraft, notes: string, revision: number) {
+  draft.saved = notes;
+  draft.revision = revision;
+  draft.unconfirmed = [];
+}
+
+/**
+ * The stored notes may differ from the local text: it changed since it was last saved, or a save
+ * sent on its revision failed without saying whether it was stored.
+ */
+export function unsaved(draft: NotesDraft): boolean {
+  return draft.value !== draft.saved || draft.unconfirmed.length > 0;
+}
+
 export class WeeklyNotesStore {
   private drafts = new Map<string, NotesDraft>();
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -42,30 +75,13 @@ export class WeeklyNotesStore {
     for (const listener of this.listeners) listener();
   }
   get(date: string): NotesDraft {
-    return (
-      this.drafts.get(date) ?? {
-        value: '',
-        saved: '',
-        revision: 0,
-        saving: false,
-        error: null,
-        conflict: null,
-      }
-    );
+    return this.drafts.get(date) ?? draftAt('', 0);
   }
   seed(review: WeeklyReview) {
     const current = this.drafts.get(review.weekStart);
-    if (current && (current.saving || current.value !== current.saved || current.revision > review.revision))
-      return;
+    if (current && (current.saving || unsaved(current) || current.revision > review.revision)) return;
     if (current?.revision === review.revision && current.saved === review.notes) return;
-    this.drafts.set(review.weekStart, {
-      value: review.notes,
-      saved: review.notes,
-      revision: review.revision,
-      saving: false,
-      error: null,
-      conflict: null,
-    });
+    this.drafts.set(review.weekStart, draftAt(review.notes, review.revision));
     this.notify();
   }
   change(date: string, value: string) {
@@ -85,30 +101,33 @@ export class WeeklyNotesStore {
   /** Saves until the journal holds the local text, or stops at notes that changed elsewhere. */
   private async savePending(date: string, draft: NotesDraft) {
     let resent = false;
-    while (draft.value !== draft.saved) {
+    while (unsaved(draft)) {
       const value = draft.value;
       if (!draft.conflict) {
         try {
           const saved = await this.api.saveWeeklyNotes(date, value, draft.revision);
-          draft.revision = saved.revision;
-          draft.saved = value;
+          adopt(draft, value, saved.revision);
           continue;
         } catch (error) {
-          if (toCommandError(error).code !== 'conflict') throw error;
+          if (toCommandError(error).code !== 'conflict') {
+            if (!draft.unconfirmed.includes(value)) draft.unconfirmed.push(value);
+            throw error;
+          }
         }
       }
       const stored = await this.api.weeklyReview(date);
-      if (stored.notes === value) {
-        // Already stored, for example by a save whose reply was lost: adopt its revision.
-        draft.saved = value;
-      } else if (stored.notes !== draft.saved || resent) {
-        draft.conflict = { notes: stored.notes, revision: stored.revision };
-        return;
-      } else {
+      // This draft's own text, already stored, for example by a save whose reply was lost.
+      const own = stored.notes === value || draft.unconfirmed.includes(stored.notes);
+      if (!own) {
+        if (stored.notes !== draft.saved || resent) {
+          draft.conflict = { notes: stored.notes, revision: stored.revision };
+          return;
+        }
         // Only the revision moved on: send the text again, once, on the stored revision.
         resent = true;
       }
-      draft.revision = stored.revision;
+      // Start from the stored notes; the loop saves any newer local text on their revision.
+      adopt(draft, stored.notes, stored.revision);
       draft.conflict = null;
     }
   }
@@ -127,7 +146,7 @@ export class WeeklyNotesStore {
         draft.error = null;
         this.notify();
       }
-      if (draft.value === draft.saved && !generate) return;
+      if (!unsaved(draft) && !generate) return;
       draft.saving = true;
       draft.error = null;
       this.notify();
@@ -158,20 +177,15 @@ export class WeeklyNotesStore {
   regenerateWeek = (date: string, generate: GenerateSummary) => this.runWeek(date, generate);
   /** Saves the local text over notes that changed elsewhere. */
   keepText = (date: string) =>
-    this.runWeek(date, undefined, (draft, stored) => {
-      draft.saved = stored.notes;
-      draft.revision = stored.revision;
-    });
+    this.runWeek(date, undefined, (draft, stored) => adopt(draft, stored.notes, stored.revision));
   /** Replaces the local text with the notes that changed elsewhere. */
   loadSavedText = (date: string) =>
     this.runWeek(date, undefined, (draft, stored) => {
-      draft.value = draft.saved = stored.notes;
-      draft.revision = stored.revision;
+      draft.value = stored.notes;
+      adopt(draft, stored.notes, stored.revision);
     });
   hasPending = () =>
-    [...this.drafts.values()].some(
-      (draft) => draft.saving || draft.value !== draft.saved || draft.conflict !== null,
-    );
+    [...this.drafts.values()].some((draft) => draft.saving || unsaved(draft) || draft.conflict !== null);
   flush = async () => {
     await Promise.all([...this.drafts.keys()].map((date) => this.flushWeek(date)));
   };

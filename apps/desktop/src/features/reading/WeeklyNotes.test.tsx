@@ -32,19 +32,24 @@ function notesStatus() {
   return within(screen.getByRole('region', { name: 'Your weekly reflection' })).getByRole('status');
 }
 
-it('reaches Saved after one retry when a notes save was stored but its reply was lost', async () => {
-  const journal = await weekJournal('Synthetic notes.');
-  let loseReply = true;
-  const api: JournalApi = {
+/** Stores the first notes save, then rejects it once `reply` settles, as if its reply was lost. */
+function loseFirstSaveReply(journal: JournalApi, reply: Promise<void> = Promise.resolve()): JournalApi {
+  let lost = false;
+  return {
     ...journal,
     async saveWeeklyNotes(...args) {
       const saved = await journal.saveWeeklyNotes(...args);
-      if (!loseReply) return saved;
-      loseReply = false;
+      if (lost) return saved;
+      lost = true;
+      await reply;
       throw { code: 'storage', message: 'Synthetic reply lost after saving.' };
     },
   };
-  const notes = await openNotes(api, 'Synthetic notes.');
+}
+
+it('reaches Saved after one retry when a notes save was stored but its reply was lost', async () => {
+  const journal = await weekJournal('Synthetic notes.');
+  const notes = await openNotes(loseFirstSaveReply(journal), 'Synthetic notes.');
   const user = userEvent.setup();
   await user.type(notes, ' Kept.');
   expect(await screen.findByRole('alert')).toHaveTextContent('Synthetic reply lost after saving.');
@@ -53,6 +58,66 @@ it('reaches Saved after one retry when a notes save was stored but its reply was
   await waitFor(() => expect(notesStatus()).toHaveTextContent('Saved'));
   expect(hasPending()).toBe(false);
   expect(await journal.weeklyReview(WEEK)).toMatchObject({ notes: 'Synthetic notes. Kept.', revision: 2 });
+});
+
+it('autosaves text typed after a lost reply on the stored revision, without a conflict', async () => {
+  const journal = await weekJournal('Synthetic notes.');
+  const notes = await openNotes(loseFirstSaveReply(journal), 'Synthetic notes.');
+  const user = userEvent.setup();
+  await user.type(notes, ' Kept.');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Synthetic reply lost after saving.');
+  await user.type(notes, ' More.');
+  await waitFor(async () =>
+    expect(await journal.weeklyReview(WEEK)).toMatchObject({
+      notes: 'Synthetic notes. Kept. More.',
+      revision: 3,
+    }),
+  );
+  await waitFor(() => expect(notesStatus()).toHaveTextContent('Saved'));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(hasPending()).toBe(false);
+});
+
+it('autosaves text typed while a save whose reply is lost is still running', async () => {
+  const journal = await weekJournal('Synthetic notes.');
+  let answer!: () => void;
+  const reply = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  const notes = await openNotes(loseFirstSaveReply(journal, reply), 'Synthetic notes.');
+  const user = userEvent.setup();
+  await user.type(notes, ' Kept.');
+  await waitFor(async () => expect((await journal.weeklyReview(WEEK)).revision).toBe(2));
+  await user.type(notes, ' More.');
+  await act(async () => answer());
+  await waitFor(async () =>
+    expect(await journal.weeklyReview(WEEK)).toMatchObject({
+      notes: 'Synthetic notes. Kept. More.',
+      revision: 3,
+    }),
+  );
+  await waitFor(() => expect(notesStatus()).toHaveTextContent('Saved'));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(hasPending()).toBe(false);
+});
+
+it('stores the earlier text again when the person deletes back to it after a lost reply', async () => {
+  const journal = await weekJournal('Synthetic notes.');
+  const notes = await openNotes(loseFirstSaveReply(journal), 'Synthetic notes.');
+  const user = userEvent.setup();
+  await user.type(notes, ' Kept.');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Synthetic reply lost after saving.');
+  await user.type(notes, '{Backspace>6/}');
+  expect(notes).toHaveValue('Synthetic notes.');
+  // The journal may still hold " Kept.", so the notes are not reported as saved yet.
+  expect(notesStatus()).toHaveTextContent('Saving…');
+  expect(hasPending()).toBe(true);
+  await waitFor(async () =>
+    expect(await journal.weeklyReview(WEEK)).toMatchObject({ notes: 'Synthetic notes.', revision: 3 }),
+  );
+  await waitFor(() => expect(notesStatus()).toHaveTextContent('Saved'));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(hasPending()).toBe(false);
 });
 
 it('keeps saving notes after a summary that was stored but reported as failed', async () => {

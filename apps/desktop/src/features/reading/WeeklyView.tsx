@@ -8,6 +8,7 @@ import { usePreferences } from '../../state/preferences';
 import { EntryPreview } from './shared';
 import { Coverage } from './Timeline';
 import { useReading, useReadingQuery } from './state';
+import { unsaved } from './notes';
 
 export function WeeklyView() {
   const api = useApi();
@@ -28,7 +29,7 @@ export function WeeklyView() {
     if (data) notes.seed(data);
   }, [notes, data]);
   const draft = notes.get(data?.weekStart ?? selected);
-  const pending = draft.saving || draft.value !== draft.saved;
+  const pending = draft.saving || unsaved(draft);
   async function summary() {
     if (!data || busy) return;
     setBusy(true);
