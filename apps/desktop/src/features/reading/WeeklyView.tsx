@@ -103,10 +103,11 @@ export function WeeklyView() {
           {visibility.scores ? (
             <p>
               {data.report.wins} approved small {data.report.wins === 1 ? 'win' : 'wins'} and{' '}
-              {data.report.actions} reported {data.report.actions === 1 ? 'action' : 'actions'}. CBT exercises
-              are not available yet and are not counted.
+              {data.report.actions} reported {data.report.actions === 1 ? 'action' : 'actions'}.
             </p>
           ) : null}
+          {/* Shown with or without scores: no exercise count exists to hide. */}
+          <p>CBT exercises are not available yet and are not counted.</p>
           <section className="weekly-notes" aria-label="Your weekly reflection">
             <label className="reading-field">
               Your notes

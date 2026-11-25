@@ -6,7 +6,7 @@ import type { JournalApi } from '../../api/client';
 import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES } from '../../api/memory';
 import { documentText, newDraft, newId } from '../../domain/entry';
 import { discardAllSavers } from '../../state/autosave';
-import { journalEditor, SAVE_TIMEOUT_MS, typeInEditor } from '../today/testing';
+import { journalEditor, SAVE_TIMEOUT_MS, setPreferences, typeInEditor } from '../today/testing';
 
 afterEach(() => {
   discardAllSavers();
@@ -53,6 +53,59 @@ it('suspends hidden score filters in Gentle view and restores them without chang
   expect(screen.getByLabelText('Minimum score')).toHaveValue(8);
   await waitFor(() => expect(screen.queryByText('Synthetic quiet morning.')).not.toBeInTheDocument());
   for (const entry of saved) expect(await api.getEntry(entry.id)).toEqual(entry);
+});
+
+const EXERCISES = 'CBT exercises are not available yet and are not counted.';
+
+it('says scores are hidden in Settings, not by Gentle view, and still states that exercises are not counted', async () => {
+  const api = createMemoryApi({
+    storage: createMemoryStorage(),
+    now: () => new Date('2026-11-22T12:00:00Z'),
+  });
+  await setPreferences(api, { showScores: false, gentle: false });
+  render(<App api={api} initialView="trends" />);
+  const user = userEvent.setup();
+  const coverage =
+    'Scores are hidden in Settings, under Writing. Recorded dates stay visible; optional measures and counts are not shown.';
+  expect(await screen.findByText(coverage)).toBeInTheDocument();
+  expect(screen.queryByText(/Gentle view/)).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Weekly Review' }));
+  expect(await screen.findByText(coverage)).toBeInTheDocument();
+  expect(screen.getByText(EXERCISES)).toBeInTheDocument();
+  expect(screen.queryByText(/approved small/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Gentle view/)).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'The Path So Far' }));
+  expect(
+    await screen.findByText(
+      'Scores are hidden in Settings, under Writing. Numeric tracking is not shown; your writing, wins and milestones stay accessible.',
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Gentle view/)).not.toBeInTheDocument();
+});
+
+it('names Gentle view when it hides the measures, and still states that exercises are not counted', async () => {
+  const api = createMemoryApi({
+    storage: createMemoryStorage(),
+    now: () => new Date('2026-11-22T12:00:00Z'),
+  });
+  await setPreferences(api, { gentle: true });
+  render(<App api={api} initialView="weekly" />);
+  const user = userEvent.setup();
+  expect(
+    await screen.findByText(
+      'Gentle view keeps recorded dates visible and hides optional measures and counts.',
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByText(EXERCISES)).toBeInTheDocument();
+  expect(screen.queryByText(/approved small/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Scores are hidden/)).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'The Path So Far' }));
+  expect(
+    await screen.findByText(
+      'Gentle view hides numeric tracking while keeping your writing, wins and milestones accessible.',
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Scores are hidden/)).not.toBeInTheDocument();
 });
 
 it('keeps a win excluded from insights out of weekly and timeline layers while retaining its original', async () => {

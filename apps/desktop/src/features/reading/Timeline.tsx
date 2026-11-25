@@ -42,10 +42,16 @@ export function SeriesControls() {
 
 export function Coverage({ report }: { report: ReadingReport }) {
   const { visibility, preferences } = usePreferences();
+  // Scores are hidden by Gentle view or by Show scores in Settings; the notice names the cause.
   if (!visibility.scores)
-    return (
+    return preferences.gentle ? (
       <p className="reading-meta">
         Gentle view keeps recorded dates visible and hides optional measures and counts.
+      </p>
+    ) : (
+      <p className="reading-meta">
+        Scores are hidden in Settings, under Writing. Recorded dates stay visible; optional measures and
+        counts are not shown.
       </p>
     );
   return (
