@@ -59,6 +59,21 @@ describe('Erase app data', () => {
     expect(text).toContain('Erasing is not forensic');
   });
 
+  it('lists weekly notes, private milestones and local summaries in the section and its dialog', async () => {
+    const user = userEvent.setup();
+    await renderErase();
+    const section = document.body.textContent ?? '';
+    expect(section).toContain('your weekly notes and private milestones');
+    expect(section).toContain('local weekly summaries');
+    expect(section).toContain('Search uses a temporary index that is never stored.');
+    // Weekly summaries are stored in the journal, so the section never says there are none.
+    expect(section).not.toContain('keeps no generated summaries');
+    await user.click(screen.getByRole('button', { name: 'Erase all app data…' }));
+    const dialog = screen.getByRole('alertdialog', { name: 'Erase all app data?' });
+    expect(dialog).toHaveAccessibleDescription(/your weekly notes and private milestones/);
+    expect(dialog).toHaveAccessibleDescription(/local weekly summaries/);
+  });
+
   it('explains that copies kept by Time Machine or a synced folder are not removed', async () => {
     const user = userEvent.setup();
     await renderErase();
@@ -149,6 +164,15 @@ describe('Erase app data', () => {
     const saved = await api.saveEntry(newDraft('2026-11-22', 'morning', 'Europe/Paris'));
     await api.trashEntry(saved.id, saved.revision);
     await api.saveEntry(newDraft('2026-11-22', 'evening', 'Europe/Paris'));
+    const notes = await api.saveWeeklyNotes('2026-11-22', 'Fictional weekly notes to erase.', 0);
+    expect((await api.generateWeeklySummary('2026-11-22', notes.revision)).summary).not.toBeNull();
+    await api.saveMilestone({
+      id: '00000000-0000-4000-8000-000000000024',
+      date: '2026-11-21',
+      title: 'Fictional milestone to erase',
+      notes: '',
+      revision: 0,
+    });
     await api.setPreferences({ ...DEFAULT_PREFERENCES, theme: 'dark', gentle: true });
     await api.chooseBackupFolder();
     await api.setBackupPassphrase('fictional-garden-lantern', true);
@@ -165,6 +189,8 @@ describe('Erase app data', () => {
     expect(probes.navigation?.view).toBe('today');
     await expect(api.listEntries()).resolves.toEqual([]);
     await expect(api.listTrash()).resolves.toEqual([]);
+    await expect(api.weeklyReview('2026-11-22')).resolves.toMatchObject({ notes: '', revision: 0, summary: null });
+    await expect(api.listMilestones()).resolves.toEqual([]);
     await expect(api.getPreferences()).resolves.toEqual(DEFAULT_PREFERENCES);
     await expect(api.backupStatus()).resolves.toMatchObject({
       state: 'needsFolder',

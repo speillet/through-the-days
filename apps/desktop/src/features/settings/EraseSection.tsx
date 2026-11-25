@@ -38,6 +38,8 @@ function EraseScope() {
     <ul className="settings-list">
       <li>every journal entry, with its writing and check-in answers</li>
       <li>the trash</li>
+      <li>your weekly notes and private milestones</li>
+      <li>local weekly summaries</li>
       <li>your display preferences</li>
       <li>the backup settings on this Mac: the chosen folder and the backup history</li>
       <li>the backup passphrase, including the copy remembered in macOS Keychain</li>
@@ -64,8 +66,8 @@ export function EraseSection() {
       <p className="settings-note">{BACKUP_FILES_KEPT}</p>
       <p className="settings-note">{OTHER_COPIES_KEPT}</p>
       <p className="settings-text">
-        This version keeps no generated summaries, indexes or other data derived from your writing. Erasing is not
-        forensic: traces can remain on the disk until macOS overwrites them.
+        Search uses a temporary index that is never stored. Erasing is not forensic: traces can remain on the disk until
+        macOS overwrites them.
       </p>
       <div className="settings-actions">
         <Button variant="danger" onClick={() => setOpen(true)}>

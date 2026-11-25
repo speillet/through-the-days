@@ -1,7 +1,8 @@
 // How the journal is protected (D-004, D-006, D-003, D-009), stated accurately:
 // the live journal relies on macOS, backups are encrypted separately, nothing is
 // uploaded, copies kept by Time Machine or a sync service are outside the app's
-// reach, and deleting is not forensic erasure. SettingsView renders the h2.
+// reach, and deleting is not forensic erasure. Local weekly summaries can be cleared
+// here; backups made before that still contain them. SettingsView renders the h2.
 
 import { useStartup } from '../../state/startup';
 import { BACKUPS_KEPT } from '../backup/status';
@@ -71,7 +72,20 @@ export function PrivacySection() {
           them.
         </p>
       </div>
-      <div className="privacy__block"><h3 className="backup-group__title">Generated reading information</h3><p className="settings-text">Clear local weekly summaries whenever you like. Your original writing, weekly notes and private milestones are kept. The search index is temporary and rebuilt from saved entries for each query.</p><Button onClick={()=>void clearSummaries()}>Clear local summaries</Button>{cleared ? <p role="status">Local summaries cleared.</p>:null}{error ? <Notice tone="error">{error}</Notice>:null}</div>
+
+      <div className="privacy__block">
+        <h3 className="backup-group__title">Generated reading information</h3>
+        <p className="settings-text">
+          Clear local weekly summaries whenever you like. Your original writing, weekly notes and private milestones are
+          kept. The search index is temporary and rebuilt from saved entries for each query.
+        </p>
+        <p className="settings-text">
+          Backups made before you clear summaries still contain them until those backups are removed.
+        </p>
+        <Button onClick={() => void clearSummaries()}>Clear local summaries</Button>
+        {cleared ? <p role="status">Local summaries cleared.</p> : null}
+        {error ? <Notice tone="error">{error}</Notice> : null}
+      </div>
     </div>
   );
 }
