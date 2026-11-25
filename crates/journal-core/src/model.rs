@@ -258,11 +258,26 @@ const MARK_TYPES: [&str; 5] = ["bold", "italic", "strike", "code", "underline"];
 /// JSON nesting limit (128) of the desktop shell's command parser and of stored payloads.
 const MAXIMUM_DOCUMENT_DEPTH: usize = 32;
 
-/// Plain text of an editor document, one line per text block.
+/// Plain text of an editor document, which search and the completion check read.
+///
+/// The text runs of a paragraph, heading or code block are joined as written, so formatting part
+/// of a word never splits it, and a hard break is a new line. Blocks are one line break apart; a
+/// block without text, such as an empty paragraph or a rule, is an empty line. `documentText` in
+/// `apps/desktop/src/domain/entry.ts` mirrors this for the interface's excerpts and previews.
 pub fn document_text(node: &Value) -> String {
     if let Some(text) = node.get("text").and_then(Value::as_str) {
         return text.to_owned();
     }
+    let kind = node.get("type").and_then(Value::as_str);
+    if kind == Some("hardBreak") {
+        return "\n".to_owned();
+    }
+    // The inline content of a text block is one line of text; only blocks start a new line.
+    let separator = if matches!(kind, Some("paragraph" | "heading" | "codeBlock")) {
+        ""
+    } else {
+        "\n"
+    };
     node.get("content")
         .and_then(Value::as_array)
         .map(|children| {
@@ -270,14 +285,20 @@ pub fn document_text(node: &Value) -> String {
                 .iter()
                 .map(document_text)
                 .collect::<Vec<_>>()
-                .join("\n")
+                .join(separator)
         })
         .unwrap_or_default()
 }
 
-/// Accepts only what the editor schema has: its node and mark types (no links), non-empty text
-/// nodes, and at most [`MAXIMUM_DOCUMENT_DEPTH`] levels. A document the editor could not load
-/// would open as a blank page, and the next edit would replace the stored writing.
+/// Checks the structure of a stored document: every node has a node type of the editor schema
+/// and every mark a mark type of it (so no links), each text node has non-empty text, `marks` and
+/// `content` are arrays, and nesting stays within [`MAXIMUM_DOCUMENT_DEPTH`] levels.
+///
+/// It does not check which nodes the schema allows inside which, nor the attributes (`attrs`) of
+/// nodes and marks, so it does not prove that the editor can show a document exactly. The renderer
+/// guards that fidelity: `canEditExactly` in `apps/desktop/src/features/editor/content.ts` tells
+/// whether the editor represents a stored document exactly, and the editor opens any other
+/// document read-only, so an edit never replaces the stored writing with a lossy copy.
 fn validate_node(node: &Value, depth: usize) -> Result<(), Error> {
     if depth > MAXIMUM_DOCUMENT_DEPTH {
         return Err(Error::Document);

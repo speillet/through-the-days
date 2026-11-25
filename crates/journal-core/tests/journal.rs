@@ -919,3 +919,41 @@ fn documents_nest_at_most_thirty_two_levels_and_always_round_trip() {
     assert_eq!(journal.save(too_deep_list), Err(Error::Document));
     assert_eq!(journal.list().unwrap(), vec![saved]);
 }
+
+/// calendar-reading — Local search and filtering / Formatted part of a word: the plain text that
+/// search and the completion check read keeps the runs of one paragraph together, so formatting
+/// never splits a word, and a line break inside a paragraph is one new line. The interface's
+/// `documentText` test in apps/desktop/src/domain/entry.test.ts uses the same document.
+#[test]
+fn document_text_keeps_formatted_words_whole_and_separates_only_blocks_and_line_breaks() {
+    let document = json!({"type": "doc", "content": [
+        {"type": "heading", "attrs": {"level": 2}, "content": [
+            {"type": "text", "text": "Synthetic "},
+            {"type": "text", "marks": [{"type": "italic"}], "text": "title"}
+        ]},
+        {"type": "paragraph", "content": [
+            {"type": "text", "text": "A peaceful "},
+            {"type": "text", "marks": [{"type": "bold"}], "text": "after"},
+            {"type": "text", "text": "noon"},
+            {"type": "hardBreak"},
+            {"type": "text", "text": "I felt "},
+            {"type": "text", "marks": [{"type": "bold"}], "text": "calm"},
+            {"type": "text", "text": " today."}
+        ]},
+        {"type": "bulletList", "content": [
+            {"type": "listItem", "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "One"}]}
+            ]},
+            {"type": "listItem", "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "Two"}]}
+            ]}
+        ]},
+        {"type": "horizontalRule"},
+        {"type": "codeBlock", "content": [{"type": "text", "text": "line one\nline two"}]},
+        {"type": "paragraph"}
+    ]});
+    assert_eq!(
+        journal_core::document_text(&document),
+        "Synthetic title\nA peaceful afternoon\nI felt calm today.\nOne\nTwo\n\nline one\nline two\n"
+    );
+}
