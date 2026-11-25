@@ -223,9 +223,13 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
                   step={1}
                   disabled={!filters.metric}
                   value={filters.minimum ?? ''}
-                  onChange={(e) =>
-                    setFilters({ ...filters, minimum: e.target.value === '' ? null : Number(e.target.value) })
-                  }
+                  onChange={(e) => {
+                    // The journal reads only a whole minimum from 0 to 10. WebKit keeps a typed 7.5
+                    // despite the step, so any other value leaves the filter as it was.
+                    const minimum = e.target.value === '' ? null : Number(e.target.value);
+                    if (minimum === null || (Number.isInteger(minimum) && minimum >= 0 && minimum <= 10))
+                      setFilters({ ...filters, minimum });
+                  }}
                 />
               </label>
             </>

@@ -60,6 +60,11 @@ The system SHALL provide local full-text search and combinable journal filters w
 - **WHEN** the person searches saved words together with punctuation or an emoji that search does not index, such as "pourquoi ?", "« journée »" or "paisible 🌿"
 - **THEN** My Journal, Calendar, Book View, Trends and The Path So Far show the same results as a search for those words alone, and a search made only of such characters matches no entry.
 
+#### Scenario: Minimum score that is not a whole score
+
+- **WHEN** the person types a minimum score that is not a whole number from 0 to 10, such as 7.5, 11 or -1
+- **THEN** the filters keep their previous minimum, and the reading views that share them keep their results without an error.
+
 #### Scenario: Edit invalidates search
 
 - **WHEN** an entry is edited so that a previous match disappears
