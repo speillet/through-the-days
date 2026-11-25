@@ -4,7 +4,9 @@ use crate::{
     recovery::{publish_snapshot, validate_passphrase},
     schema::{self, Stored},
 };
-use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
+use rusqlite::{
+    Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior, params,
+};
 use serde::Serialize;
 use std::{ffi::OsString, fs, io, path::Path, time::Duration};
 
@@ -29,6 +31,7 @@ pub struct Journal {
 
 impl Journal {
     /// Opens the journal at `path`, creating the current schema when nothing is stored there.
+    /// A write-ahead log that a crash left behind is copied into the journal file and emptied.
     ///
     /// An older supported journal returns [`Error::MigrationRequired`], a newer or foreign
     /// database [`Error::Unsupported`], and a file whose header or schema cannot be read
@@ -41,7 +44,10 @@ impl Journal {
         connection.busy_timeout(BUSY_TIMEOUT)?;
         schema::initialise(&connection)?;
         configure(&connection)?;
-        Ok(Self { connection })
+        let journal = Self { connection };
+        // A log left by a crash can hold text deleted just before it; fold it in at once.
+        journal.checkpoint();
+        Ok(journal)
     }
 
     /// Upgrades an older supported journal after publishing an encrypted pre-migration backup.
@@ -92,7 +98,7 @@ impl Journal {
     /// draft; an explicit completion request that does not satisfy them is refused.
     pub fn save(&self, mut entry: Entry) -> Result<Entry, Error> {
         entry.validate()?;
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let trashed: bool = transaction.query_row(
             "SELECT EXISTS(SELECT 1 FROM journal_entries WHERE id=?1 AND trashed_at IS NOT NULL)",
             [&entry.id],
@@ -227,7 +233,7 @@ impl Journal {
     /// An entry whose 30-day retention ended at or before `now` (Unix seconds) is no longer
     /// restorable and reports [`Error::NotFound`], even before a purge removes it.
     pub fn restore(&self, id: &str, now: i64) -> Result<Entry, Error> {
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let payload: String = transaction
             .query_row(
                 "SELECT payload FROM journal_entries
@@ -257,6 +263,9 @@ impl Journal {
     }
 
     /// Removes a trashed entry from the live journal. Earlier backups may still contain it.
+    ///
+    /// A checkpoint then removes its text from the journal file and the write-ahead log too,
+    /// unless another connection keeps that checkpoint from completing or it fails.
     pub fn permanently_delete(&self, id: &str) -> Result<(), Error> {
         let deleted = self.connection.execute(
             "DELETE FROM journal_entries WHERE id=?1 AND trashed_at IS NOT NULL",
@@ -265,16 +274,34 @@ impl Journal {
         if deleted != 1 {
             return Err(Error::NotFound);
         }
+        self.checkpoint();
         Ok(())
     }
 
-    /// Removes trashed entries whose 30-day retention ended at or before `now`.
+    /// Removes trashed entries whose 30-day retention ended at or before `now`. Their text leaves
+    /// the journal files as with [`Journal::permanently_delete`].
     pub fn purge_expired(&self, now: i64) -> Result<(), Error> {
-        self.connection.execute(
+        let purged = self.connection.execute(
             "DELETE FROM journal_entries WHERE trashed_at IS NOT NULL AND trashed_at<=?1",
             [now.saturating_sub(TRASH_RETENTION_SECONDS)],
         )?;
+        if purged > 0 {
+            self.checkpoint();
+        }
         Ok(())
+    }
+
+    /// Copies the write-ahead log into the journal file and empties the log, so the pages that a
+    /// committed deletion zeroed replace the deleted text in both files (see [`configure`]).
+    ///
+    /// Best effort: the deletion has already committed, and a checkpoint never loses committed
+    /// data. When another connection keeps it from completing, or it fails, the text stays until
+    /// a later checkpoint: the next deletion, the next opening or the last connection closing.
+    pub(crate) fn checkpoint(&self) {
+        // The result only reports whether the checkpoint completed; nothing depends on it.
+        let _ = self
+            .connection
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
     }
 
     fn entries(&self, sql: &str, parameters: impl rusqlite::Params) -> Result<Vec<Entry>, Error> {
@@ -283,6 +310,18 @@ impl Journal {
             .query_map(parameters, |row| row.get::<_, String>(0))?
             .map(|payload| Ok(serde_json::from_str(&payload?)?))
             .collect()
+    }
+
+    /// Starts a transaction that reads before it writes, holding the write lock from the start.
+    ///
+    /// While another connection writes, SQLite fails at once rather than turn a read transaction
+    /// into a write transaction, and a read that another connection has since overtaken can never
+    /// be written. Taking the lock first waits for it like any other, for up to [`BUSY_TIMEOUT`].
+    pub(crate) fn write_transaction(&self) -> Result<Transaction<'_>, Error> {
+        Ok(Transaction::new_unchecked(
+            &self.connection,
+            TransactionBehavior::Immediate,
+        )?)
     }
 }
 
@@ -312,6 +351,13 @@ const DURABLE_COMMITS: &str =
     "PRAGMA synchronous=FULL; PRAGMA fullfsync=ON; PRAGMA checkpoint_fullfsync=ON;";
 
 /// Connection settings for the live journal: durable commits and zeroed deleted content.
+///
+/// `secure_delete` overwrites deleted content with zeros, but in WAL mode the zeroed pages first
+/// reach only the write-ahead log: the journal file keeps the old pages until a checkpoint
+/// copies the log back, and the log keeps its earlier frames until it is emptied. SQLite
+/// checkpoints by itself only after about 1,000 logged pages, without emptying the log, and when
+/// the last connection closes, so deletions and opening the journal run a checkpoint that
+/// empties it at once ([`Journal::checkpoint`]).
 pub(crate) fn configure(connection: &Connection) -> Result<(), Error> {
     connection.execute_batch(
         "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON;",

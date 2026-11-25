@@ -355,6 +355,41 @@ describe('memory journal: entries', () => {
   });
 });
 
+// The same queries and fixtures run against native SQLite FTS5 search in
+// crates/journal-core/tests/reading.rs; the preview must follow the same rules.
+describe('memory journal: search, as native search does', () => {
+  it.each(['journee ?', 'paisible 🌿', '« journee »'])(
+    'finds the words of "%s" and ignores the punctuation or emoji beside them',
+    async (text) => {
+      const { api } = setup();
+      // Deliberate multilingual synthetic fixture.
+      const saved = await api.saveEntry(withText(draft(), 'Synthetic journée paisible 🌿'));
+      await expect(api.searchEntries({ text })).resolves.toEqual([saved]);
+      const report = await api.readingReport({ text, from: '2026-11-22', to: '2026-11-22' });
+      expect([report.entries, report.recordedDays]).toEqual([1, 1]);
+    },
+  );
+
+  it('still requires every word, and finds nothing for punctuation alone', async () => {
+    const { api } = setup();
+    // Deliberate multilingual synthetic fixture.
+    await api.saveEntry(withText(draft(), 'Synthetic journée paisible 🌿'));
+    await expect(api.searchEntries({ text: 'journee ? absent' })).resolves.toEqual([]);
+    await expect(api.searchEntries({ text: '?' })).resolves.toEqual([]);
+  });
+
+  it('keeps the words of each query part together and folds only Latin accents', async () => {
+    const { api } = setup();
+    // Deliberate multilingual synthetic fixtures in French and Greek.
+    const together = await api.saveEntry(withText(draft('2026-11-21'), 'Synthetic l’amour du matin, καλημέρα'));
+    const apart = await api.saveEntry(withText(draft('2026-11-22'), "Synthetic amour de l'été"));
+    await expect(api.searchEntries({ text: "l'amour" })).resolves.toEqual([together]);
+    await expect(api.searchEntries({ text: 'ete amour' })).resolves.toEqual([apart]);
+    await expect(api.searchEntries({ text: 'ΚΑΛΗΜΈΡΑ' })).resolves.toEqual([together]);
+    await expect(api.searchEntries({ text: 'καλημερα' })).resolves.toEqual([]);
+  });
+});
+
 describe('memory journal: trash', () => {
   it('moves an entry to trash for 30 days and hides it from the journal', async () => {
     const { api, clock } = setup();
@@ -662,7 +697,27 @@ describe('memory journal: backups', () => {
   it('returns null when there is no backup file to pick', async () => {
     const { api } = setup();
     await expect(api.chooseRestoreFile()).resolves.toBeNull();
-    await expect(api.restoreBackup({ kind: 'picked' }, PASSPHRASE)).rejects.toEqual(commandError('restore'));
+    await expect(api.restoreBackup({ kind: 'picked' }, PASSPHRASE)).rejects.toEqual(commandError('backupUnavailable'));
+  });
+
+  it('reports a backup that is no longer in the folder as unavailable, not as a wrong passphrase', async () => {
+    const { api, storage } = setup();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE, false);
+    await api.saveEntry(withText(draft('2026-11-20'), 'Synthetic backed-up entry.'));
+    await api.backupNow();
+    const [backup] = await api.listBackups();
+    await api.chooseRestoreFile();
+    await api.saveEntry(withText(draft('2026-11-22'), 'Synthetic newer entry.'));
+    const before = await api.listEntries();
+    // The backup file leaves the folder after it was listed and picked.
+    damageStore(storage, (stored) => {
+      stored.folder = [];
+    });
+    for (const source of [{ kind: 'registered', name: backup.name }, { kind: 'picked' }] as const) {
+      await expect(api.restoreBackup(source, PASSPHRASE)).rejects.toEqual(commandError('backupUnavailable'));
+    }
+    await expect(api.listEntries()).resolves.toEqual(before);
   });
 });
 
@@ -729,6 +784,9 @@ describe('memory journal: messages', () => {
     );
     expect(ERROR_MESSAGES.backupFolder).toBe(
       "The backup folder is not available or can't be written to. Reconnect the drive or choose another folder.",
+    );
+    expect(ERROR_MESSAGES.backupUnavailable).toBe(
+      'The backup is not available. Reconnect the drive that holds it or choose another backup. Your current journal is unchanged.',
     );
     expect(ERROR_MESSAGES.safetyBackupFailed).toBe(
       'A safety backup of your current journal could not be made, so nothing was restored. If your current journal is damaged, you can restore without a safety backup.',
@@ -861,12 +919,25 @@ describe('memory journal: startup failures and recovery', () => {
     expect(await relaunched.chooseRestoreFile()).not.toBeNull();
   });
 
-  it('never restores while a protected upgrade is waiting', async () => {
-    const { restart, backup } = await backedUpJournal();
+  it('restores over an older journal that its upgrade cannot back up, keeping it aside', async () => {
+    const { storage, restart, clock, kept, backup } = await backedUpJournal();
+    damageStore(storage, (stored) => {
+      (stored.journal as { entries: unknown[] }).entries.push({ entry: 'Synthetic damaged page', trashedAt: null });
+    });
+    const storedJournal = () => (JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? '{}') as { journal: unknown }).journal;
+    const older = storedJournal();
     const relaunched = restart({ startup: { state: 'needsMigration' } });
-    await expect(relaunched.restoreBackup({ kind: 'registered', name: backup.name }, SAFE_PASSPHRASE)).rejects.toEqual(
-      commandError('notReady'),
-    );
+    await expect(relaunched.migrateJournal(SAFE_PASSPHRASE, false)).rejects.toEqual(commandError('damaged'));
+    await expect(relaunched.startupStatus()).resolves.toMatchObject({ state: 'needsMigration', fromVersion: 1 });
+    expect(storedJournal()).toEqual(older);
+    await expect(relaunched.listBackups()).resolves.toEqual([backup]);
+
+    const outcome = await relaunched.restoreBackup({ kind: 'registered', name: backup.name }, SAFE_PASSPHRASE);
+    expect(outcome).toEqual({ entries: 1, safetyBackup: false, setAside: `journal.unreadable-${clock.unix()}.sqlite` });
+    await expect(relaunched.startupStatus()).resolves.toMatchObject({ state: 'ready', fromVersion: null, message: null });
+    await expect(relaunched.listEntries()).resolves.toEqual([kept]);
+    const stored = JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? '{}') as { setAside: unknown[] };
+    expect(stored.setAside).toEqual([{ name: outcome.setAside, journal: older }]);
   });
 });
 

@@ -234,7 +234,10 @@ impl Journal {
         })
     }
 
-    /// Literal-token search: Unicode case folding and accent folding, no FTS operators or stemming.
+    /// Literal-token search: Unicode case folding and Latin accent folding, no FTS operators,
+    /// prefixes or stemming. Each space-separated part of the query must appear as consecutive
+    /// words; a part with no indexed word, such as `?` or `🌿`, is ignored, and a query made only
+    /// of such parts finds nothing.
     /// Every query indexes the current active records, so edits/trash cannot leave stale excerpts.
     pub fn search(&self, request: &SearchRequest) -> Result<Vec<Entry>, Error> {
         let dates = request.validate()?;
@@ -257,13 +260,16 @@ impl Journal {
                 ])?;
             }
         }
-        // Quotes make every user token literal; input never supplies MATCH operators or SQL.
+        // Quotes make every user token a literal phrase; input never supplies MATCH operators or SQL.
+        // An implicit AND (a space) drops a phrase the tokenizer leaves empty, such as "?" or "🌿",
+        // whereas an explicit AND keeps it and then matches nothing. A query of empty phrases alone
+        // still matches nothing.
         let query = request
             .text
             .split_whitespace()
             .map(|word| format!("\"{}\"", word.replace('"', "\"\"")))
             .collect::<Vec<_>>()
-            .join(" AND ");
+            .join(" ");
         let mut select = index.prepare("SELECT id FROM source_text WHERE source_text MATCH ?1")?;
         let matches: HashSet<String> = select
             .query_map([query], |row| row.get(0))?

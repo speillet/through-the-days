@@ -89,11 +89,13 @@ describe('restore dialog', () => {
     expect(onRestored).not.toHaveBeenCalled();
   });
 
-  it('says that a failed safety backup stopped the restore', async () => {
+  it('says that a failed safety backup stopped the restore, and restores once its cause is gone', async () => {
     const user = userEvent.setup();
     const { api, backup, status } = await journal();
-    vi.spyOn(api, 'restoreBackup').mockRejectedValue({ code: 'backupFolder', message: ERROR_MESSAGES.backupFolder });
-    renderDialog(api, { source: { kind: 'registered', name: backup.name }, label: 'Backup' }, status);
+    const restore = vi
+      .spyOn(api, 'restoreBackup')
+      .mockRejectedValueOnce({ code: 'backupFolder', message: ERROR_MESSAGES.backupFolder });
+    const { onRestored } = renderDialog(api, { source: { kind: 'registered', name: backup.name }, label: 'Backup' }, status);
     const dialog = await screen.findByRole('alertdialog', { name: 'Restore this backup?' });
     await user.type(within(dialog).getByLabelText('Passphrase for this backup'), PASSPHRASE);
     await user.click(within(dialog).getByRole('button', { name: 'Replace journal and restore' }));
@@ -102,12 +104,50 @@ describe('restore dialog', () => {
       `A safety backup of your current journal could not be made first, so nothing was restored. ${ERROR_MESSAGES.backupFolder} Your current journal is unchanged.`,
     );
     expect(within(dialog).queryByRole('button', { name: 'Restore without a safety backup' })).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Passphrase for this backup')).toHaveValue(PASSPHRASE);
+
+    // Once the backup drive is connected again, the same restore makes its safety backup.
+    await user.click(within(dialog).getByRole('button', { name: 'Replace journal and restore' }));
+    await vi.waitFor(() => expect(onRestored).toHaveBeenCalledWith({ entries: 1, safetyBackup: true, setAside: null }));
+    expect(restore).toHaveBeenLastCalledWith({ kind: 'registered', name: backup.name }, PASSPHRASE, false);
+  });
+
+  it('keeps the passphrase after failures that do not involve it, and clears it after a refused one', async () => {
+    const user = userEvent.setup();
+    const { api, backup, status } = await journal();
+    const restore = vi.spyOn(api, 'restoreBackup');
+    const { onRestored } = renderDialog(api, { source: { kind: 'registered', name: backup.name }, label: 'Backup' }, status);
+    const dialog = await screen.findByRole('alertdialog', { name: 'Restore this backup?' });
+    const field = within(dialog).getByLabelText('Passphrase for this backup');
+    const submit = () => user.click(within(dialog).getByRole('button', { name: 'Replace journal and restore' }));
+    await user.type(field, PASSPHRASE);
+
+    // The backup drive was disconnected, then the data folder was full.
+    for (const code of ['backupUnavailable', 'storage'] as const) {
+      restore.mockRejectedValueOnce({ code, message: ERROR_MESSAGES[code] });
+      await submit();
+      await vi.waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent(ERROR_MESSAGES[code]));
+      expect(within(dialog).getByRole('alert')).not.toHaveTextContent('A safety backup');
+      expect(field).toHaveValue(PASSPHRASE);
+    }
+
+    await user.clear(field);
+    await user.type(field, 'not the synthetic passphrase');
+    await submit();
+    await vi.waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent(ERROR_MESSAGES.restore));
+    expect(field).toHaveValue('');
+    expect(field).toHaveFocus();
+    expect(onRestored).not.toHaveBeenCalled();
   });
 });
 
 describe('restore wording', () => {
   it('names what stopped a restore and always says the journal is unchanged', () => {
     expect(restoreFailureMessage({ code: 'restore', message: ERROR_MESSAGES.restore })).toBe(ERROR_MESSAGES.restore);
+    // A backup that cannot be reached is not a failed safety backup.
+    expect(restoreFailureMessage({ code: 'backupUnavailable', message: ERROR_MESSAGES.backupUnavailable })).toBe(
+      ERROR_MESSAGES.backupUnavailable,
+    );
     expect(restoreFailureMessage({ code: 'backupRegistry', message: ERROR_MESSAGES.backupRegistry })).toBe(
       `A safety backup of your current journal could not be made first, so nothing was restored. ${ERROR_MESSAGES.backupRegistry} Your current journal is unchanged.`,
     );

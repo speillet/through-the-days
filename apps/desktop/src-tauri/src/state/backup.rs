@@ -55,6 +55,45 @@ pub fn backup_state(
     }
 }
 
+/// What Keychain did not do after a passphrase change, which still applies to the session, as
+/// `KeychainWarning` in `api/types.ts`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(
+    clippy::enum_variant_names,
+    reason = "each variant names what Keychain did not do, as the renderer's names do"
+)]
+pub enum KeychainWarning {
+    /// The passphrase could not be stored, so it lasts for this session only.
+    NotRemembered,
+    /// The passphrase could not be stored in place of the one remembered before. It lasts for
+    /// this session only, and the earlier one may remain in Keychain, where the app no longer
+    /// reads it.
+    NotReplaced,
+    /// The remembered passphrase could not be removed. It may remain in Keychain, where the app
+    /// no longer reads it.
+    NotRemoved,
+}
+
+impl KeychainWarning {
+    /// The warning after Keychain stored a new passphrase with the outcome `stored`. A refused
+    /// store leaves a passphrase remembered before (`replacing`) where it was.
+    fn after_store(stored: Result<(), KeychainError>, replacing: bool) -> Option<Self> {
+        stored.err().map(|_| {
+            if replacing {
+                Self::NotReplaced
+            } else {
+                Self::NotRemembered
+            }
+        })
+    }
+
+    /// The warning after Keychain deleted the item with the outcome `deleted`.
+    fn after_delete(deleted: Result<(), KeychainError>) -> Option<Self> {
+        deleted.err().map(|_| Self::NotRemoved)
+    }
+}
+
 /// The backup routine's state for the renderer, as `BackupStatus` in `api/types.ts`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,6 +104,11 @@ pub struct BackupStatus {
     pub folder_path: Option<String>,
     pub passphrase_available: bool,
     pub remembered: bool,
+    /// The launch is still reading the remembered passphrase from Keychain, for example while
+    /// a macOS prompt waits for an answer, and no passphrase change has replaced it since.
+    pub keychain_pending: bool,
+    /// Set only in the reply to a passphrase change that Keychain did not follow.
+    pub keychain_warning: Option<KeychainWarning>,
     pub last_success_date: Option<String>,
     pub last_success_at: Option<i64>,
     pub last_error: Option<CommandError>,
@@ -98,7 +142,8 @@ impl AppState {
     /// Existing backups keep the passphrase they were created with.
     ///
     /// Keychain is used without holding the journal. When it fails, the passphrase still works
-    /// for this session, is recorded as not remembered, and the Keychain error is returned.
+    /// for this session and is recorded as not remembered, and the status returned says what
+    /// Keychain did not do, including a passphrase remembered before that it may still hold.
     pub fn set_backup_passphrase(
         &self,
         passphrase: Zeroizing<String>,
@@ -106,29 +151,41 @@ impl AppState {
         now: DateTime<Utc>,
     ) -> Result<BackupStatus, CommandError> {
         validate_passphrase(&passphrase)?;
-        let secrets = self.secrets();
+        let _changing = self.secrets();
         let keychain = if remember {
-            secrets.store(&passphrase)
+            self.keychain.store(&passphrase)
         } else {
-            secrets.delete()
+            self.keychain.delete()
         };
         let mut core = self.lock();
+        // Holding `secrets` kept the Keychain choice as it was before the operation.
+        let keychain_warning = if remember {
+            KeychainWarning::after_store(keychain, core.plan.remember)
+        } else {
+            KeychainWarning::after_delete(keychain)
+        };
         core.adopt_passphrase(passphrase, remember, keychain)?;
-        keychain.map_err(|_| CommandError::keychain())?;
-        Ok(core.backup_status(now))
+        Ok(BackupStatus {
+            keychain_warning,
+            ..core.backup_status(now)
+        })
     }
 
-    /// Forgets the session passphrase and removes the Keychain item.
+    /// Forgets the session passphrase and removes the Keychain item. When Keychain cannot
+    /// remove it, the passphrase is forgotten all the same and no longer read at launch, and the
+    /// status returned says it may remain in Keychain.
     pub fn forget_backup_passphrase(
         &self,
         now: DateTime<Utc>,
     ) -> Result<BackupStatus, CommandError> {
-        let secrets = self.secrets();
-        let deleted = secrets.delete();
+        let _changing = self.secrets();
+        let deleted = self.keychain.delete();
         let mut core = self.lock();
         core.forget_passphrase(deleted)?;
-        deleted.map_err(|_| CommandError::keychain())?;
-        Ok(core.backup_status(now))
+        Ok(BackupStatus {
+            keychain_warning: KeychainWarning::after_delete(deleted),
+            ..core.backup_status(now)
+        })
     }
 }
 
@@ -149,6 +206,8 @@ impl Core {
             folder_path: folder.map(|folder| folder.display().to_string()),
             passphrase_available: self.passphrase.is_some(),
             remembered: self.plan.remember,
+            keychain_pending: self.launch_read == Some(self.secret_generation),
+            keychain_warning: None,
             last_success_date: self.plan.last_success_date.clone(),
             last_success_at: self.plan.last_success_at,
             last_error: self.last_error.clone(),
@@ -362,7 +421,7 @@ fn display_name(folder: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{BackupState, backup_state};
+    use super::{BackupState, KeychainWarning, backup_state};
 
     const TODAY: Option<&str> = Some("2026-11-22");
     const YESTERDAY: Option<&str> = Some("2026-11-21");
@@ -457,6 +516,27 @@ mod tests {
             .unwrap_or_default();
         for name in expected.iter().flatten().filter_map(|name| name.as_str()) {
             assert!(state_union.contains(&format!("'{name}'")), "{name}");
+        }
+    }
+
+    #[test]
+    fn keychain_warnings_serialise_with_the_renderer_names() {
+        let types = include_str!("../../../src/api/types.ts");
+        let warning_union = types
+            .split("export type KeychainWarning")
+            .nth(1)
+            .and_then(|declaration| declaration.split(';').next())
+            .unwrap_or_default();
+        for (warning, name) in [
+            (KeychainWarning::NotRemembered, "notRemembered"),
+            (KeychainWarning::NotReplaced, "notReplaced"),
+            (KeychainWarning::NotRemoved, "notRemoved"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(warning).ok(),
+                Some(serde_json::Value::from(name))
+            );
+            assert!(warning_union.contains(&format!("'{name}'")), "{name}");
         }
     }
 }

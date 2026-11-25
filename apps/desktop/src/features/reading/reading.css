@@ -169,6 +169,14 @@
   color: var(--color-text-muted);
   font-size: var(--text-xs);
 }
+/* A saving insights checkbox ignores changes; like a busy Button, it looks busy meanwhile. */
+.reading-permission:has(> input[aria-busy='true']) {
+  cursor: progress;
+}
+.reading-permission > input[aria-busy='true'] {
+  cursor: progress;
+  opacity: 0.75;
+}
 .book-view {
   max-width: 1100px;
   margin-inline: auto;

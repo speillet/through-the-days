@@ -1,13 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   addDays,
+  FIRST_JOURNAL_DATE,
   formatDate,
   formatDateTime,
   formatLongDate,
   formatMonth,
   isIsoDate,
+  isJournalDate,
   isValidTimeZone,
+  LAST_JOURNAL_DATE,
   monthGrid,
+  stepDays,
   supportedTimeZones,
   todayIn,
   weekdayIndex,
@@ -76,10 +80,57 @@ describe('journal dates', () => {
     expect(november[0][6]).toEqual({ date: '2026-11-01', day: 1, inMonth: true });
     expect(november.at(-1)?.at(-1)).toEqual({ date: '2026-12-06', day: 6, inMonth: false });
     expect(november.every((week) => week.length === 7)).toBe(true);
-    expect(november.flat().filter((day) => day.inMonth)).toHaveLength(30);
+    expect(november.flat().filter((day) => day?.inMonth)).toHaveLength(30);
     const february = monthGrid(2027, 2); // starts on a Monday and ends on a Sunday
     expect(february).toHaveLength(4);
-    expect(february[0][0].date).toBe('2027-02-01');
+    expect(february[0][0]?.date).toBe('2027-02-01');
+  });
+
+  it('accepts journal dates from 1 January 0001 to 31 December 9999 only', () => {
+    expect([FIRST_JOURNAL_DATE, LAST_JOURNAL_DATE]).toEqual(['0001-01-01', '9999-12-31']);
+    expect(isJournalDate('0001-01-01')).toBe(true);
+    expect(isJournalDate('9999-12-31')).toBe(true);
+    expect(isJournalDate('0000-12-31')).toBe(false);
+    // A date field takes up to six year digits: a stray fifth digit is not a journal date.
+    expect(isJournalDate('20261-11-24')).toBe(false);
+    expect(isJournalDate('10000-01-01')).toBe(false);
+    expect(isJournalDate('2026-02-30')).toBe(false);
+    expect(isJournalDate(null)).toBe(false);
+  });
+
+  it('steps by days without passing the first or last journal date', () => {
+    expect(stepDays('2026-11-22', 7)).toBe('2026-11-29');
+    expect(stepDays('9999-12-30', 1)).toBe('9999-12-31');
+    expect(stepDays('9999-12-31', 1)).toBeNull();
+    expect(stepDays('9999-12-31', 7)).toBeNull();
+    expect(stepDays('9999-12-31', 30)).toBeNull();
+    expect(stepDays('0001-01-02', -1)).toBe('0001-01-01');
+    expect(stepDays('0001-01-01', -1)).toBeNull();
+    expect(stepDays('0001-01-07', -7)).toBeNull();
+    // A date before the first journal date (a range start in year 0) may still move forward.
+    expect(stepDays('0000-12-31', 1)).toBe('0001-01-01');
+    expect(stepDays('0000-12-31', -1)).toBeNull();
+  });
+
+  it('builds the first and last supported months without inventing dates beyond them', () => {
+    const first = monthGrid(1, 1); // 1 January 0001 was a Monday
+    expect(first[0][0]).toEqual({ date: '0001-01-01', day: 1, inMonth: true });
+    expect(first.flat().filter((day) => day?.inMonth)).toHaveLength(31);
+    expect(first.at(-1)?.at(-1)).toEqual({ date: '0001-02-04', day: 4, inMonth: false });
+
+    const last = monthGrid(9999, 12);
+    expect(last).toHaveLength(5);
+    expect(last.flat().filter((day) => day?.inMonth)).toHaveLength(31);
+    expect(last[0][0]).toEqual({ date: '9999-11-29', day: 29, inMonth: false });
+    expect(last.at(-1)?.map((day) => day?.date ?? null)).toEqual([
+      '9999-12-27',
+      '9999-12-28',
+      '9999-12-29',
+      '9999-12-30',
+      '9999-12-31',
+      null,
+      null,
+    ]);
   });
 });
 

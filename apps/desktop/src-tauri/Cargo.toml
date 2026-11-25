@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 journal-core = { path = "../../../crates/journal-core" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
@@ -25,6 +26,8 @@ zeroize = "1"
 security-framework = "3"
 
 [dev-dependencies]
+# The mock runtime runs an open copy of the app in a test to check the single-instance guard.
+tauri = { version = "2", features = ["test"] }
 # Real temporary journals and crafted older or foreign databases for the shell's flow tests.
 rusqlite = { version = "0.40", features = ["bundled"] }
 tempfile = "3"

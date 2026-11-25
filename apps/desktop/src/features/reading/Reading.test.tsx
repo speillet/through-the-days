@@ -121,6 +121,42 @@ it('combines local search with slot filters and opens the exact saved source', a
   );
 });
 
+it('finds a partly bold word by the whole word and shows its excerpt without added line breaks', async () => {
+  const api = createMemoryApi({
+    storage: createMemoryStorage(),
+    now: () => new Date('2026-11-22T12:00:00Z'),
+  });
+  const excerpt = 'Synthetic peaceful afternoon. I felt calm today.';
+  await api.saveEntry({
+    ...newDraft('2026-11-21', 'evening', 'Europe/Paris'),
+    document: {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Synthetic peaceful ' },
+            { type: 'text', text: 'after', marks: [{ type: 'bold' }] },
+            { type: 'text', text: 'noon. I felt ' },
+            { type: 'text', text: 'calm', marks: [{ type: 'bold' }] },
+            { type: 'text', text: ' today.' },
+          ],
+        },
+      ],
+    },
+  });
+  render(<App api={api} initialView="journal" />);
+  const user = userEvent.setup();
+  const search = await screen.findByRole('searchbox', { name: 'Search journal' });
+  // Pasting sends each query whole: no partial or empty query can show the entry in between.
+  await user.click(search);
+  await user.paste('after');
+  expect(await screen.findByText('No entries match these filters.')).toBeInTheDocument();
+  await user.paste('noon');
+  expect(search).toHaveValue('afternoon');
+  expect((await screen.findByText(excerpt)).textContent).toBe(excerpt);
+});
+
 it('keeps historical timeline ranges, slot values and gaps, and remembers every hidden series', async () => {
   const api = createMemoryApi({
     storage: createMemoryStorage(),

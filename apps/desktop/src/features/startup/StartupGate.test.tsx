@@ -1,6 +1,6 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiProvider, type JournalApi } from '../../api/client';
 import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES, MEMORY_STORAGE_KEY } from '../../api/memory';
 import type { StartupStatus } from '../../api/types';
@@ -8,7 +8,11 @@ import { newDraft } from '../../domain/entry';
 import { useStartup, StartupProvider, type StartupContextValue } from '../../state/startup';
 import { createTestApi, TEST_NOW } from '../../test/render';
 import { ERASED_NOTICE } from '../settings/EraseSection';
-import { STILL_NOT_OPEN, StartupGate, UPGRADED_NOTICE } from './StartupGate';
+import { KEYCHAIN_HINT_DELAY_MS, STILL_NOT_OPEN, StartupGate, UPGRADED_NOTICE } from './StartupGate';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const PASSPHRASE = 'fictional-lighthouse-maple';
 const DATA_LOCATION = '/Users/fictional/Library/Application Support/com.throughthedays.app';
@@ -39,9 +43,12 @@ async function typePassphrase(user: User, passphrase = PASSPHRASE) {
 
 /**
  * A journal with one synthetic entry and one backup of it, then restarted in the given
- * startup state (or with its stored journal damaged), as a later launch would find it.
+ * startup state (or with its stored journal damaged: its header, or one of its pages), as
+ * a later launch would find it.
  */
-async function journalWithBackup(relaunch: { startup?: Partial<StartupStatus>; damageJournal?: boolean } = {}) {
+async function journalWithBackup(
+  relaunch: { startup?: Partial<StartupStatus>; damageJournal?: boolean; damagePage?: boolean } = {},
+) {
   const storage = createMemoryStorage();
   const options = { storage, now: () => TEST_NOW };
   const first = createMemoryApi(options);
@@ -57,6 +64,11 @@ async function journalWithBackup(relaunch: { startup?: Partial<StartupStatus>; d
     stored.journal = 'Synthetic damaged journal header';
     storage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(stored));
   }
+  if (relaunch.damagePage) {
+    const stored = JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? '{}') as { journal: { entries: unknown[] } };
+    stored.journal.entries.push({ entry: 'Synthetic damaged page', trashedAt: null });
+    storage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(stored));
+  }
   return { api: createMemoryApi({ ...options, startup: { dataLocation: DATA_LOCATION, ...relaunch.startup } }), entry };
 }
 
@@ -66,6 +78,41 @@ describe('startup gate', () => {
     vi.spyOn(api, 'startupStatus').mockReturnValue(new Promise<StartupStatus>(() => {}));
     renderGate(api);
     expect(screen.getByRole('status')).toHaveTextContent('Opening your journal…');
+  });
+
+  it('says after a few seconds that opening waits for an answer to a macOS Keychain prompt', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const api = createTestApi();
+    vi.spyOn(api, 'startupStatus').mockReturnValue(new Promise<StartupStatus>(() => {}));
+    // An older journal waits for the passphrase remembered in Keychain, whose prompt is unanswered.
+    const waiting = { ...(await api.backupStatus()), remembered: true, keychainPending: true };
+    vi.spyOn(api, 'backupStatus').mockResolvedValue(waiting);
+    renderGate(api);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(KEYCHAIN_HINT_DELAY_MS - 1);
+    });
+    expect(screen.queryByText(/Keychain/)).not.toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    // The status cannot tell when the prompt is answered, so the hint also covers the upgrade after it.
+    expect(screen.getByText(/^Waiting for macOS Keychain: answer its prompt/)).toHaveTextContent(
+      'Waiting for macOS Keychain: answer its prompt, which may be behind this window, to use your remembered backup passphrase. After you answer it, the app may take a few more seconds to back up and upgrade your journal.',
+    );
+    expect(screen.getByText('Opening your journal…')).toBeInTheDocument();
+  });
+
+  it('never mentions Keychain while opening waits for something else', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const api = createTestApi();
+    vi.spyOn(api, 'startupStatus').mockReturnValue(new Promise<StartupStatus>(() => {}));
+    const backupStatus = vi.spyOn(api, 'backupStatus');
+    renderGate(api);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(KEYCHAIN_HINT_DELAY_MS);
+    });
+    expect(backupStatus).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Keychain/)).not.toBeInTheDocument();
   });
 
   it('reads the status again when it could not be read', async () => {
@@ -146,13 +193,52 @@ describe('startup gate: protected upgrade', () => {
     expect(screen.getByLabelText('Backup passphrase')).toHaveValue(PASSPHRASE);
   });
 
-  it('says why the automatic upgrade at launch could not run', async () => {
+  it('says why the automatic upgrade at launch could not run, and offers the ways back', async () => {
     renderGate(
-      createTestApi({ startup: { state: 'needsMigration', message: ERROR_MESSAGES.backupFolder } }),
+      createTestApi({
+        startup: { state: 'needsMigration', message: ERROR_MESSAGES.backupFolder, dataLocation: DATA_LOCATION },
+      }),
     );
     await screen.findByRole('heading', { level: 1, name: 'Protect your journal before upgrading' });
     const notice = screen.getByText(ERROR_MESSAGES.backupFolder).closest('.notice') as HTMLElement;
     expect(notice).toHaveTextContent('The automatic upgrade could not run');
+    expect(screen.getByText(DATA_LOCATION)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Restore from a backup file…' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Erase app data…' })).toBeVisible();
+  });
+
+  it('offers a way back once the journal itself stops its upgrade, and restores a backup over it', async () => {
+    const user = userEvent.setup();
+    const { api, entry } = await journalWithBackup({ startup: { state: 'needsMigration' }, damagePage: true });
+    const { startup } = renderGate(api);
+    await screen.findByText(/The backup will be saved in Synthetic backups/);
+    // Until an upgrade fails, the upgrade is the only way on.
+    expect(screen.queryByRole('button', { name: 'Restore from a backup file…' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Erase app data…' })).not.toBeInTheDocument();
+    expect(screen.queryByText(DATA_LOCATION)).not.toBeInTheDocument();
+
+    await typePassphrase(user);
+    await user.click(screen.getByRole('button', { name: 'Back up and upgrade' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The journal was not upgraded');
+    expect(alert).toHaveTextContent(ERROR_MESSAGES.damaged);
+    expect(alert).toHaveTextContent('Your journal has not been changed.');
+    expect(startup.value?.status?.state).toBe('needsMigration');
+    expect(screen.getByText(DATA_LOCATION)).toBeVisible();
+    expect(
+      screen.getByText(/The journal that can’t be upgraded is kept aside in the app’s data folder; it is not deleted\./),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Erase app data…' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Restore from a backup file…' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Restore this backup?' });
+    await user.type(within(dialog).getByLabelText('Passphrase for this backup'), PASSPHRASE);
+    await user.click(within(dialog).getByRole('button', { name: 'Replace journal and restore' }));
+    await vi.waitFor(() => expect(startup.value?.status?.state).toBe('ready'));
+    expect(startup.value?.notice).toMatch(
+      /^Backup restored: 1 entry in your journal\. The journal that could not be opened was kept in the app’s data folder as journal\.unreadable-\d+\.sqlite\.$/,
+    );
+    await expect(api.listEntries()).resolves.toEqual([entry]);
   });
 
   it('upgrades with the passphrase already remembered, keeping it remembered', async () => {

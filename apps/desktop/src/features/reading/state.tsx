@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import type { SearchRequest } from '../../api/types';
 import { toCommandError, useApi } from '../../api/client';
+import { isJournalDate } from '../../domain/dates';
 import { registerFlusher } from '../../state/flush';
 import { usePreferences } from '../../state/preferences';
 import { WeeklyNotesStore } from './notes';
@@ -9,7 +10,7 @@ export type ReadingOrigin = 'calendar' | 'journal' | 'weekly' | 'path';
 
 function useReadingState() {
   const api = useApi();
-  const [notes] = useState(() => new WeeklyNotesStore((...args) => api.saveWeeklyNotes(...args)));
+  const [notes] = useState(() => new WeeklyNotesStore(api));
   useEffect(() => {
     const stop = registerFlusher(notes);
     return () => {
@@ -17,7 +18,12 @@ function useReadingState() {
       notes.dispose();
     };
   }, [notes]);
-  const [date, setDate] = useState<string | null>(null);
+  const [date, storeDate] = useState<string | null>(null);
+  // The date every reading view shares; null follows today. Anything else must be a journal
+  // date: a typed five-digit year or a step past the last date is ignored, never rendered.
+  const setDate = useCallback((next: string | null) => {
+    if (next === null || isJournalDate(next)) storeDate(next);
+  }, []);
   const [bookId, setBookId] = useState<string | null>(null);
   const [bookRequest, setBookRequest] = useState<SearchRequest | null>(null);
   const [returnView, setReturnView] = useState<ReadingOrigin>('calendar');
@@ -65,20 +71,29 @@ export function useReadingSelection(request?: SearchRequest | null): SearchReque
   return visibility.scores ? selected : { ...selected, metric: null, minimum: null };
 }
 
-/** Discards old results immediately on query/source changes; late requests cannot restore stale text. */
+/**
+ * Each result belongs to the memoized read that produced it, so a changed query (a new read)
+ * shows no old result from its first render. A refresh (journal change, window activation or
+ * reload()) keeps the current result on screen until the new one settles, so the view keeps its
+ * focus and place; a failed refresh replaces it with the error. Late requests cannot restore
+ * stale text.
+ */
 export function useReadingQuery<T>(read: () => Promise<T>) {
-  const [result, setResult] = useState<{ data: T | null; error: string | null }>({ data: null, error: null });
+  const [result, setResult] = useState<{
+    read: () => Promise<T>;
+    data: T | null;
+    error: string | null;
+  } | null>(null);
   const [generation, setGeneration] = useState(0);
   const reload = useCallback(() => setGeneration((v) => v + 1), []);
   useEffect(() => {
     let current = true;
-    setResult({ data: null, error: null });
     void read().then(
       (data) => {
-        if (current) setResult({ data, error: null });
+        if (current) setResult({ read, data, error: null });
       },
       (error) => {
-        if (current) setResult({ data: null, error: toCommandError(error).message });
+        if (current) setResult({ read, data: null, error: toCommandError(error).message });
       },
     );
     return () => {
@@ -93,5 +108,8 @@ export function useReadingQuery<T>(read: () => Promise<T>) {
       window.removeEventListener('focus', reload);
     };
   }, [reload]);
-  return { ...result, reload, loading: result.data === null && result.error === null };
+  const settled = result?.read === read ? result : null;
+  const data = settled?.data ?? null;
+  const error = settled?.error ?? null;
+  return { data, error, reload, loading: data === null && error === null };
 }

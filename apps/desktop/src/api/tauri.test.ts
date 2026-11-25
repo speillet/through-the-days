@@ -114,9 +114,9 @@ describe('native journal commands', () => {
       ],
       [
         'generateWeeklySummary',
-        () => api.generateWeeklySummary('2026-11-16', 1),
+        () => api.generateWeeklySummary('2026-11-16'),
         'generate_weekly_summary',
-        { date: '2026-11-16', revision: 1 },
+        { date: '2026-11-16' },
       ],
       ['clearReadingSummaries', () => api.clearReadingSummaries(), 'clear_reading_summaries', {}],
       ['listMilestones', () => api.listMilestones(), 'list_milestones', {}],
@@ -196,6 +196,7 @@ describe('native journal commands', () => {
       { code: 'safetyBackupFailed', message: 'A safety backup of your current journal could not be made.' },
       { code: 'backupRegistry', message: 'This folder’s list of backups is damaged.' },
       { code: 'backupFolder', message: 'The backup folder is not available.' },
+      { code: 'backupUnavailable', message: 'The backup is not available.' },
     ];
     let next = 0;
     mockIPC(() => {

@@ -272,18 +272,24 @@ export function EntryPreview({
   const api = useApi();
   const { navigate } = useNavigation();
   const { filters, setBookId, setReturnView, setBookRequest } = useReading();
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // A change belongs to the revision it replaces. Until the refreshed view shows the saved
+  // revision, the checkbox shows the requested value as busy and ignores further changes, so a
+  // second change cannot save over a stale revision. A failed save shows the saved value again
+  // and keeps its error until the entry changes or the person tries again.
+  const [change, setChange] = useState<{ revision: number; include: boolean; error: string | null } | null>(
+    null,
+  );
+  const current = change?.revision === entry.revision ? change : null;
+  const busy = current !== null && current.error === null;
+  const included = busy ? current.include : entry.includeInInsights !== false;
   const slot = SLOT_NAMES[entry.slot];
-  async function toggleInsights(includeInInsights: boolean) {
-    setBusy(true);
-    setError(null);
+  async function toggleInsights(include: boolean) {
+    const { revision } = entry;
+    setChange({ revision, include, error: null });
     try {
-      await saveInsightsChoice(api, entry, includeInInsights);
+      await saveInsightsChoice(api, entry, include);
     } catch (caught) {
-      setError(toCommandError(caught).message);
-    } finally {
-      setBusy(false);
+      setChange({ revision, include, error: toCommandError(caught).message });
     }
   }
   return (
@@ -322,17 +328,22 @@ export function EntryPreview({
           Edit {slot} entry
         </Button>
       </div>
+      {/* Like a busy Button, the checkbox keeps keyboard focus while saving, looks busy (reading.css)
+          and ignores changes. */}
       <label className="reading-permission">
         <input
           type="checkbox"
           tabIndex={0}
-          checked={entry.includeInInsights !== false}
-          disabled={busy}
-          onChange={(e) => void toggleInsights(e.target.checked)}
+          checked={included}
+          aria-busy={busy || undefined}
+          aria-disabled={busy || undefined}
+          onChange={(e) => {
+            if (!busy) void toggleInsights(e.target.checked);
+          }}
         />
         Include in insights and timelines
       </label>
-      {error ? <Notice tone="error">{error}</Notice> : null}
+      {current?.error ? <Notice tone="error">{current.error}</Notice> : null}
     </section>
   );
 }

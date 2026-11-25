@@ -1,7 +1,9 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { addMonths, CalendarGrid } from './CalendarGrid';
+import { addMonths, CalendarGrid, stepMonths } from './CalendarGrid';
+
+const focusedDay = () => document.activeElement?.getAttribute('aria-label');
 
 describe('CalendarGrid', () => {
   it('shows a Monday-first month with English names, marking today and the chosen date', () => {
@@ -72,5 +74,53 @@ describe('CalendarGrid', () => {
     expect(addMonths('2026-03-31', -1)).toBe('2026-02-28');
     expect(addMonths('2026-12-15', 1)).toBe('2027-01-15');
     expect(addMonths('2026-01-15', -13)).toBe('2024-12-15');
+  });
+
+  it('steps by months without passing the first or last journal date', () => {
+    expect(stepMonths('9999-11-30', 1)).toBe('9999-12-30');
+    expect(stepMonths('9999-12-15', 1)).toBeNull();
+    expect(stepMonths('9999-12-31', 12)).toBeNull();
+    expect(stepMonths('0001-02-28', -1)).toBe('0001-01-28');
+    expect(stepMonths('0001-01-31', -1)).toBeNull();
+    expect(stepMonths('0001-11-24', -12)).toBeNull();
+  });
+
+  it('shows December 9999 in full and stops month paging and keyboard moves at its last day', async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(<CalendarGrid value="9999-11-30" today="2026-11-22" onSelect={onSelect} />);
+    await user.click(screen.getByRole('button', { name: 'Next month' }));
+    const grid = screen.getByRole('grid', { name: 'December 9999' });
+    const lastWeek = within(within(grid).getAllByRole('row').at(-1)!).getAllByRole('gridcell');
+    expect(lastWeek.map((cell) => within(cell).queryByRole('button')?.getAttribute('aria-label') ?? null)).toEqual([
+      'Monday 27 December 9999',
+      'Tuesday 28 December 9999',
+      'Wednesday 29 December 9999',
+      'Thursday 30 December 9999',
+      'Friday 31 December 9999',
+      null,
+      null,
+    ]);
+    expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled();
+
+    screen.getByRole('button', { name: 'Friday 31 December 9999' }).focus();
+    await user.keyboard('{ArrowRight}{ArrowDown}{PageDown}{Shift>}{PageDown}{/Shift}');
+    expect(focusedDay()).toBe('Friday 31 December 9999');
+    expect(screen.getByRole('grid', { name: 'December 9999' })).toBeInTheDocument();
+    await user.keyboard('{Enter}');
+    expect(onSelect).toHaveBeenCalledWith('9999-12-31');
+  });
+
+  it('stops month paging and keyboard moves at 1 January 0001', async () => {
+    const user = userEvent.setup();
+    render(<CalendarGrid value="0001-02-15" today="2026-11-22" onSelect={() => {}} />);
+    await user.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(screen.getByRole('grid', { name: 'January 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous month' })).toBeDisabled();
+
+    screen.getByRole('button', { name: 'Monday 1 January 1' }).focus();
+    await user.keyboard('{ArrowLeft}{ArrowUp}{PageUp}{Shift>}{PageUp}{/Shift}');
+    expect(focusedDay()).toBe('Monday 1 January 1');
+    expect(screen.getByRole('grid', { name: 'January 1' })).toBeInTheDocument();
   });
 });

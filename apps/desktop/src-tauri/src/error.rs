@@ -48,7 +48,16 @@ impl CommandError {
         Self::shell("confirmation", "Type ERASE in capital letters to confirm.")
     }
 
-    /// A restore stopped because the current journal could not be backed up first.
+    /// The backup chosen for a restore could not be found or read, for example because its drive
+    /// is disconnected or the file was moved since it was chosen.
+    pub fn backup_unavailable() -> Self {
+        Self::shell(
+            "backupUnavailable",
+            "The backup is not available. Reconnect the drive that holds it or choose another backup. Your current journal is unchanged.",
+        )
+    }
+
+    /// A restore stopped because the current journal could not be read for a safety backup.
     pub fn safety_backup_failed() -> Self {
         Self::shell(
             "safetyBackupFailed",
@@ -92,6 +101,7 @@ mod tests {
             CommandError::needs_passphrase(),
             CommandError::keychain(),
             CommandError::confirmation(),
+            CommandError::backup_unavailable(),
             CommandError::safety_backup_failed(),
             CommandError::data_folder_chosen(),
             CommandError::unknown(),

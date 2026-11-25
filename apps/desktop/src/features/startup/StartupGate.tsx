@@ -1,10 +1,11 @@
-// Shown until the journal is open: while it opens, when an existing journal needs
-// a protected upgrade (an encrypted backup first, D-005/D-006), when this version
-// cannot open it, or when opening failed. A journal that can't be opened can be
-// opened again, restored from a backup file (the file that can't be opened is kept
-// aside, never deleted) or erased after a typed confirmation. Otherwise nothing here
-// changes the journal except "Back up and upgrade", which the journal performs only
-// after the backup succeeds.
+// Shown until the journal is open: while it opens (saying so when it waits for an
+// answer to a macOS Keychain prompt), when an existing journal needs a protected
+// upgrade (an encrypted backup first, D-005/D-006), when this version cannot open it,
+// or when opening failed. A journal that can't be opened can be opened again,
+// restored from a backup file (the file that can't be opened is kept aside, never
+// deleted) or erased after a typed confirmation. An older journal whose upgrade failed
+// can be restored or erased in the same way. Otherwise nothing here changes the journal except "Back up and upgrade", which the journal performs only after the
+// backup succeeds.
 
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
 import { toCommandError, useApi } from '../../api/client';
@@ -20,13 +21,20 @@ import {
   type PassphraseValues,
 } from '../backup/PassphraseFields';
 import { RestoreDialog, restoredNotice, type RestoreTarget } from '../backup/RestoreDialog';
-import { hasProblems, newPassphraseProblems, type PassphraseProblems } from '../backup/status';
+import {
+  hasProblems,
+  KEYCHAIN_PENDING_TEXT,
+  newPassphraseProblems,
+  type PassphraseProblems,
+} from '../backup/status';
 import { EraseDialog } from '../settings/EraseSection';
 import './startup.css';
 
 export const UPGRADED_NOTICE = 'Your journal was backed up and upgraded. You can keep writing.';
 export const STILL_NOT_OPEN = 'The journal still could not be opened.';
 const NOT_CHANGED = 'Your journal has not been changed.';
+/** How long the journal may take to open before the screen checks whether it waits for Keychain. */
+export const KEYCHAIN_HINT_DELAY_MS = 3_000;
 
 export function StartupGate() {
   const { status, error, refresh } = useStartup();
@@ -34,12 +42,7 @@ export function StartupGate() {
   if (error) {
     content = <StatusUnavailable message={error.message} onRetry={refresh} />;
   } else if (!status) {
-    content = (
-      <>
-        <h1 className="startup__title">{APP_NAME}</h1>
-        <p role="status">Opening your journal…</p>
-      </>
-    );
+    content = <Opening />;
   } else if (status.state === 'needsMigration') {
     content = <ProtectedUpgrade status={status} />;
   } else if (status.state === 'unsupported') {
@@ -51,6 +54,50 @@ export function StartupGate() {
     <main className="startup-gate">
       <div className="startup panel">{content}</div>
     </main>
+  );
+}
+
+/**
+ * The journal is opening. An older journal waits for the passphrase remembered in Keychain to
+ * upgrade it, and the Keychain prompt can open behind the window: after a few seconds, say so.
+ *
+ * Once the prompt is answered, the launch backs up and upgrades the journal while holding it,
+ * and the backup status waits for it as well; asking again could not show that the prompt was
+ * answered before the journal opens. So the hint also says what follows the answer.
+ */
+function Opening() {
+  const api = useApi();
+  const [waitingForKeychain, setWaitingForKeychain] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      api.backupStatus().then(
+        (backup) => {
+          if (active) setWaitingForKeychain(backup.keychainPending);
+        },
+        () => {
+          // Without a backup status the screen simply keeps waiting for the journal.
+        },
+      );
+    }, KEYCHAIN_HINT_DELAY_MS);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [api]);
+
+  return (
+    <>
+      <h1 className="startup__title">{APP_NAME}</h1>
+      <p role="status">Opening your journal…</p>
+      {waitingForKeychain ? (
+        <Notice tone="info">
+          {KEYCHAIN_PENDING_TEXT} After you answer it, the app may take a few more seconds to back up and upgrade your
+          journal.
+        </Notice>
+      ) : null}
+    </>
   );
 }
 
@@ -150,7 +197,7 @@ function Unsupported({ status }: { status: StartupStatus }) {
   );
 }
 
-/** Ways back when the journal can't be opened: a backup file, or erasing app data. */
+/** Ways back when the journal can't be opened or upgraded: a backup file, or erasing app data. */
 function Recovery({ status, children }: { status: StartupStatus; children: ReactNode }) {
   const api = useApi();
   const { setStatus } = useStartup();
@@ -226,6 +273,8 @@ function ProtectedUpgrade({ status }: { status: StartupStatus }) {
   const [problems, setProblems] = useState<PassphraseProblems>({});
   const [folderError, setFolderError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Set once an upgrade from this screen fails, so the ways back stay offered during later attempts. */
+  const [attemptFailed, setAttemptFailed] = useState(false);
   const [busy, setBusy] = useState<'folder' | 'upgrade' | 'session' | null>(null);
 
   useEffect(() => {
@@ -270,6 +319,7 @@ function ProtectedUpgrade({ status }: { status: StartupStatus }) {
       setStatus(next, next.state === 'ready' ? UPGRADED_NOTICE : undefined);
     } catch (caught) {
       setError(`${toCommandError(caught).message} ${NOT_CHANGED}`);
+      setAttemptFailed(true);
       setBusy(null);
     }
   }
@@ -368,6 +418,21 @@ function ProtectedUpgrade({ status }: { status: StartupStatus }) {
           </Button>
         </div>
       </form>
+
+      {/* Damage in the journal itself can stop every backup of it, so a failed upgrade offers the ways back. */}
+      {attemptFailed || status.message ? (
+        <>
+          <DataLocation path={status.dataLocation} />
+          <Recovery status={status}>
+            <p>
+              If the upgrade keeps failing, for example because the journal file is damaged, you can restore your
+              journal from a backup file instead. The journal that can’t be upgraded is kept aside in the app’s data
+              folder; it is not deleted. You can also erase all app data on this Mac and start again with an empty
+              journal.
+            </p>
+          </Recovery>
+        </>
+      ) : null}
     </>
   );
 }
