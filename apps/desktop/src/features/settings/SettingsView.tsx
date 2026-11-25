@@ -2,7 +2,7 @@
 // navigate('settings', { section }) can scroll to and focus any heading; the
 // section components render only their bodies.
 
-import { useEffect, useRef, type ComponentType } from 'react';
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { Button } from '../../components/Button';
 import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
@@ -31,9 +31,92 @@ export function settingsHeadingId(section: SettingsSection): string {
   return `settings-${section}-heading`;
 }
 
+const PREFERENCES_UNREADABLE_TEXT =
+  'Until they can be read, the app shows the defaults and does not save changes, so the stored settings are kept. Resetting replaces them with these defaults, including the time zone, without changing your entries.';
+
+/**
+ * Says that display preferences could not be read, with the only action that replaces
+ * them, or that a change could not be saved.
+ */
+function PreferencesNotice() {
+  const { unreadable, reset, error, clearError } = usePreferences();
+  const [resetting, setResetting] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
+  const statusRef = useRef<HTMLDivElement>(null);
+
+  // The reset button leaves with the problem it solved: keep keyboard focus on the confirmation.
+  useEffect(() => {
+    if (resetDone) statusRef.current?.focus();
+  }, [resetDone]);
+
+  async function resetPreferences() {
+    if (resetting) return;
+    setResetting(true);
+    const done = await reset();
+    setResetting(false);
+    setResetDone(done);
+  }
+
+  let notice: ReactNode = null;
+  if (unreadable) {
+    notice = (
+      <Notice
+        tone="error"
+        title="Display settings could not be read"
+        actions={
+          <Button variant="secondary" size="small" busy={resetting} onClick={() => void resetPreferences()}>
+            Reset display settings
+          </Button>
+        }
+      >
+        {error ? <p>{error.message}</p> : null}
+        <p>{PREFERENCES_UNREADABLE_TEXT}</p>
+      </Notice>
+    );
+  } else if (error) {
+    notice = (
+      <Notice
+        tone="error"
+        actions={
+          <Button
+            variant="quiet"
+            size="small"
+            onClick={() => {
+              clearError();
+              setResetDone(false);
+            }}
+          >
+            Dismiss
+          </Button>
+        }
+      >
+        {error.message}
+      </Notice>
+    );
+  } else if (resetDone) {
+    notice = (
+      <Notice
+        tone="success"
+        actions={
+          <Button variant="quiet" size="small" onClick={() => setResetDone(false)}>
+            Dismiss
+          </Button>
+        }
+      >
+        Display settings were reset to the defaults.
+      </Notice>
+    );
+  }
+  if (!notice) return null;
+  return (
+    <div ref={statusRef} className="settings__status" tabIndex={-1}>
+      {notice}
+    </div>
+  );
+}
+
 export function SettingsView() {
   const { settingsSection, requestId, navigate } = useNavigation();
-  const { error, clearError } = usePreferences();
   const headings = useRef(new Map<SettingsSection, HTMLHeadingElement>());
 
   useEffect(() => {
@@ -50,18 +133,7 @@ export function SettingsView() {
         <h1 className="view-title">Settings</h1>
       </header>
 
-      {error ? (
-        <Notice
-          tone="error"
-          actions={
-            <Button variant="quiet" size="small" onClick={clearError}>
-              Dismiss
-            </Button>
-          }
-        >
-          {error.message}
-        </Notice>
-      ) : null}
+      <PreferencesNotice />
 
       <nav className="settings__index" aria-label="Settings sections">
         <ul>
