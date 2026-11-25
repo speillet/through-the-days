@@ -26,6 +26,16 @@ function doc(...content: JSONContent[]): JSONContent {
   return { type: 'doc', content };
 }
 
+function textNode(text: string): JSONContent {
+  return { type: 'text', text };
+}
+
+const hardBreak: JSONContent = { type: 'hardBreak' };
+
+function item(...content: JSONContent[]): JSONContent {
+  return { type: 'listItem', content };
+}
+
 /** A document as the editor schema represents it, so equal documents compare equal. */
 function normalised(editor: Editor, json: JSONContent): JSONContent {
   return editor.schema.nodeFromJSON(json).toJSON() as JSONContent;
@@ -195,6 +205,149 @@ describe('journal editor schema', () => {
     const markdown = editor.getMarkdown();
     // Typed entity-like text is escaped (\\&amp;); nothing is turned into an entity.
     expect(markdown).not.toMatch(/(?<!\\)&(?:amp|lt|gt|nbsp);/);
+    expect(readBack(editor, markdown)).toEqual(normalised(editor, stored));
+  });
+
+  it('fences each code block so that none of its lines can close it', () => {
+    const code = (text: string, language: string | null = null): JSONContent => ({
+      type: 'codeBlock',
+      attrs: { language },
+      content: [textNode(text)],
+    });
+    const stored = doc(
+      code('a\n```\nb'),
+      paragraph('after'),
+      code('last\n```', 'js'),
+      code('````\nlonger'),
+      code('  ```\nindented'),
+      { type: 'codeBlock', attrs: { language: null } },
+      { type: 'bulletList', content: [item(paragraph('item'), code('```'))] },
+      { type: 'blockquote', content: [code('quoted\n```')] },
+      paragraph('end'),
+    );
+    const editor = headlessEditor(stored);
+    const markdown = editor.getMarkdown();
+    expect(markdown).toBe(
+      [
+        '````\na\n```\nb\n````',
+        'after',
+        '````js\nlast\n```\n````',
+        '`````\n````\nlonger\n`````',
+        '````\n  ```\nindented\n````',
+        '```\n\n```',
+        '- item\n  ````\n  ```\n  ````',
+        '> ````\n> quoted\n> ```\n> ````',
+        'end',
+      ].join('\n\n'),
+    );
+    expect(readBack(editor, markdown)).toEqual(normalised(editor, stored));
+  });
+
+  it('keeps a heading with line breaks on its single line', () => {
+    const heading = (...content: JSONContent[]): JSONContent => ({ type: 'heading', attrs: { level: 2 }, content });
+    const stored = doc(
+      heading(textNode('Monday'), hardBreak, textNode('- slept well')),
+      heading(textNode('Issue #'), hardBreak, textNode('---')),
+      heading(textNode('Plans'), hardBreak, textNode('# h')),
+      heading(textNode('Trailing'), hardBreak),
+    );
+    const editor = headlessEditor(stored);
+    const markdown = editor.getMarkdown();
+    expect(markdown).toBe('## Monday<br>- slept well\n\n## Issue #<br>---\n\n## Plans<br># h\n\n## Trailing<br>');
+    expect(readBack(editor, markdown)).toEqual(normalised(editor, stored));
+  });
+
+  it('keeps double, leading and trailing line breaks at the top level, in lists and in quotes', () => {
+    const lines = (...content: JSONContent[]): JSONContent => ({ type: 'paragraph', content });
+    const paragraphs = [
+      lines(textNode('a'), hardBreak, hardBreak, textNode('b')),
+      lines(hardBreak, textNode('leading')),
+      lines(textNode('trailing'), hardBreak),
+      lines(textNode('two trailing'), hardBreak, hardBreak),
+      lines(hardBreak),
+      lines(hardBreak, hardBreak),
+      // Only white space after the last text, where a backslash would be read as a character.
+      lines(textNode('space'), hardBreak, textNode(' ')),
+      lines(hardBreak, textNode('\t')),
+      lines(textNode('no-break space'), hardBreak, hardBreak, textNode('\u00A0'), hardBreak),
+      lines(textNode('a'), hardBreak, textNode(' '), hardBreak, textNode('b')),
+    ];
+    const topLevel = headlessEditor(doc(...paragraphs));
+    const markdown = topLevel.getMarkdown();
+    expect(markdown).toBe(
+      [
+        'a\\\n\\\nb',
+        '\\\nleading',
+        'trailing<br>',
+        'two trailing<br><br>',
+        '<br>',
+        '<br><br>',
+        'space<br>&#32;',
+        '<br>&#9;',
+        'no-break space<br><br>&#160;<br>',
+        'a\\\n \\\nb',
+      ].join('\n\n'),
+    );
+    expect(readBack(topLevel, markdown)).toEqual(topLevel.getJSON());
+
+    const nested: JSONContent = { type: 'bulletList', content: [item(paragraph('nested'))] };
+    const stored = doc(
+      { type: 'bulletList', content: paragraphs.map((withBreaks) => item(withBreaks)) },
+      { type: 'blockquote', content: paragraphs },
+      // A paragraph that is only a line break ("<br>"), even with white space after it,
+      // keeps the list after it nested.
+      { type: 'bulletList', content: [item(lines(hardBreak), nested), item(lines(hardBreak, textNode(' ')), nested)] },
+    );
+    const editor = headlessEditor(stored);
+    const listsAndQuotes = editor.getMarkdown();
+    expect(listsAndQuotes).toContain('- space<br>&#32;\n');
+    expect(listsAndQuotes).toContain('> space<br>&#32;\n');
+    expect(readBack(editor, listsAndQuotes)).toEqual(normalised(editor, stored));
+  });
+
+  it('writes a line break before white space in code as "<br>", adding no backslash', () => {
+    const lines = (...content: JSONContent[]): JSONContent => ({ type: 'paragraph', content });
+    const list = (...content: JSONContent[]): JSONContent => ({ type: 'bulletList', content: [item(...content)] });
+    const codeSpace: JSONContent = { type: 'text', text: ' ', marks: [{ type: 'code' }] };
+    const nested = list(paragraph('nested'));
+    const editor = headlessEditor(
+      doc(lines(textNode('a'), hardBreak, codeSpace), list(lines(hardBreak, codeSpace), nested)),
+    );
+    const markdown = editor.getMarkdown();
+    expect(markdown).toBe('a<br> \n\n- <br> \n  \n  - nested');
+    // Code keeps its characters, so no character reference keeps this white space, and Tiptap
+    // writes white space without its code mark; the line breaks and the nested list remain.
+    const expected = doc(lines(textNode('a'), hardBreak, textNode(' ')), list(lines(hardBreak), nested));
+    expect(readBack(editor, markdown)).toEqual(normalised(editor, expected));
+  });
+
+  it('numbers a list that starts at 0 from 0', () => {
+    const fromZero = doc({
+      type: 'orderedList',
+      attrs: { start: 0 },
+      content: [item(paragraph('first')), item(paragraph('second'))],
+    });
+    // Tiptap's own parser reads "0." back as 1, so the Markdown itself is compared.
+    expect(headlessEditor(fromZero).getMarkdown()).toBe('0. first\n1. second');
+  });
+
+  it('separates a nested list that does not start at 1 from the block above it', () => {
+    // Only a list that starts at 1 can interrupt a paragraph; the others would continue it or the quote.
+    const fromZero: JSONContent = { type: 'orderedList', attrs: { start: 0 }, content: [item(paragraph('first'))] };
+    expect(headlessEditor(doc({ type: 'bulletList', content: [item(paragraph('day'), fromZero)] })).getMarkdown()).toBe(
+      '- day\n  \n  0. first',
+    );
+    const fromThree: JSONContent = { type: 'orderedList', attrs: { start: 3 }, content: [item(paragraph('third'))] };
+    const stored = doc({
+      type: 'bulletList',
+      content: [
+        item(paragraph('day'), fromThree),
+        item(paragraph('quoted'), { type: 'blockquote', content: [paragraph('q')] }, fromThree),
+      ],
+    });
+    const editor = headlessEditor(stored);
+    const markdown = editor.getMarkdown();
+    expect(markdown).toBe('- day\n  \n  3. third\n- quoted\n  > q\n  \n  3. third');
     expect(readBack(editor, markdown)).toEqual(normalised(editor, stored));
   });
 

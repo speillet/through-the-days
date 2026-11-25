@@ -25,16 +25,16 @@ async function expectReachable(page: Page, name: 'Trash' | 'Settings') {
   await railButton(page, name).click({ trial: true, timeout: 2_000 });
 }
 
-test('keeps Trash and Settings in view, and every view inside the window, at the minimum size', async ({ page }) => {
-  await seedJournal(page, {
-    active: [entry('2026-11-22', 'morning', 'Fictional morning in a small window.', { mood: 5, energy: 4 })],
-    trashed: [{ entry: entry('2026-11-20', 'evening', 'Fictional entry in the trash.') }],
-  });
-  await expect(page.getByRole('list', { name: 'Coming later' })).toBeVisible();
-  await expectReachable(page, 'Trash');
-  await expectReachable(page, 'Settings');
+for (const view of ['Today', 'Trash', 'Settings'] as const) {
+  test(`keeps ${view} accessible and the rail reachable at the minimum size`, async ({ page }) => {
+    await seedJournal(page, {
+      active: [entry('2026-11-22', 'morning', 'Fictional morning in a small window.', { mood: 5, energy: 4 })],
+      trashed: [{ entry: entry('2026-11-20', 'evening', 'Fictional entry in the trash.') }],
+    });
+    await expect(page.getByRole('list', { name: 'Coming later' })).toBeVisible();
+    await expectReachable(page, 'Trash');
+    await expectReachable(page, 'Settings');
 
-  for (const view of ['Today', 'Trash', 'Settings'] as const) {
     await railButton(page, view).click();
     await expect(railButton(page, view)).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
@@ -42,8 +42,8 @@ test('keeps Trash and Settings in view, and every view inside the window, at the
     await expectReachable(page, 'Trash');
     await expectReachable(page, 'Settings');
     await expectNoSeriousViolations(page, `${view} at 720 × 560`);
-  }
-});
+  });
+}
 
 test('keeps the rail and Settings usable with the largest text size at the minimum size', async ({ page }) => {
   await seedJournal(page, { preferences: { textScale: 150 } });

@@ -6,6 +6,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const PORT = Number(process.env.TTD_E2E_PORT ?? 1430);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
+const previewDir = `node_modules/.cache/ttd-e2e-${PORT}`;
 const CI = Boolean(process.env.CI);
 
 const context = {
@@ -35,7 +36,8 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'], ...context } },
   ],
   webServer: {
-    command: `npx vite --port ${PORT} --strictPort`,
+    // Build the Tauri frontend into a test-only directory for this server.
+    command: `npm run build -- --outDir ${previewDir} && npx vite preview --outDir ${previewDir} --host 127.0.0.1 --port ${PORT} --strictPort`,
     url: BASE_URL,
     reuseExistingServer: !CI && !process.env.TTD_E2E_PORT,
     timeout: 60_000,
