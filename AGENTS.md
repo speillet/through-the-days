@@ -4,7 +4,7 @@ Read [the specification workflow](docs/specification-workflow.md) before plannin
 
 ## Product context
 
-Through the Days is a personal, offline-first macOS journal. Milestone 1, the offline journal, is implemented in crates/journal-core (journal authority) and apps/desktop (Tauri shell and React interface). Milestone 2 reading/reviews are implemented in the reading worktree; both changes retain incomplete acceptance work. Read [development status](docs/development-status.md) before resuming. CBT, exploration, analytics, and distribution follow as separate changes.
+Through the Days is a personal, offline-first macOS journal. The offline journal and reading/reviews are implemented in main, in crates/journal-core (journal authority) and apps/desktop (Tauri shell and React interface). Both milestone changes retain incomplete acceptance work. Read [development status](docs/development-status.md) before resuming implementation or cleanup. CBT, exploration, analytics, and distribution follow as separate changes.
 
 Development builds use a separate com.throughthedays.app.dev data folder or TTD_DATA_DIR; never point them at a real journal.
 

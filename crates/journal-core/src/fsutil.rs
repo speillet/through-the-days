@@ -2,7 +2,7 @@ use crate::Error;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::{
-    fs::File,
+    fs::{self, File, OpenOptions},
     io::{self, Write},
     path::Path,
 };
@@ -38,6 +38,33 @@ pub(crate) fn write_atomically(
     file.persist(path)
         .map_err(|failure| classify(&failure.error))?;
     sync_directory(directory).map_err(|error| classify(&error))
+}
+
+/// Opens a file of the backup folder for reading when it is a regular file, or returns `None`
+/// when something else is in its place.
+///
+/// Anyone else who can write to the backup folder, such as another account, another computer
+/// sharing the drive or a sync client, can replace a file there. A symbolic link is never
+/// followed (`O_NOFOLLOW`), and opening a named pipe never waits for a writer (`O_NONBLOCK`,
+/// which does not change how a regular file reads). A link, a pipe, a device, a socket or a
+/// folder is then `None`, so reading the file can neither block nor go on without end. A
+/// missing file and every other failure are the open's error.
+pub(crate) fn open_regular_file(path: &Path) -> io::Result<Option<File>> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(
+        &mut options,
+        libc::O_NOFOLLOW | libc::O_NONBLOCK,
+    );
+    match options.open(path) {
+        Ok(file) => Ok(file.metadata()?.is_file().then_some(file)),
+        // A link, and a socket, cannot be opened at all: tell them from other failures.
+        Err(error) => match fs::symlink_metadata(path) {
+            Ok(metadata) if !metadata.is_file() => Ok(None),
+            _ => Err(error),
+        },
+    }
 }
 
 /// Flushes a directory so a rename into it survives power loss.

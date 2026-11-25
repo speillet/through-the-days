@@ -864,6 +864,181 @@ fn folder_and_registry_problems_fail_before_the_snapshot_is_encrypted() {
     assert!(names_in(&read_only).is_empty());
 }
 
+/// Runs `operation` on another thread and returns its result, or `None` when it is still running
+/// after five seconds, as it would be while waiting for a writer to open a named pipe.
+fn within_seconds<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = sender.send(operation());
+    });
+    receiver
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .ok()
+}
+
+/// Creates a named pipe at `path` that no process writes to.
+fn named_pipe(path: &Path) {
+    let status = std::process::Command::new("mkfifo")
+        .arg(path)
+        .status()
+        .unwrap();
+    assert!(status.success(), "mkfifo {}", path.display());
+}
+
+/// local-data-protection — Backup folder that others can write to: a named pipe in the
+/// registry's place, which nothing writes to, is refused at once by listing and by a backup,
+/// instead of keeping them waiting for a writer while they hold the journal.
+#[test]
+fn a_named_pipe_in_place_of_the_registry_is_refused_without_waiting_for_a_writer() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = backup_folder(directory.path());
+    named_pipe(&folder.join(REGISTRY_FILE));
+    let listing = {
+        let folder = folder.clone();
+        within_seconds(move || list_backups(&folder))
+    };
+    assert_eq!(listing, Some(Err(Error::BackupRegistry)));
+
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    let backup = {
+        let folder = folder.clone();
+        within_seconds(move || journal.backup_to(&folder, PASSPHRASE, NOW).err())
+    };
+    assert_eq!(backup, Some(Some(Error::BackupRegistry)));
+    assert_eq!(names_in(&folder), vec![REGISTRY_FILE.to_owned()]);
+}
+
+/// local-data-protection — Backup folder that others can write to: a symbolic link in the
+/// registry's place is never followed, whatever it points to. Listing and backups report the
+/// damaged list at once, and nothing the link reaches is listed, read or changed.
+#[test]
+fn a_registry_replaced_by_a_symbolic_link_is_refused_and_never_followed() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = backup_folder(directory.path());
+    let elsewhere = directory.path().join("elsewhere");
+    fs::create_dir(&elsewhere).unwrap();
+    write_registry(
+        &elsewhere,
+        &[seed_backup(
+            &folder,
+            NOW - DAY,
+            "listed only by a linked registry",
+        )],
+    );
+    let linked = fs::read(elsewhere.join(REGISTRY_FILE)).unwrap();
+    let registry = folder.join(REGISTRY_FILE);
+    std::os::unix::fs::symlink(elsewhere.join(REGISTRY_FILE), &registry).unwrap();
+    assert_eq!(list_backups(&folder), Err(Error::BackupRegistry));
+
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    let (result, elapsed) = timed(|| journal.backup_to(&folder, PASSPHRASE, NOW));
+    assert_eq!(result.err(), Some(Error::BackupRegistry));
+    assert!(elapsed.as_millis() < 1_000, "{elapsed:?}");
+    assert!(fs::symlink_metadata(&registry).unwrap().is_symlink());
+    assert_eq!(fs::read(elsewhere.join(REGISTRY_FILE)).unwrap(), linked);
+
+    // A link to nothing, and a link to a device that never stops producing bytes, are refused
+    // the same way, without reading anything through them.
+    for target in [
+        directory.path().join("missing.json"),
+        PathBuf::from("/dev/zero"),
+    ] {
+        fs::remove_file(&registry).unwrap();
+        std::os::unix::fs::symlink(&target, &registry).unwrap();
+        assert_eq!(
+            list_backups(&folder),
+            Err(Error::BackupRegistry),
+            "{}",
+            target.display()
+        );
+        assert_eq!(
+            journal.backup_to(&folder, PASSPHRASE, NOW).err(),
+            Some(Error::BackupRegistry),
+            "{}",
+            target.display()
+        );
+    }
+    assert_eq!(
+        names_in(&folder).len(),
+        2,
+        "only the link and the seeded file"
+    );
+}
+
+/// local-data-protection — Backup folder that others can write to: the registry is read up to
+/// 1 MiB, and a larger one is refused rather than read into memory without limit.
+#[test]
+fn a_registry_larger_than_one_mebibyte_is_refused() {
+    let directory = tempfile::tempdir().unwrap();
+    let folder = backup_folder(directory.path());
+    let seeded = seed_backup(&folder, NOW, "listed by a padded registry");
+    let name = seeded.name.clone();
+    write_registry(&folder, &[seeded]);
+    // JSON allows white space after the object: pad a valid registry to exactly 1 MiB.
+    let mut padded = fs::read(folder.join(REGISTRY_FILE)).unwrap();
+    padded.resize(1 << 20, b' ');
+    fs::write(folder.join(REGISTRY_FILE), &padded).unwrap();
+    assert_eq!(listed_names(&folder), vec![name.clone()]);
+
+    padded.push(b' ');
+    fs::write(folder.join(REGISTRY_FILE), &padded).unwrap();
+    assert_eq!(list_backups(&folder), Err(Error::BackupRegistry));
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    assert_eq!(
+        journal.backup_to(&folder, PASSPHRASE, NOW).err(),
+        Some(Error::BackupRegistry)
+    );
+    assert_eq!(fs::read(folder.join(REGISTRY_FILE)).unwrap(), padded);
+    assert!(folder.join(&name).is_file());
+}
+
+/// local-data-protection — Impossible backup time; D-009: a registered backup whose creation
+/// time is before 1970 or after 9999 is never listed, even when its file is a regular file with a
+/// backup name. Pruning forgets it without deleting the file, and a time far in the future no
+/// longer keeps pruning from running.
+#[test]
+fn backups_registered_with_an_impossible_creation_time_are_unlisted_and_never_pruned() {
+    let directory = tempfile::tempdir().unwrap();
+    let bounds = directory.path().join("bounds");
+    fs::create_dir(&bounds).unwrap();
+    let first = seed_backup(&bounds, 0, "made at the first second of 1970");
+    let last = seed_backup(&bounds, 253_402_300_799, "made at the last second of 9999");
+    let (first_name, last_name) = (first.name.clone(), last.name.clone());
+    write_registry(&bounds, &[first, last]);
+    assert_eq!(listed_names(&bounds), vec![last_name, first_name]);
+
+    let folder = backup_folder(directory.path());
+    let mut registry: Vec<_> = (0..30)
+        .map(|day| seed_backup(&folder, NOW - (30 - day) * DAY, &format!("day {day}")))
+        .collect();
+    let oldest = registry[0].name.clone();
+    let impossible: Vec<_> = [-1, 253_402_300_800, 9_999_999_999_999]
+        .into_iter()
+        .map(|created_at| seed_backup(&folder, created_at, "registered with an impossible time"))
+        .collect();
+    let impossible_names: Vec<_> = impossible
+        .iter()
+        .map(|backup| backup.name.clone())
+        .collect();
+    registry.extend(impossible);
+    write_registry(&folder, &registry);
+    let listed = listed_names(&folder);
+    assert_eq!(listed.len(), 30, "{listed:?}");
+    assert!(impossible_names.iter().all(|name| !listed.contains(name)));
+
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    let info = journal.backup_to(&folder, PASSPHRASE, NOW).unwrap();
+    assert!(info.retention_warning, "forgotten entries are reported");
+    assert!(!folder.join(&oldest).exists(), "pruning still runs");
+    assert_eq!(listed_names(&folder)[0], file_name(&info.path));
+    let registered = registered_names(&folder);
+    assert_eq!(registered.len(), 30);
+    for name in &impossible_names {
+        assert!(folder.join(name).is_file(), "{name} is never deleted");
+        assert!(!registered.contains(name), "{name} is forgotten");
+    }
+}
+
 /// Standard base64 without padding, as age headers write it.
 fn base64_unpadded(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

@@ -204,13 +204,21 @@ export function todayIn(timeZone: string, now: Date = new Date()): string {
   return toIsoDate({ year: parts.year, month: parts.month, day: parts.day });
 }
 
-/** "22 November 2026 at 14:05" for a Unix time in seconds, shown in a time zone. */
+/** Shown instead of a time that no date can describe, such as a damaged record's. */
+const UNKNOWN_DATE_TIME = 'Unknown date';
+
+/**
+ * "22 November 2026 at 14:05" for a Unix time in seconds, shown in a time zone.
+ * A time beyond the dates JavaScript can represent is "Unknown date" rather than an error.
+ */
 export function formatDateTime(unixSeconds: number, timeZone: string): string {
+  const instant = new Date(unixSeconds * 1000);
+  if (Number.isNaN(instant.getTime())) return UNKNOWN_DATE_TIME;
   let parts: Record<string, number>;
   try {
-    parts = zonedParts(new Date(unixSeconds * 1000), timeZone, true);
+    parts = zonedParts(instant, timeZone, true);
   } catch {
-    parts = zonedParts(new Date(unixSeconds * 1000), 'UTC', true);
+    parts = zonedParts(instant, 'UTC', true);
   }
   const time = `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
   return `${parts.day} ${MONTH_NAMES[parts.month - 1]} ${parts.year} at ${time}`;

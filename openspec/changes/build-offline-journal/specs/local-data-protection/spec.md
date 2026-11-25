@@ -60,9 +60,24 @@ The system SHALL provide encrypted local backups and a tested restore path befor
 - **WHEN** backup creation is interrupted
 - **THEN** a previously valid backup remains available and an incomplete artifact is not reported as a successful backup.
 
+#### Scenario: Backup folder that others can write to
+
+- **WHEN** someone else who can write to the backup folder replaces its list of backups with a symbolic link, a named pipe, a device or a file larger than 1 MiB
+- **THEN** backing up to that folder and listing its backups fail at once with an explanation that the list is damaged, nothing is read through that file or deleted, and journal writing remains available.
+
+#### Scenario: Impossible backup time
+
+- **WHEN** the folder's list of backups records a backup made before 1970 or after the year 9999
+- **THEN** that backup is neither listed nor offered for restore, pruning forgets it without deleting its file and still keeps the 30 latest backups, and the backup settings remain usable.
+
 ### Requirement: Safe restore
 
 The system SHALL validate a backup before making it active and SHALL preserve the current journal when the backup cannot be reached, decrypted or validated, or when the safety backup of a readable current journal fails. When a backup folder and the session passphrase are available and the current journal holds entries, the system SHALL publish a safety backup of it before replacing it, and SHALL skip that safety backup only if the journal cannot be read and the person explicitly confirms it.
+
+#### Scenario: Backup replaced before it is copied
+
+- **WHEN** someone else who can write to the backup folder replaces a listed backup with a symbolic link, a named pipe, a device or a file that keeps growing past the largest backup that can be restored
+- **THEN** the restore fails at once without filling the disk, leaves no copy behind, and the current journal remains intact.
 
 #### Scenario: Wrong credential or corrupt backup
 

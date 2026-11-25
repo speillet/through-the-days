@@ -18,5 +18,9 @@ tempfile = "3"
 zeroize = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 
+# Opening backup-folder files without following symbolic links or waiting for named pipes.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [lints]
 workspace = true
