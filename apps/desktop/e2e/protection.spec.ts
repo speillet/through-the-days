@@ -173,9 +173,7 @@ test('erases all app data after ERASE is typed, keeping backup files', async ({ 
   expect(journal.folder).toHaveLength(1);
 });
 
-test('restores a journal that can no longer be opened from a backup file, keeping the damaged one', async ({
-  page,
-}) => {
+async function openUnreadableJournal(page: Page) {
   const written = entry('2026-11-22', 'morning', 'Fictional morning that a backup brings back.');
   await seedJournal(page, { active: [written] });
   await setUpBackups(page);
@@ -185,12 +183,32 @@ test('restores a journal that can no longer be opened from a backup file, keepin
   await expect(page.getByRole('alert').first()).toContainText('Part of the journal file is damaged');
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByText('The journal still could not be opened.')).toBeVisible();
-  await expectNoSeriousViolations(page, 'Journal that could not be opened');
+  return written;
+}
 
+async function openStartupRestoreDialog(page: Page) {
   await page.getByRole('button', { name: 'Restore from a backup file…' }).click();
   const dialog = page.getByRole('alertdialog', { name: 'Restore this backup?' });
   await expect(dialog).toContainText('The journal that can’t be opened is kept aside in the app’s data folder');
+  return dialog;
+}
+
+test('the unreadable journal screen has no serious accessibility violations', async ({ page }) => {
+  await openUnreadableJournal(page);
+  await expectNoSeriousViolations(page, 'Journal that could not be opened');
+});
+
+test('the startup restore dialog has no serious accessibility violations', async ({ page }) => {
+  await openUnreadableJournal(page);
+  await openStartupRestoreDialog(page);
   await expectNoSeriousViolations(page, 'Restore dialog on the startup screen');
+});
+
+test('restores a journal that can no longer be opened from a backup file, keeping the damaged one', async ({
+  page,
+}) => {
+  const written = await openUnreadableJournal(page);
+  const dialog = await openStartupRestoreDialog(page);
   await dialog.getByLabel('Passphrase for this backup').fill(PASSPHRASE);
   await dialog.getByRole('button', { name: 'Replace journal and restore' }).click();
 
@@ -221,7 +239,7 @@ test('erases app data from the screen of a journal that can no longer be opened'
   expect(journal.folder).toHaveLength(1);
 });
 
-test('restores over a damaged journal only after confirming there is no safety backup', async ({ page }) => {
+async function openFailedSafetyBackupDialog(page: Page) {
   const written = entry('2026-11-21', 'evening', 'Fictional evening kept in the backup.');
   await seedJournal(page, { active: [written] });
   await setUpBackups(page, { remember: true });
@@ -240,7 +258,18 @@ test('restores over a damaged journal only after confirming there is no safety b
     'A safety backup of your current journal could not be made, so nothing was restored.',
   );
   await expect(dialog).toContainText('Choose this only if your current journal is damaged.');
+  return { dialog, written };
+}
+
+test('the failed safety backup confirmation has no serious accessibility violations', async ({ page }) => {
+  await openFailedSafetyBackupDialog(page);
   await expectNoSeriousViolations(page, 'Restore without a safety backup');
+});
+
+test('restores over a damaged journal only after confirming there is no safety backup', async ({ page }) => {
+  const { dialog, written } = await openFailedSafetyBackupDialog(page);
+  await expect(dialog.getByRole('button', { name: 'Restore without a safety backup' })).toBeVisible();
+  expect((await storedJournal(page)).journal.entries).toHaveLength(2);
   await dialog.getByRole('button', { name: 'Restore without a safety backup' }).click();
 
   await expect(page.getByRole('status').filter({ hasText: 'Backup restored' })).toContainText(

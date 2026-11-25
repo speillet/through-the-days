@@ -509,39 +509,45 @@ describe('Today: saving', () => {
 
   it('keeps a long Unicode entry with lists and quotes whole and editable', { timeout: 15_000 }, async () => {
     const user = userEvent.setup();
-    const { api } = createJournal();
+    const { api, restart } = createJournal();
     // Deliberate multilingual synthetic fixture, long enough to rule out truncation.
+    const headingText = 'Synthetic heading';
+    const listText = 'Première liste 🌱';
+    const quoteText = '« Une citation fictive »';
     const lines = Array.from(
       { length: 400 },
       (_, index) => `Paragraphe fictif ${index + 1} : café, naïve, cœur, déjà-vu 🌿 — synthetic text without a limit.`,
     );
+    const originalText = [headingText, listText, quoteText, ...lines].join('\n');
+    const editedText = `${originalText} Fin.`;
     await api.saveEntry({
       ...draft(),
       document: {
         type: 'doc',
         content: [
-          { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Synthetic heading' }] },
-          { type: 'bulletList', content: [{ type: 'listItem', content: [paragraph('Première liste 🌱')] }] },
-          { type: 'blockquote', content: [paragraph('« Une citation fictive »')] },
+          { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: headingText }] },
+          { type: 'bulletList', content: [{ type: 'listItem', content: [paragraph(listText)] }] },
+          { type: 'blockquote', content: [paragraph(quoteText)] },
           ...lines.map(paragraph),
         ],
       },
     });
-    await renderToday(api);
-    const editor = journalEditor();
-    expect(editor.textContent).toContain(lines[0]);
-    expect(editor.textContent).toContain(lines[399]);
-    expect(editor.querySelector('h2')).toHaveTextContent('Synthetic heading');
-    expect(editor.querySelector('li')).toHaveTextContent('Première liste 🌱');
-    expect(editor.querySelector('blockquote')).toHaveTextContent('« Une citation fictive »');
+    const first = await renderToday(api);
+    // Pause mid-edit so autosave persists the space before typing resumes.
+    await typeInEditor(user, ' ');
+    await waitFor(async () => expect(textOf(await onlyEntry(api))).toBe(`${originalText} `), {
+      timeout: SAVE_TIMEOUT_MS,
+    });
+    await user.keyboard('Fin.');
+    await waitFor(async () => expect(textOf(await onlyEntry(api))).toBe(editedText), { timeout: SAVE_TIMEOUT_MS });
+    first.unmount();
 
-    await typeInEditor(user, ' Fin.');
-    // The entry was already saved, so wait for the new revision rather than the status text.
-    await waitFor(async () => expect((await onlyEntry(api)).revision).toBe(2), { timeout: SAVE_TIMEOUT_MS });
-    const text = textOf(await onlyEntry(api));
-    expect(text).toContain(lines[0]);
-    expect(text).toContain(`${lines[399]} Fin.`);
-    expect(text).toContain('Première liste 🌱');
+    await renderToday(restart());
+    const editor = journalEditor();
+    expect(Array.from(editor.children, (block) => block.textContent).join('\n')).toBe(editedText);
+    expect(editor.querySelector('h2')).toHaveTextContent(headingText);
+    expect(editor.querySelector('li')).toHaveTextContent(listText);
+    expect(editor.querySelector('blockquote')).toHaveTextContent(quoteText);
   });
 
   it('offers to reload when the entry changed elsewhere, then shows the saved version', async () => {
