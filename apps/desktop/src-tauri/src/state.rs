@@ -222,12 +222,12 @@ impl AppState {
 
     /// Erases every application-managed file and secret, then opens a fresh journal.
     ///
-    /// Removes the journal and its SQLite companions, journals kept aside by a restore, the
-    /// backup plan, leftover temporary files and the Keychain item, and forgets the session
-    /// passphrase. Backups in the chosen folder are never touched. When a step fails, the others
-    /// still run, and the first failure, in the order journal files, backup plan, Keychain, is
-    /// reported after the journal is reopened: a Keychain error therefore means the journal and
-    /// the backup settings were erased.
+    /// Removes the journal and its SQLite companions, journals kept aside by a restore and the
+    /// marker of an interrupted one, the backup plan, leftover temporary files and the Keychain
+    /// item, and forgets the session passphrase. Backups in the chosen folder are never touched.
+    /// When a step fails, the others still run, and the first failure, in the order journal
+    /// files, backup plan, Keychain, is reported after the journal is reopened: a Keychain error
+    /// therefore means the journal and the backup settings were erased.
     pub fn erase_app_data(
         &self,
         confirmation: &str,
@@ -435,6 +435,16 @@ impl Core {
         // The connection must be closed before its files are removed.
         self.journal = None;
         let mut failure = None;
+        // The marker of an interrupted restore goes first: it would otherwise move a journal
+        // kept aside back into place at the next launch.
+        match fs::remove_file(&self.paths.restore_marker) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(_) => {
+                diagnostics::record("erase restore marker", Error::Storage.code());
+                failure.get_or_insert(CommandError::from(Error::Storage));
+            }
+        }
         if let Err(error) = erase_journal_files(&self.paths.journal) {
             diagnostics::record("erase journal", error.code());
             failure.get_or_insert(CommandError::from(error));
@@ -477,6 +487,14 @@ impl Core {
         self.journal = None;
         if paths::create_private_dir(&self.paths.data_dir).is_err() {
             diagnostics::record("create data folder", Error::Storage.code());
+            self.startup = self.status(StartupState::Failed, None, Some(OPEN_FAILED.to_owned()));
+            return;
+        }
+        // A restore from the startup screen that stopped while it replaced the journal file is
+        // completed or undone first, while the staging file it names is still there. Until that
+        // succeeds, no journal is opened, so none is created where one was set aside.
+        if paths::settle_replacement(&self.paths).is_err() {
+            diagnostics::record("settle interrupted restore", Error::Storage.code());
             self.startup = self.status(StartupState::Failed, None, Some(OPEN_FAILED.to_owned()));
             return;
         }

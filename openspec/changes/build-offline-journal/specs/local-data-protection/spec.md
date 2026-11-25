@@ -89,6 +89,11 @@ The system SHALL validate a backup before making it active and SHALL preserve th
 - **WHEN** a valid synthetic backup is restored to a clean destination
 - **THEN** entries, dates, slots, and structured answers match the backed-up revision.
 
+#### Scenario: Interrupted restore
+
+- **WHEN** the application quits, crashes or loses power before a restore completes, including a restore that replaces a journal that could not be opened
+- **THEN** the next launch opens either the unchanged current journal or the complete restored journal, never an empty or partially restored one, and no journal file that the restore set aside is deleted.
+
 ### Requirement: Portable backup recovery
 
 Backups SHALL be recoverable on another Mac with a dedicated backup passphrase and SHALL offer optional passphrase storage in macOS Keychain without requiring it.

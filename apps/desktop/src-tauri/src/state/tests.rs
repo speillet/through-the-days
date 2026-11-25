@@ -14,14 +14,20 @@ use super::{
     AppState, ERASE_CONFIRMATION, OPEN_FAILED, RestoreOutcome, RestoreSource, StartupState,
     backup::BackupState,
 };
-use crate::{error::CommandError, keychain::fake::FakeKeychain, paths::DataPaths};
+use crate::{
+    error::CommandError,
+    keychain::fake::FakeKeychain,
+    paths::{self, DataPaths},
+};
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use journal_core::{BackupPlan, Entry, Error, Journal, Slot, document_text, list_backups};
 use serde_json::{Value, json};
 use std::{
+    cell::RefCell,
     fs,
     os::unix::fs::{FileExt, PermissionsExt},
     path::{Path, PathBuf},
+    rc::Rc,
     sync::{Arc, mpsc},
     thread,
     time::Duration as Wait,
@@ -102,6 +108,40 @@ impl Fixture {
     fn journal_bytes(&self) -> Vec<u8> {
         fs::read(self.paths().journal).unwrap()
     }
+
+    /// A new fixture whose data folder holds a copy of the files in `data_dir`.
+    fn with_files_of(data_dir: &Path) -> Self {
+        let fixture = Self::new();
+        let copy = fixture.paths().data_dir;
+        fs::create_dir_all(&copy).unwrap();
+        for entry in fs::read_dir(data_dir).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_file() {
+                fs::copy(entry.path(), copy.join(entry.file_name())).unwrap();
+            }
+        }
+        fixture
+    }
+}
+
+/// Runs `operation`, copying the data folder of `fixture` at each interruption point it reaches.
+/// Each copy holds the files that a quit, a crash or a power cut at that point would leave.
+fn copies_at_interruptions<T>(
+    fixture: &Fixture,
+    operation: impl FnOnce() -> T,
+) -> (T, Vec<Fixture>) {
+    let data_dir = fixture.paths().data_dir;
+    let copies = Rc::new(RefCell::new(Vec::new()));
+    let observed = Rc::clone(&copies);
+    let result = paths::interruption::observe(
+        move || {
+            observed
+                .borrow_mut()
+                .push(Fixture::with_files_of(&data_dir))
+        },
+        operation,
+    );
+    (result, copies.take())
 }
 
 /// 22 November 2026 at noon in Paris, the default journal time zone.
@@ -1666,6 +1706,165 @@ fn a_journal_that_cannot_be_opened_is_kept_aside_and_replaced_from_a_backup_file
     }
 }
 
+/// A synthetic write-ahead log beside a journal that cannot be opened.
+const UNREADABLE_LOG: &[u8] = b"synthetic write-ahead log of the unreadable journal";
+
+/// What a launch after an interrupted restore from the startup screen opened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reopened {
+    /// The journal that could not be opened, unchanged, with its log.
+    Unchanged,
+    /// The complete restored journal, with the other one kept aside.
+    Restored,
+}
+
+/// Checks a launch that followed an interrupted restore from the startup screen: it opened either
+/// the journal that could not be opened, unchanged, or the complete restored journal with the
+/// other one kept aside, never an empty journal, and no file of the restore remains.
+fn reopened_after_interruption(
+    fixture: &Fixture,
+    app: &AppState,
+    unopened: StartupState,
+    unreadable: &[u8],
+    kept: &Entry,
+) -> Reopened {
+    let data_dir = fixture.paths().data_dir;
+    let names = names_in(&data_dir);
+    assert!(
+        names
+            .iter()
+            .all(|name| !name.starts_with(".ttd-") && name != "restore-in-progress.json"),
+        "{names:?}"
+    );
+    let aside: Vec<&str> = names
+        .iter()
+        .map(String::as_str)
+        .filter(|name| name.starts_with("journal.unreadable-"))
+        .collect();
+    let startup = app.startup_status();
+    if startup.state != StartupState::Ready {
+        assert_eq!(startup.state, unopened);
+        assert_eq!(fixture.journal_bytes(), unreadable);
+        assert_eq!(
+            fs::read(data_dir.join("journal.sqlite-wal")).unwrap(),
+            UNREADABLE_LOG
+        );
+        assert!(aside.is_empty(), "{names:?}");
+        return Reopened::Unchanged;
+    }
+    assert_eq!(startup.message, None);
+    assert_eq!(app.lock().list_entries().unwrap(), vec![kept.clone()]);
+    let name = format!("journal.unreadable-{}.sqlite", noon().timestamp());
+    assert!(
+        aside.iter().all(|aside| aside.starts_with(&name)),
+        "{names:?}"
+    );
+    assert_eq!(fs::read(data_dir.join(&name)).unwrap(), unreadable);
+    assert_eq!(
+        fs::read(data_dir.join(format!("{name}-wal"))).unwrap(),
+        UNREADABLE_LOG
+    );
+    Reopened::Restored
+}
+
+/// local-data-protection — Safe restore / Interrupted restore: a restore from the startup screen
+/// can stop at any moment, when the person quits or the Mac crashes or loses power. The next
+/// launch opens either the journal that could not be opened, unchanged, or the complete restored
+/// journal, never an empty one, and no restore file remains. A launch that stops while it
+/// settles an interrupted restore leaves files that the following launch settles the same way.
+#[test]
+fn a_restore_from_the_startup_screen_that_stops_at_any_moment_never_opens_an_empty_journal() {
+    let original = Fixture::new();
+    let app = ready_with_backups(&original);
+    let kept = app
+        .lock()
+        .save_entry(draft(
+            "2026-11-21",
+            Slot::Evening,
+            "Synthetic evening to recover.",
+        ))
+        .unwrap();
+    app.lock().backup_now(noon()).unwrap();
+    let backup = original
+        .folder()
+        .join(app.lock().list_backups().unwrap().remove(0).name);
+    drop(app);
+
+    for (create, state) in [
+        (damaged_header as fn(&Path), StartupState::Failed),
+        (newer_journal, StartupState::Unsupported),
+    ] {
+        let fixture = Fixture::new();
+        let data_dir = fixture.paths().data_dir;
+        fs::create_dir_all(&data_dir).unwrap();
+        create(&fixture.paths().journal);
+        fs::write(data_dir.join("journal.sqlite-wal"), UNREADABLE_LOG).unwrap();
+        let unreadable = fixture.journal_bytes();
+        let app = fixture.launch();
+        assert_eq!(app.startup_status().state, state);
+        app.lock().pick_restore_file(Some(backup.clone()));
+
+        let (outcome, stops) = copies_at_interruptions(&fixture, || {
+            app.lock()
+                .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
+        });
+        assert_eq!(outcome.unwrap().entries, 1);
+        let mut reopened = Vec::new();
+        for stop in &stops {
+            let (app, launch_stops) = copies_at_interruptions(stop, || stop.launch());
+            let first = reopened_after_interruption(stop, &app, state, &unreadable, &kept);
+            for launch_stop in &launch_stops {
+                let app = launch_stop.launch();
+                let next =
+                    reopened_after_interruption(launch_stop, &app, state, &unreadable, &kept);
+                assert_eq!(next, first);
+            }
+            reopened.push(first);
+        }
+        // Stops before the restored journal takes the journal's place keep the journal as it
+        // was; every later stop keeps the restored journal.
+        let replaced = reopened
+            .iter()
+            .position(|outcome| *outcome == Reopened::Restored)
+            .unwrap();
+        assert!(replaced > 0, "{reopened:?}");
+        assert!(
+            reopened[replaced..]
+                .iter()
+                .all(|outcome| *outcome == Reopened::Restored),
+            "{reopened:?}"
+        );
+    }
+}
+
+/// local-data-protection — Safe restore / Interrupted restore: when the marker of an interrupted
+/// restore cannot be settled, the start fails rather than create an empty journal where one was
+/// kept aside. Erasing all app data removes the marker.
+#[test]
+fn a_restore_marker_that_cannot_be_settled_fails_the_start_until_app_data_is_erased() {
+    let fixture = Fixture::new();
+    let paths = fixture.paths();
+    fs::create_dir_all(&paths.data_dir).unwrap();
+    let kept = paths.data_dir.join("journal.unreadable-1795363200.sqlite");
+    damaged_header(&kept);
+    fs::write(&paths.restore_marker, b"synthetic damaged marker").unwrap();
+
+    let app = fixture.launch();
+    let startup = app.startup_status();
+    assert_eq!(
+        (startup.state, startup.message.as_deref()),
+        (StartupState::Failed, Some(OPEN_FAILED))
+    );
+    assert_eq!(app.retry_startup(noon()).state, StartupState::Failed);
+    assert!(!paths.journal.exists());
+    assert!(kept.exists());
+
+    let startup = app.erase_app_data(ERASE_CONFIRMATION, noon()).unwrap();
+    assert_eq!(startup.state, StartupState::Ready);
+    assert!(!paths.restore_marker.exists());
+    assert!(!kept.exists());
+}
+
 #[test]
 fn a_new_mac_restores_with_only_the_backup_file_and_its_passphrase() {
     let original = Fixture::new();
@@ -1747,12 +1946,14 @@ fn erasing_removes_app_data_and_secrets_but_never_the_backup_folder() {
     .unwrap();
     fs::write(fixture.folder().join("synthetic notes.txt"), b"synthetic").unwrap();
     let folder_before = names_in(&fixture.folder());
-    // Leftover temporary copies and journals that a restore kept aside are app data too.
+    // Leftover temporary copies, journals that a restore kept aside and the marker of an
+    // interrupted restore are app data too.
     let leftovers = [
         ".ttd-incomplete-synthetic",
         ".ttd-restore-staging-synthetic",
         "journal.unreadable-1795363200.sqlite",
         "journal.unreadable-1795363200.sqlite-wal",
+        "restore-in-progress.json",
     ]
     .map(|name| fixture.paths().data_dir.join(name));
     for leftover in &leftovers {
