@@ -330,6 +330,53 @@ fn a_notes_save_for_a_week_without_a_last_day_stores_nothing() {
     assert_eq!(stored, 0);
 }
 
+/// weekly-reviews — Authorship and source freshness / Failed notes save: a notes save that fails
+/// while it reads its week back, here because a synthetic record no longer reads as an entry, is
+/// rolled back. Nothing is stored, and once the record is gone a retry on the same revision saves
+/// the notes instead of meeting a conflict.
+#[test]
+fn a_notes_save_that_cannot_read_its_week_back_stores_nothing_and_can_be_retried() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.sqlite");
+    let journal = Journal::open(&path).unwrap();
+    let outside = rusqlite::Connection::open(&path).unwrap();
+    outside
+        .execute(
+            "INSERT INTO journal_entries(id,entry_date,slot,revision,payload)
+             VALUES('synthetic-unreadable','2026-11-25','morning',1,'{\"synthetic\":true}')",
+            [],
+        )
+        .unwrap();
+    assert_eq!(
+        journal
+            .save_weekly_notes("2026-11-25", "Synthetic notes.", 0)
+            .unwrap_err(),
+        journal_core::Error::Document
+    );
+    let stored: i64 = outside
+        .query_row("SELECT COUNT(*) FROM weekly_reviews", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(stored, 0);
+
+    outside
+        .execute(
+            "DELETE FROM journal_entries WHERE id='synthetic-unreadable'",
+            [],
+        )
+        .unwrap();
+    let saved = journal
+        .save_weekly_notes("2026-11-25", "Synthetic notes.", 0)
+        .unwrap();
+    assert_eq!(
+        (
+            saved.week_start.as_str(),
+            saved.revision,
+            saved.notes.as_str()
+        ),
+        ("2026-11-23", 1, "Synthetic notes.")
+    );
+}
+
 /// progress-insights / personal-timeline: a 100-year report over ten years of Morning and Evening
 /// entries places each observation on its own date, Morning first. Entries are grouped by date
 /// once rather than scanned again for each of the 36,525 days: scanning made about 267 million

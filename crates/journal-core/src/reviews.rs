@@ -70,7 +70,7 @@ pub struct WeeklyReview {
 }
 
 /// The Monday that starts the ISO week of `date`. A week must also have its Sunday, so a notes
-/// save checks the whole week before it commits rather than failing afterwards.
+/// save refuses a week the journal cannot complete before it writes anything.
 fn week_start(date: &str) -> Result<String, Error> {
     let date = parse_date(date)?;
     let monday = date
@@ -162,8 +162,11 @@ impl Journal {
         stored.notes = notes.into();
         stored.revision = stored.revision.checked_add(1).ok_or(Error::Conflict)?;
         transaction.execute("INSERT INTO weekly_reviews(week_start,payload) VALUES(?1,?2) ON CONFLICT(week_start) DO UPDATE SET payload=excluded.payload",params![start,serde_json::to_string(&stored)?])?;
+        // Read back before the commit: if the reply fails, the save is rolled back and the
+        // caller's revision stays current for a retry.
+        let review = self.weekly_review(&start)?;
         transaction.commit()?;
-        self.weekly_review(&start)
+        Ok(review)
     }
 
     pub fn generate_weekly_summary(
