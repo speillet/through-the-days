@@ -88,8 +88,8 @@ impl Core {
     /// cannot be read for that, the restore stops with `safetyBackupFailed`, unless
     /// `without_safety_backup` confirms that it may go ahead without one. Any other failure of
     /// the safety backup, such as a disconnected backup drive, cancels the restore with its own
-    /// error. When the start failed or found a journal this version cannot open, the backup
-    /// replaces the journal file instead (see [`Self::restore_at_startup`]). A failed restore
+    /// error. When the start failed, found a journal this version cannot open, or found an
+    /// older journal waiting for its upgrade, the backup replaces the journal file instead (see [`Self::restore_at_startup`]). A failed restore
     /// leaves the journal unchanged.
     pub fn restore_backup(
         &mut self,
@@ -100,10 +100,11 @@ impl Core {
     ) -> Result<RestoreOutcome, CommandError> {
         match self.startup.state {
             StartupState::Ready => {}
-            StartupState::Failed | StartupState::Unsupported => {
+            // An older journal waiting for its upgrade is not open either, and a damaged page or
+            // an invalid row in it can stop every pre-migration backup: a restore replaces it.
+            StartupState::Failed | StartupState::Unsupported | StartupState::NeedsMigration => {
                 return self.restore_at_startup(&source, passphrase, now);
             }
-            StartupState::NeedsMigration => return Err(CommandError::not_ready()),
         }
         let source = self.restore_source(&source)?;
         // The safety backup can prune the oldest registered backup, which may be the one being
@@ -126,8 +127,8 @@ impl Core {
         })
     }
 
-    /// Restores when no journal is open because the start failed or found a journal this
-    /// version cannot open.
+    /// Restores when no journal is open because the start failed, found a journal this version
+    /// cannot open, or found an older journal that is still waiting for its protected upgrade.
     ///
     /// The journal file is left as it is until the verified backup has been restored completely
     /// into a new file in the data folder. Only then are the journal file and its SQLite

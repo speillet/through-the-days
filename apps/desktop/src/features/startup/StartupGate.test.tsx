@@ -43,9 +43,12 @@ async function typePassphrase(user: User, passphrase = PASSPHRASE) {
 
 /**
  * A journal with one synthetic entry and one backup of it, then restarted in the given
- * startup state (or with its stored journal damaged), as a later launch would find it.
+ * startup state (or with its stored journal damaged: its header, or one of its pages), as
+ * a later launch would find it.
  */
-async function journalWithBackup(relaunch: { startup?: Partial<StartupStatus>; damageJournal?: boolean } = {}) {
+async function journalWithBackup(
+  relaunch: { startup?: Partial<StartupStatus>; damageJournal?: boolean; damagePage?: boolean } = {},
+) {
   const storage = createMemoryStorage();
   const options = { storage, now: () => TEST_NOW };
   const first = createMemoryApi(options);
@@ -59,6 +62,11 @@ async function journalWithBackup(relaunch: { startup?: Partial<StartupStatus>; d
   if (relaunch.damageJournal) {
     const stored = JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? '{}') as Record<string, unknown>;
     stored.journal = 'Synthetic damaged journal header';
+    storage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(stored));
+  }
+  if (relaunch.damagePage) {
+    const stored = JSON.parse(storage.getItem(MEMORY_STORAGE_KEY) ?? '{}') as { journal: { entries: unknown[] } };
+    stored.journal.entries.push({ entry: 'Synthetic damaged page', trashedAt: null });
     storage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(stored));
   }
   return { api: createMemoryApi({ ...options, startup: { dataLocation: DATA_LOCATION, ...relaunch.startup } }), entry };
@@ -185,13 +193,52 @@ describe('startup gate: protected upgrade', () => {
     expect(screen.getByLabelText('Backup passphrase')).toHaveValue(PASSPHRASE);
   });
 
-  it('says why the automatic upgrade at launch could not run', async () => {
+  it('says why the automatic upgrade at launch could not run, and offers the ways back', async () => {
     renderGate(
-      createTestApi({ startup: { state: 'needsMigration', message: ERROR_MESSAGES.backupFolder } }),
+      createTestApi({
+        startup: { state: 'needsMigration', message: ERROR_MESSAGES.backupFolder, dataLocation: DATA_LOCATION },
+      }),
     );
     await screen.findByRole('heading', { level: 1, name: 'Protect your journal before upgrading' });
     const notice = screen.getByText(ERROR_MESSAGES.backupFolder).closest('.notice') as HTMLElement;
     expect(notice).toHaveTextContent('The automatic upgrade could not run');
+    expect(screen.getByText(DATA_LOCATION)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Restore from a backup file…' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Erase app data…' })).toBeVisible();
+  });
+
+  it('offers a way back once the journal itself stops its upgrade, and restores a backup over it', async () => {
+    const user = userEvent.setup();
+    const { api, entry } = await journalWithBackup({ startup: { state: 'needsMigration' }, damagePage: true });
+    const { startup } = renderGate(api);
+    await screen.findByText(/The backup will be saved in Synthetic backups/);
+    // Until an upgrade fails, the upgrade is the only way on.
+    expect(screen.queryByRole('button', { name: 'Restore from a backup file…' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Erase app data…' })).not.toBeInTheDocument();
+    expect(screen.queryByText(DATA_LOCATION)).not.toBeInTheDocument();
+
+    await typePassphrase(user);
+    await user.click(screen.getByRole('button', { name: 'Back up and upgrade' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The journal was not upgraded');
+    expect(alert).toHaveTextContent(ERROR_MESSAGES.damaged);
+    expect(alert).toHaveTextContent('Your journal has not been changed.');
+    expect(startup.value?.status?.state).toBe('needsMigration');
+    expect(screen.getByText(DATA_LOCATION)).toBeVisible();
+    expect(
+      screen.getByText(/The journal that can’t be upgraded is kept aside in the app’s data folder; it is not deleted\./),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Erase app data…' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Restore from a backup file…' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Restore this backup?' });
+    await user.type(within(dialog).getByLabelText('Passphrase for this backup'), PASSPHRASE);
+    await user.click(within(dialog).getByRole('button', { name: 'Replace journal and restore' }));
+    await vi.waitFor(() => expect(startup.value?.status?.state).toBe('ready'));
+    expect(startup.value?.notice).toMatch(
+      /^Backup restored: 1 entry in your journal\. The journal that could not be opened was kept in the app’s data folder as journal\.unreadable-\d+\.sqlite\.$/,
+    );
+    await expect(api.listEntries()).resolves.toEqual([entry]);
   });
 
   it('upgrades with the passphrase already remembered, keeping it remembered', async () => {

@@ -74,8 +74,8 @@ export interface JournalApi {
    * safety backup of the current journal is needed but cannot be made because that journal
    * cannot be read, the restore is refused (safetyBackupFailed) unless withoutSafetyBackup is
    * true. Any other safety-backup failure, such as backupFolder, cancels the restore whatever
-   * withoutSafetyBackup says. Without an open journal (a failed or unsupported start), the
-   * unreadable journal is kept aside.
+   * withoutSafetyBackup says. Without an open journal (a failed or unsupported start, or an
+   * older journal waiting for its upgrade), that journal is kept aside.
    */
   restoreBackup(
     source: RestoreSource,

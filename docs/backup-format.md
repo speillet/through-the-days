@@ -218,6 +218,8 @@ Before upgrading an existing journal to a newer schema, the app publishes a regu
 
 If the backup cannot be made, the journal stays at its earlier version, unchanged, and the app waits for the folder or passphrase. Creating a new, empty journal is not a migration and needs no backup. Pre-migration backups are ordinary registered backups and count towards the 30.
 
+**Older journal that cannot be backed up (desktop app).** The older journal itself can stop its backup: a damaged page fails the snapshot with `damaged`, and a row that this build's validation refuses fails the verification with `backupValidation`, so every retry fails the same way. Once an upgrade has failed, at launch or on the upgrade screen, that screen also shows the data folder and offers the same ways back as for a journal that cannot be opened. A restore from a backup file verifies the backup first, so a wrong passphrase changes nothing; the older journal and its companions are then kept aside in the data folder as `journal.unreadable-<seconds>.sqlite`, never deleted, and the restored journal, already at the current schema, takes its place. Erasing all app data instead starts an empty journal; it removes the older journal too, but nothing in the backup folder. The desktop shell's state test `an_older_journal_that_cannot_be_backed_up_is_kept_aside_and_replaced_from_a_backup_file` covers both causes.
+
 ## Failure handling
 
 | Situation | Outcome |

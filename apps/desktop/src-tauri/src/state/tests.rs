@@ -197,6 +197,29 @@ fn previous_journal(path: &Path) -> String {
     fixtures::V1_ENTRY_ID.to_owned()
 }
 
+/// The frozen version-1 journal with the root page of its entries damaged. Its header and
+/// schema still read, so it waits for its upgrade, but no snapshot of it can be made.
+fn previous_journal_with_a_damaged_page(path: &Path) {
+    previous_journal(path);
+    let (offset, length) = root_page(path, "journal_entries");
+    damage(path, offset, length);
+}
+
+/// A version-1 journal whose only entry has a mood of 42, which validation refuses. It waits for
+/// its upgrade, but its pre-migration backup fails validation.
+fn previous_journal_with_an_invalid_entry(path: &Path) {
+    let payload = fixtures::V1_ENTRY_PAYLOAD.replace(r#""mood":3"#, r#""mood":42"#);
+    assert_ne!(payload, fixtures::V1_ENTRY_PAYLOAD);
+    let connection = rusqlite::Connection::open(path).unwrap();
+    connection.execute_batch(fixtures::V1_SCHEMA).unwrap();
+    connection
+        .execute(
+            fixtures::V1_INSERT_ENTRY,
+            [fixtures::V1_ENTRY_ID, payload.as_str()],
+        )
+        .unwrap();
+}
+
 fn newer_journal(path: &Path) {
     execute(
         path,
@@ -519,8 +542,6 @@ fn an_older_journal_waits_for_its_protected_upgrade_without_being_changed() {
                 .unwrap_err(),
             core.run_daily_backup(noon()).unwrap_err(),
             core.backup_now(noon()).unwrap_err(),
-            core.restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
-                .unwrap_err(),
         ]
     };
     assert!(
@@ -532,6 +553,19 @@ fn an_older_journal_waits_for_its_protected_upgrade_without_being_changed() {
         app.lock().backup_status(noon()).state,
         BackupState::NeedsFolder
     );
+    // A restore does not wait for the upgrade: it is a way out, which needs a backup to restore.
+    let error = app
+        .lock()
+        .restore_backup(
+            RestoreSource::Registered {
+                name: "ttd-1795363200-synthetic.ttd.age".into(),
+            },
+            PASSPHRASE,
+            false,
+            noon(),
+        )
+        .unwrap_err();
+    assert_eq!(error, CommandError::needs_folder());
     let error = app
         .migrate_journal(Some(secret(PASSPHRASE)), false, noon())
         .unwrap_err();
@@ -660,6 +694,97 @@ fn an_upgrade_without_a_new_passphrase_needs_the_one_in_the_session() {
         Some(PASSPHRASE)
     );
     assert!(fixture.stored_plan().remember);
+}
+
+/// local-data-protection — Recoverable pre-migration backup: when the older journal itself stops
+/// its pre-migration backup, the failed upgrade leaves it unchanged and waiting, and a backup
+/// file then replaces it from the upgrade screen; the older journal is kept aside, never deleted.
+#[test]
+fn an_older_journal_that_cannot_be_backed_up_is_kept_aside_and_replaced_from_a_backup_file() {
+    let original = Fixture::new();
+    let app = ready_with_backups(&original);
+    let kept = app
+        .lock()
+        .save_entry(draft(
+            "2026-11-21",
+            Slot::Evening,
+            "Synthetic evening to recover.",
+        ))
+        .unwrap();
+    app.lock().backup_now(noon()).unwrap();
+    let backup = original
+        .folder()
+        .join(app.lock().list_backups().unwrap().remove(0).name);
+    drop(app);
+
+    for (create, cause) in [
+        (
+            previous_journal_with_a_damaged_page as fn(&Path),
+            Error::Damaged,
+        ),
+        (
+            previous_journal_with_an_invalid_entry,
+            Error::BackupValidation,
+        ),
+    ] {
+        let fixture = Fixture::new();
+        let data_dir = fixture.paths().data_dir;
+        fs::create_dir_all(&data_dir).unwrap();
+        create(&fixture.paths().journal);
+        let older = fixture.journal_bytes();
+        let app = fixture.launch();
+        assert_eq!(app.startup_status().state, StartupState::NeedsMigration);
+        app.choose_backup_folder(fixture.folder(), noon()).unwrap();
+        let error = app
+            .migrate_journal(Some(secret(PASSPHRASE)), false, noon())
+            .unwrap_err();
+        assert_eq!(error, CommandError::from(cause));
+        assert_eq!(fixture.journal_bytes(), older, "{cause:?}");
+        let startup = app.startup_status();
+        assert_eq!(
+            (startup.state, startup.from_version),
+            (StartupState::NeedsMigration, Some(1))
+        );
+        assert!(list_backups(&fixture.folder()).unwrap().is_empty());
+
+        app.lock().pick_restore_file(Some(backup.clone()));
+        // A wrong passphrase moves nothing.
+        let error = app
+            .lock()
+            .restore_backup(RestoreSource::Picked, WRONG_PASSPHRASE, false, noon())
+            .unwrap_err();
+        assert_eq!(error, CommandError::from(Error::Restore));
+        assert_eq!(fixture.journal_bytes(), older, "{cause:?}");
+        assert_eq!(app.startup_status().state, StartupState::NeedsMigration);
+
+        let outcome = app
+            .lock()
+            .restore_backup(RestoreSource::Picked, PASSPHRASE, false, noon())
+            .unwrap();
+        let name = format!("journal.unreadable-{}.sqlite", noon().timestamp());
+        assert_eq!(
+            outcome,
+            RestoreOutcome {
+                entries: 1,
+                safety_backup: false,
+                set_aside: Some(name.clone())
+            }
+        );
+        assert_eq!(fs::read(data_dir.join(&name)).unwrap(), older, "{cause:?}");
+        let startup = app.startup_status();
+        assert_eq!(
+            (startup.state, startup.from_version, startup.message),
+            (StartupState::Ready, None, None)
+        );
+        assert_eq!(app.lock().list_entries().unwrap(), vec![kept.clone()]);
+        drop(app);
+
+        // The restored journal opens at the next launch; the older one stays aside, unchanged.
+        let app = fixture.launch();
+        assert_eq!(app.startup_status().state, StartupState::Ready);
+        assert_eq!(app.lock().list_entries().unwrap(), vec![kept.clone()]);
+        assert_eq!(fs::read(data_dir.join(&name)).unwrap(), older, "{cause:?}");
+    }
 }
 
 #[test]

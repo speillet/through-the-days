@@ -169,3 +169,8 @@ Before migrating an existing journal, the system SHALL create a consistent encry
 
 - **WHEN** the person upgrades an existing journal with a newly typed passphrase while the launch is still reading the remembered passphrase from macOS Keychain
 - **THEN** the pre-migration backup is encrypted with the typed passphrase, even when Keychain answers the launch's read first.
+
+#### Scenario: Recovery after a failed upgrade
+
+- **WHEN** an upgrade attempt fails, including when part of the existing journal cannot be read or validated so that every retry fails
+- **THEN** the paused upgrade explains the failure, keeps the existing journal unchanged, and offers to restore a validated backup, which keeps the existing journal aside without deleting it, or to erase application data.
