@@ -27,10 +27,20 @@ The Path So Far SHALL offer 7/30/90-day, one-year, and custom ranges with access
 - **WHEN** the person changes or pans a custom timeline range and later opens My Journal
 - **THEN** the timeline keeps its own date bounds without replacing My Journal's date filters.
 
+#### Scenario: One-year pages
+
+- **WHEN** the person pages a one-year range with Earlier range or Later range, including across 29 February
+- **THEN** each page covers the 365 dates ending on its end date, and consecutive pages neither repeat nor skip a date.
+
 #### Scenario: Keyboard zoom from a custom range
 
 - **WHEN** the person activates Zoom out for a 22-day custom range, then Zoom in
 - **THEN** the range widens to 30 days and narrows to 7 days, preserving its end date and visible source links.
+
+#### Scenario: Range at the journal date limits
+
+- **WHEN** Earlier range or Later range would move a preset range's end date, or either date of a custom range, before 1 January 0001 or after 31 December 9999, or a typed From or To date lies outside those dates
+- **THEN** that control is unavailable or the typed date is ignored, and the timeline keeps its current range.
 
 ### Requirement: Optional available layers
 
@@ -64,10 +74,20 @@ Timeline measures SHALL reuse the progress-insights inclusion rules, preserve se
 
 The system SHALL allow editable, removable private dated milestones without deriving them from a model or implying a clinical outcome.
 
+#### Scenario: Milestone without a title
+
+- **WHEN** the person saves a milestone whose title is empty or blank
+- **THEN** the dialog asks for a title and nothing is saved.
+
 #### Scenario: Milestone removed
 
 - **WHEN** the person deletes a manual milestone
 - **THEN** it no longer appears in timeline layers or derived insight results.
+
+#### Scenario: Deleted milestone text leaves the live journal files
+
+- **WHEN** the person deletes a manual milestone
+- **THEN** the live journal files in the application data folder no longer contain its title or notes once the deletion completes, without waiting for the application to quit.
 
 #### Scenario: Restore private milestones
 

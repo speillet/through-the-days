@@ -2,39 +2,59 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useApi, toCommandError } from '../../api/client';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
-import { addDays, formatLongDate } from '../../domain/dates';
+import { addDays, formatLongDate, isIsoDate, weekdayIndex, stepDays } from '../../domain/dates';
 import { useToday } from '../../state/clock';
 import { usePreferences } from '../../state/preferences';
-import { EntryPreview } from './shared';
+import { EntryPreview, insightSources } from './shared';
 import { Coverage } from './Timeline';
 import { useReading, useReadingQuery } from './state';
+import { unsaved } from './notes';
+
+/** The Monday of a date's ISO week; a date the interface cannot read is kept for the journal to refuse. */
+function weekOf(date: string): string {
+  return isIsoDate(date) ? addDays(date, -weekdayIndex(date)) : date;
+}
 
 export function WeeklyView() {
   const api = useApi();
   const { today } = useToday();
   const { date, setDate, notes } = useReading();
-  const selected = date ?? today;
+  // Without a chosen date the review follows today, except into a new week while the notes of
+  // the week shown are focused or not yet saved: a reflection stays with the week it is about.
+  const [followed, setFollowed] = useState(today);
+  const [writing, setWriting] = useState(false);
+  // A field removed while focused gets no blur event.
+  const notesField = useCallback((field: HTMLTextAreaElement | null) => {
+    if (!field) setWriting(false);
+  }, []);
+  const selected = date ?? followed;
+  const week = weekOf(selected);
   const { visibility, preferences } = usePreferences();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Keyed on the week, so a new day in the same week keeps the review and its notes in place.
   const {
     data,
     reload,
     error: readError,
-  } = useReadingQuery(useCallback(() => api.weeklyReview(selected), [api, selected]));
+  } = useReadingQuery(useCallback(() => api.weeklyReview(week), [api, week]));
   const entries = useReadingQuery(useCallback(() => api.listEntries(), [api]));
   useSyncExternalStore(notes.subscribe, notes.snapshot, notes.snapshot);
   useEffect(() => {
     if (data) notes.seed(data);
   }, [notes, data]);
-  const draft = notes.get(data?.weekStart ?? selected);
-  const pending = draft.saving || draft.value !== draft.saved;
+  const draft = notes.get(data?.weekStart ?? week);
+  const pending = draft.saving || unsaved(draft);
+  const keepWeek = date === null && (writing || pending) && weekOf(today) !== week;
+  useEffect(() => {
+    if (!keepWeek && followed !== today) setFollowed(today);
+  }, [keepWeek, followed, today]);
   async function summary() {
     if (!data || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await notes.regenerateWeek(data.weekStart, (date, revision) => api.generateWeeklySummary(date, revision));
+      await notes.regenerateWeek(data.weekStart, (date) => api.generateWeeklySummary(date));
       reload();
     } catch (caught) {
       setError(toCommandError(caught).message);
@@ -42,10 +62,12 @@ export function WeeklyView() {
       setBusy(false);
     }
   }
-  const sources = (entries.data ?? []).filter(
-    (entry) =>
-      data && entry.date >= data.weekStart && entry.date <= data.weekEnd && entry.includeInInsights !== false,
-  );
+  // The report lists the week's own dates: compared as text, the end of the week of 27 December
+  // 9999, written +10000-01-02 by the journal, would sort before every date of that week.
+  const sources = insightSources(entries.data ?? [], data?.report ?? null);
+  // Week navigation stops at the journal date limits.
+  const previousWeek = stepDays(selected, -7);
+  const nextWeek = stepDays(selected, 7);
   return (
     <div className="view reading-view">
       <header className="reading-heading">
@@ -54,9 +76,13 @@ export function WeeklyView() {
           <p>A few recorded moments, and your own reflection.</p>
         </div>
         <div className="reading-actions">
-          <Button onClick={() => setDate(addDays(selected, -7))}>Previous week</Button>
+          <Button disabled={previousWeek === null} onClick={() => previousWeek && setDate(previousWeek)}>
+            Previous week
+          </Button>
           <Button onClick={() => setDate(today)}>This week</Button>
-          <Button onClick={() => setDate(addDays(selected, 7))}>Next week</Button>
+          <Button disabled={nextWeek === null} onClick={() => nextWeek && setDate(nextWeek)}>
+            Next week
+          </Button>
         </div>
       </header>
       {readError ? (
@@ -85,19 +111,47 @@ export function WeeklyView() {
             <label className="reading-field">
               Your notes
               <textarea
+                ref={notesField}
                 tabIndex={0}
                 rows={7}
                 value={draft.value}
+                onFocus={() => setWriting(true)}
+                onBlur={() => setWriting(false)}
                 onChange={(event) => notes.change(data.weekStart, event.target.value)}
                 placeholder="What would you like to remember about this week?"
               />
             </label>
             <div className="reading-row">
-              <p role={draft.error ? 'alert' : 'status'}>{draft.error ?? (pending ? 'Saving…' : 'Saved')}</p>
-              <Button onClick={() => void notes.flushWeek(data.weekStart)}>
-                {draft.error ? 'Retry saving notes' : 'Save notes'}
-              </Button>
+              <p role={draft.error ? 'alert' : 'status'}>
+                {draft.error ?? (draft.conflict ? 'Not saved' : pending ? 'Saving…' : 'Saved')}
+              </p>
+              {draft.conflict ? null : (
+                <Button onClick={() => void notes.flushWeek(data.weekStart)}>
+                  {draft.error ? 'Retry saving notes' : 'Save notes'}
+                </Button>
+              )}
             </div>
+            {draft.conflict ? (
+              <Notice
+                tone="error"
+                actions={
+                  <>
+                    <Button size="small" onClick={() => void notes.keepText(data.weekStart)}>
+                      Keep my text
+                    </Button>
+                    <Button size="small" onClick={() => void notes.loadSavedText(data.weekStart)}>
+                      Load saved text
+                    </Button>
+                  </>
+                }
+              >
+                <p>These notes were changed elsewhere, so your text has not been saved.</p>
+                <p>
+                  Keep my text replaces the saved notes with your text. Load saved text replaces your text
+                  with the saved notes; copy anything you want to keep first.
+                </p>
+              </Notice>
+            ) : null}
           </section>
           {error ? <Notice tone="error">{error}</Notice> : null}
           {preferences.gentle ? null : (
@@ -129,7 +183,7 @@ export function WeeklyView() {
             ) : sources.length ? (
               sources.map((entry) => (
                 <EntryPreview
-                  key={`${entry.id}:${entry.revision}`}
+                  key={entry.id}
                   entry={entry}
                   origin="weekly"
                   bookRequest={{ from: data.weekStart, to: data.weekEnd }}

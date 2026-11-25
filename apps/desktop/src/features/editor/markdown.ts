@@ -121,6 +121,32 @@ function encodeHeadingText(text: string, node: JSONContent, parent: JSONContent)
   return encoded;
 }
 
+/**
+ * The level a heading is written at, from 1 to 6. Tiptap's renderer writes "#" `level`
+ * times, which fails on a negative level, and journal-core does not check attributes, so
+ * a crafted document can hold one. Such a level is written as the nearest of 1 to 6; a
+ * level that is not a number is written as 1, as Tiptap writes a missing one.
+ */
+function markdownHeadingLevel(level: unknown): number {
+  return Math.min(6, Math.max(1, Number.parseInt(String(level), 10) || 1));
+}
+
+/** Writes every heading at a level Markdown has; the document itself keeps its stored level. */
+function keepHeadingLevelsInRange(serializer: { renderNodeToMarkdown?: NodeRenderer }): void {
+  const renderNode = serializer.renderNodeToMarkdown?.bind(serializer);
+  if (!renderNode) return;
+  serializer.renderNodeToMarkdown = (node, parentNode, index, nesting, meta) =>
+    renderNode(
+      node.type === 'heading'
+        ? { ...node, attrs: { ...node.attrs, level: markdownHeadingLevel(node.attrs?.level) } }
+        : node,
+      parentNode,
+      index,
+      nesting,
+      meta,
+    );
+}
+
 /** Encodes plain text for the Markdown serialiser; code keeps its characters exactly. */
 export const encodeMarkdownText: TextEncoder = (text, node, parent) => {
   if (parent?.type === 'codeBlock' || (node.marks ?? []).some((mark) => mark.type === 'code')) return text;
@@ -216,6 +242,7 @@ export const JournalMarkdown = Markdown.extend({
       | undefined;
     if (!serializer) return;
     if (typeof serializer.encodeTextForMarkdown === 'function') serializer.encodeTextForMarkdown = encodeMarkdownText;
+    keepHeadingLevelsInRange(serializer);
     const renderNode = serializer.renderNodeToMarkdown?.bind(serializer);
     if (renderNode) {
       serializer.renderNodeToMarkdown = (node, parentNode, index = 0, level, meta) => {

@@ -19,12 +19,12 @@ function Probe() {
   return <p>{status ? `Backup ${status.state}, ${status.backupCount} saved` : 'No status yet'}</p>;
 }
 
-function renderBackup(api: JournalApi, intervalMs?: number) {
+function renderBackup(api: JournalApi, intervalMs?: number, keychainRecheckMs?: number) {
   render(
     <ApiProvider api={api}>
       <PreferencesProvider>
         <TodayProvider>
-          <BackupProvider intervalMs={intervalMs}>
+          <BackupProvider intervalMs={intervalMs} keychainRecheckMs={keychainRecheckMs}>
             <Probe />
           </BackupProvider>
         </TodayProvider>
@@ -122,6 +122,26 @@ describe('BackupProvider', () => {
     journal.advanceDays(31);
     renderBackup(journal.api);
     await waitFor(async () => expect(await journal.api.listTrash()).toEqual([]));
+  });
+
+  it('looks again while the launch waits for macOS Keychain, then makes the due backup', async () => {
+    const api = createMemoryApi({ storage: createMemoryStorage(), now: () => new Date('2026-11-22T09:00:00Z') });
+    await api.chooseBackupFolder();
+    // The launch still reads the remembered passphrase: the session has none yet.
+    const waiting = { ...(await api.backupStatus()), remembered: true, keychainPending: true };
+    const runDailyBackup = api.runDailyBackup.bind(api);
+    const run = vi.spyOn(api, 'runDailyBackup').mockImplementation(async () => ({ ...waiting }));
+    renderBackup(api, undefined, 10);
+    expect(await screen.findByText('Backup needsPassphrase, 0 saved')).toBeInTheDocument();
+    await waitFor(() => expect(run.mock.calls.length).toBeGreaterThan(2));
+
+    // The prompt is answered: the passphrase it returned is in the session.
+    await api.setBackupPassphrase(PASSPHRASE, true);
+    run.mockImplementation(runDailyBackup);
+    expect(await screen.findByText('Backup upToDate, 1 saved')).toBeInTheDocument();
+    const calls = run.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(run.mock.calls.length).toBe(calls);
   });
 
   it('falls back to the plain status when the routine fails', async () => {

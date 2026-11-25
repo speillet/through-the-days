@@ -195,6 +195,25 @@ describe('trash preview', () => {
     expect(long.startsWith(preview.slice(0, -1))).toBe(true);
   });
 
+  it('keeps a partly formatted word whole and reads a line break as a space', () => {
+    const document: Entry['document'] = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'A peaceful ' },
+            { type: 'text', text: 'after', marks: [{ type: 'bold' }] },
+            { type: 'text', text: 'noon' },
+            { type: 'hardBreak' },
+            { type: 'text', text: 'by the canal.' },
+          ],
+        },
+      ],
+    };
+    expect(previewText({ document, title: '' })).toBe('A peaceful afternoon by the canal.');
+  });
+
   it('joins paragraphs with spaces and falls back to the title', () => {
     expect(previewText({ document: documentOf('First line\nSecond line'), title: '' })).toBe('First line Second line');
     expect(

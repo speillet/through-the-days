@@ -1,9 +1,16 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { App } from '../../App';
-import { createMemoryApi, createMemoryStorage } from '../../api/memory';
-import { newDraft, newId } from '../../domain/entry';
+import type { JournalApi } from '../../api/client';
+import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES } from '../../api/memory';
+import { documentText, newDraft, newId } from '../../domain/entry';
+import { discardAllSavers } from '../../state/autosave';
+import { journalEditor, SAVE_TIMEOUT_MS, typeInEditor } from '../today/testing';
+
+afterEach(() => {
+  discardAllSavers();
+});
 
 it('suspends hidden score filters in Gentle view and restores them without changing the journal', async () => {
   const api = createMemoryApi({
@@ -118,4 +125,98 @@ it('filters timeline sources by included wins without treating an excluded win a
   expect(await screen.findByText('Mean 2/10, n=1')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'My Journal' }));
   expect(await screen.findByText('Synthetic source with an excluded win.')).toBeInTheDocument();
+});
+
+const WAITING_WRITING = 'Synthetic saved words. Synthetic words written on a full disk.';
+/** Today autosaves after its usual pause here; a busy machine gets as long as for a save. */
+const APP_WAIT = { timeout: SAVE_TIMEOUT_MS };
+
+/**
+ * Writing added to today's saved Morning entry fails to save, as on a full disk, and the person
+ * opens Calendar, whose preview still shows the saved version. Saves keep failing until `free()`.
+ */
+async function writingWaitingInCalendar() {
+  const journal = createMemoryApi({
+    storage: createMemoryStorage(),
+    now: () => new Date('2026-11-22T12:00:00Z'),
+  });
+  const saved = await journal.saveEntry({
+    ...newDraft('2026-11-22', 'morning', 'Europe/Paris'),
+    document: {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Synthetic saved words.' }] }],
+    },
+  });
+  const disk = { full: false, refusals: 0 };
+  const api: JournalApi = {
+    ...journal,
+    saveEntry(entry) {
+      if (!disk.full) return journal.saveEntry(entry);
+      disk.refusals += 1;
+      return Promise.reject({ code: 'storage', message: ERROR_MESSAGES.storage });
+    },
+  };
+  render(<App api={api} />);
+  const user = userEvent.setup();
+  expect(await screen.findByRole('textbox', { name: /^Morning journal, / }, APP_WAIT)).toHaveTextContent(
+    'Synthetic saved words.',
+  );
+  disk.full = true;
+  await typeInEditor(user, ' Synthetic words written on a full disk.');
+  expect(await screen.findByText("Couldn't save", {}, APP_WAIT)).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Calendar' }));
+  const preview = await screen.findByRole(
+    'region',
+    { name: 'Morning entry from 22 November 2026' },
+    APP_WAIT,
+  );
+  // Leaving Today tried once more; the writing still waits for its retry.
+  await waitFor(() => expect(disk.refusals).toBe(2), APP_WAIT);
+  return {
+    journal,
+    saved,
+    user,
+    include: within(preview).getByRole('checkbox', { name: 'Include in insights and timelines' }),
+    free: () => {
+      disk.full = false;
+    },
+  };
+}
+
+async function openToday(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', { name: 'Today' }),
+  );
+  await waitFor(() => expect(journalEditor()).toHaveTextContent(WAITING_WRITING), APP_WAIT);
+  expect(await screen.findByText('Saved', {}, APP_WAIT)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Reload saved version' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+}
+
+it('saves an insights change together with writing whose save failed, so its retry cannot conflict', async () => {
+  const { journal, saved, user, include, free } = await writingWaitingInCalendar();
+  free();
+  await user.click(include);
+  await waitFor(
+    async () =>
+      expect(await journal.getEntry(saved.id)).toMatchObject({ includeInInsights: false, revision: 2 }),
+    APP_WAIT,
+  );
+  expect(documentText((await journal.getEntry(saved.id)).document)).toBe(WAITING_WRITING);
+  await openToday(user);
+});
+
+it('withdraws an insights change that could not be saved with the waiting writing', async () => {
+  const { journal, saved, user, include, free } = await writingWaitingInCalendar();
+  await user.click(include);
+  const preview = screen.getByRole('region', { name: 'Morning entry from 22 November 2026' });
+  expect(await within(preview).findByRole('alert', {}, APP_WAIT)).toHaveTextContent(ERROR_MESSAGES.storage);
+  expect(include).toBeChecked();
+  expect(await journal.getEntry(saved.id)).toMatchObject({ includeInInsights: true, revision: 1 });
+
+  // Today's retry saves the writing alone: the failed change did not stay behind with it.
+  free();
+  await openToday(user);
+  expect(await journal.getEntry(saved.id)).toMatchObject({ includeInInsights: true, revision: 2 });
+  expect(documentText((await journal.getEntry(saved.id)).document)).toBe(WAITING_WRITING);
 });

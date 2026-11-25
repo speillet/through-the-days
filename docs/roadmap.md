@@ -92,7 +92,7 @@ The implementation slices and automated/native smoke checks pass. Manual native 
 | Order | Change | Scope |
 |---|---|---|
 | 1 | [build-offline-journal](../openspec/changes/build-offline-journal/proposal.md) (implemented; acceptance open) | Phases 0–1: writing, check-in, durable storage, trash, backup and restore before real use |
-| 1a | [confirm-native-macos-checks](../openspec/changes/confirm-native-macos-checks/proposal.md) | Manual native checks of milestone 1: VoiceOver, real-key keyboard navigation, full screen, native dialogs and Keychain, offline launch, exFAT drive |
+| 1a | [confirm-native-macos-checks](../openspec/changes/confirm-native-macos-checks/proposal.md) | Manual native checks of milestone 1: VoiceOver, real-key keyboard navigation, full screen, native dialogs and Keychain, offline launch, exFAT drive, sleep past midnight |
 | 2 | [add-journal-reading](../openspec/changes/add-journal-reading/proposal.md) (implemented; acceptance open) | Phase 2: calendar, book, timeline, local search, Weekly Review and The Path So Far |
 | 3 | [add-cbt-companion](../openspec/changes/add-cbt-companion/proposal.md) | Phase 3: manual worksheets and experiments, then optional AI; extended templates are P2 |
 | 4 | [add-personal-exploration](../openspec/changes/add-personal-exploration/proposal.md) | Phase 4: tags, keyword statistics, independent goals |

@@ -14,6 +14,7 @@ import { TextField } from '../../components/TextField';
 import { flushAll, hasPending } from '../../state/flush';
 import { useNavigation } from '../../state/navigation';
 import { useStartup } from '../../state/startup';
+import { KEYCHAIN_ACCESS_HINT } from '../backup/status';
 import '../backup/backup.css';
 
 export const ERASE_CONFIRMATION = 'ERASE';
@@ -27,7 +28,7 @@ export const UNSAVED_WRITING_NOT_ERASED =
 /** The warning shown in the reopened workspace when erasing stopped part of the way. */
 export function incompleteErasureNotice(error: CommandError): string {
   if (error.code === 'keychain') {
-    return 'Your journal and backup settings on this Mac were erased, but the backup passphrase could not be removed from macOS Keychain. You can delete it yourself in the Keychain Access app: search for “throughthedays”. Backup files in your backup folder were not deleted.';
+    return `Your journal and backup settings on this Mac were erased, but the backup passphrase could not be removed from macOS Keychain. ${KEYCHAIN_ACCESS_HINT} Backup files in your backup folder were not deleted.`;
   }
   return 'Erasing did not finish, so some app data may still be on this Mac. The app reopened the journal as it is now: check what is left, then try erasing again.';
 }
@@ -37,6 +38,8 @@ function EraseScope() {
     <ul className="settings-list">
       <li>every journal entry, with its writing and check-in answers</li>
       <li>the trash</li>
+      <li>your weekly notes and private milestones</li>
+      <li>local weekly summaries</li>
       <li>your display preferences</li>
       <li>the backup settings on this Mac: the chosen folder and the backup history</li>
       <li>the backup passphrase, including the copy remembered in macOS Keychain</li>
@@ -63,8 +66,8 @@ export function EraseSection() {
       <p className="settings-note">{BACKUP_FILES_KEPT}</p>
       <p className="settings-note">{OTHER_COPIES_KEPT}</p>
       <p className="settings-text">
-        This version keeps no generated summaries, indexes or other data derived from your writing. Erasing is not
-        forensic: traces can remain on the disk until macOS overwrites them.
+        Search uses a temporary index that is never stored. Erasing is not forensic: traces can remain on the disk until
+        macOS overwrites them.
       </p>
       <div className="settings-actions">
         <Button variant="danger" onClick={() => setOpen(true)}>

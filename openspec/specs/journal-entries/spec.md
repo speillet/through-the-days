@@ -36,15 +36,30 @@ The system SHALL default new entries to the current civil date in the configured
 - **WHEN** the person starts at 00:30 and explicitly selects the previous date
 - **THEN** the entry belongs to that selected date and chosen slot.
 
+#### Scenario: Today's date opened from a reading view
+
+- **WHEN** a reading view such as Calendar or The Path So Far opens Today on the current date, and the clock then passes midnight
+- **THEN** Today follows the new date as when opened from the navigation: with no entry open it moves on, and an empty slot chosen after midnight starts its entry on the new date.
+
 #### Scenario: Open entry crosses midnight
 
 - **WHEN** an entry remains open when the clock crosses midnight
 - **THEN** subsequent saves keep its selected journal date.
 
+#### Scenario: Shown again after midnight
+
+- **WHEN** Today shows the current date with no entry open, and its window is reported hidden across midnight, then reported visible again without regaining focus
+- **THEN** Today moves on to the new date as soon as the window is reported visible, so the first answer or keystroke starts the entry on that date.
+
 #### Scenario: Travel
 
 - **WHEN** the configured time zone changes after entries were saved
 - **THEN** those entries retain their journal dates and slot identities.
+
+#### Scenario: First and last journal dates
+
+- **WHEN** the person moves Today's date by day or with the date picker to 1 January 0001 or 31 December 9999
+- **THEN** the step past that date is unavailable and the open date remains a valid journal date.
 
 ### Requirement: Partial drafts
 

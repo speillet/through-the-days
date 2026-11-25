@@ -69,12 +69,15 @@ pub struct WeeklyReview {
     pub report: ReadingReport,
 }
 
+/// The Monday that starts the ISO week of `date`. A week must also have its Sunday, so a notes
+/// save refuses a week the journal cannot complete before it writes anything.
 fn week_start(date: &str) -> Result<String, Error> {
     let date = parse_date(date)?;
-    Ok(date
+    let monday = date
         .checked_sub_days(Days::new(u64::from(date.weekday().num_days_from_monday())))
-        .ok_or(Error::Date)?
-        .to_string())
+        .ok_or(Error::Date)?;
+    monday.checked_add_days(Days::new(6)).ok_or(Error::Date)?;
+    Ok(monday.to_string())
 }
 
 impl Journal {
@@ -144,6 +147,9 @@ impl Journal {
         })
     }
 
+    /// Saves the authored notes of the week holding `date` when its notes revision is still
+    /// `revision`, and advances that revision. The reply is built before the commit, so an error
+    /// means nothing was written.
     pub fn save_weekly_notes(
         &self,
         date: &str,
@@ -151,7 +157,7 @@ impl Journal {
         revision: u32,
     ) -> Result<WeeklyReview, Error> {
         let start = week_start(date)?;
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let mut stored = self.stored_review(&start)?;
         if stored.revision != revision {
             return Err(Error::Conflict);
@@ -159,22 +165,24 @@ impl Journal {
         stored.notes = notes.into();
         stored.revision = stored.revision.checked_add(1).ok_or(Error::Conflict)?;
         transaction.execute("INSERT INTO weekly_reviews(week_start,payload) VALUES(?1,?2) ON CONFLICT(week_start) DO UPDATE SET payload=excluded.payload",params![start,serde_json::to_string(&stored)?])?;
+        // Read back before the commit: if the reply fails, the save is rolled back and the
+        // caller's revision stays current for a retry.
+        let review = self.weekly_review(&start)?;
         transaction.commit()?;
-        self.weekly_review(&start)
+        Ok(review)
     }
 
-    pub fn generate_weekly_summary(
-        &self,
-        date: &str,
-        revision: u32,
-    ) -> Result<WeeklyReview, Error> {
+    /// Replaces the week's disposable local summary and its source fingerprint, which alone
+    /// marks the summary stale. The authored notes and their revision are left to notes saves,
+    /// so a save based on the revision read before this one still succeeds. A week without a
+    /// stored review is created with empty notes at revision 1: stored revisions are positive.
+    /// The reply is built before the commit, so an error means nothing was written.
+    pub fn generate_weekly_summary(&self, date: &str) -> Result<WeeklyReview, Error> {
         let request = self.week_request(date)?;
         let start = request.from.as_deref().ok_or(Error::Date)?;
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let mut stored = self.stored_review(start)?;
-        if stored.revision != revision {
-            return Err(Error::Conflict);
-        }
+        stored.revision = stored.revision.max(1);
         let report = self.reading_report(&request)?;
         stored.summary = Some(format!(
             "{} recorded {} out of 7, with {} saved {}, {} approved small {} and {} reported {}. Saved drafts are included. Missing scores are left out; this is a description of recorded information, not a judgement of the week.",
@@ -200,10 +208,10 @@ impl Journal {
             },
         ));
         stored.fingerprint = Some(self.week_fingerprint(&request)?);
-        stored.revision = stored.revision.checked_add(1).ok_or(Error::Conflict)?;
         transaction.execute("INSERT INTO weekly_reviews(week_start,payload) VALUES(?1,?2) ON CONFLICT(week_start) DO UPDATE SET payload=excluded.payload",params![start,serde_json::to_string(&stored)?])?;
+        let review = self.weekly_review(start)?;
         transaction.commit()?;
-        self.weekly_review(start)
+        Ok(review)
     }
 
     pub fn clear_reading_summaries(&self) -> Result<(), Error> {
@@ -223,7 +231,7 @@ impl Journal {
 
     pub fn save_milestone(&self, mut milestone: Milestone) -> Result<Milestone, Error> {
         milestone.validate()?;
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let stored: Option<String> = transaction
             .query_row(
                 "SELECT payload FROM timeline_milestones WHERE id=?1",
@@ -241,6 +249,8 @@ impl Journal {
         Ok(milestone)
     }
 
+    /// Deletes a milestone at `revision`. Its title and notes leave the journal files as with
+    /// [`Journal::permanently_delete`].
     pub fn delete_milestone(&self, id: &str, revision: u32) -> Result<(), Error> {
         if self.connection.execute(
             "DELETE FROM timeline_milestones WHERE id=?1 AND json_extract(payload,'$.revision')=?2",
@@ -249,6 +259,7 @@ impl Journal {
         {
             return Err(Error::Conflict);
         }
+        self.checkpoint();
         Ok(())
     }
 }

@@ -46,6 +46,11 @@ The system SHALL progressively save from the first interaction, distinguish pend
 - **WHEN** a supported app-quit request is waiting for a save or cannot obtain a renderer flush acknowledgement
 - **THEN** the app remains open with unacknowledged input available for retry; a timeout or event failure does not authorise exit.
 
+#### Scenario: Insights choice during a failed save
+
+- **WHEN** an entry's save has failed and, before its retry, the person changes that entry's Include in insights and timelines choice in a reading view
+- **THEN** the choice is saved together with the unsaved input, or withdrawn if that save fails too, so the retry needs no reload that would discard the input.
+
 ### Requirement: Safe migrations
 
 The system SHALL apply versioned schema migrations without silently dropping existing journal content and SHALL leave a recoverable prior state when a migration fails.

@@ -63,6 +63,21 @@ export function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && parseIsoDate(value) !== null;
 }
 
+/**
+ * The first and last journal dates. Date fields start in year 1, and the YYYY-MM-DD form
+ * shared with journal-core has four-digit years, so date navigation stops at these limits.
+ */
+export const FIRST_JOURNAL_DATE = '0001-01-01';
+export const LAST_JOURNAL_DATE = '9999-12-31';
+
+/**
+ * A real calendar date from FIRST_JOURNAL_DATE to LAST_JOURNAL_DATE, written exactly as
+ * YYYY-MM-DD. A date field also accepts years of five or six digits, which this refuses.
+ */
+export function isJournalDate(value: unknown): value is string {
+  return isIsoDate(value) && value >= FIRST_JOURNAL_DATE && value <= LAST_JOURNAL_DATE;
+}
+
 export function toIsoDate({ year, month, day }: CivilDate): string {
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
@@ -109,6 +124,22 @@ export function weekdayIndex(date: string): number {
 
 export function addDays(date: string, amount: number): string {
   return toIsoDate(civilFromDayNumber(dayNumber(requireDate(date)) + amount));
+}
+
+/**
+ * `target`, reached by a step in `direction` (negative: back in time), or null when that
+ * step passed the first or last journal date, so the control offering it can be disabled.
+ * A step towards the journal dates from before the first one stays possible.
+ */
+export function withinJournalDates(target: string, direction: number): string | null {
+  // After 31 December 9999 the year has five digits, which is not a YYYY-MM-DD date.
+  if (!isIsoDate(target) || (direction < 0 && target < FIRST_JOURNAL_DATE)) return null;
+  return target;
+}
+
+/** The date `amount` days away, or null when that step would pass the first or last journal date. */
+export function stepDays(date: string, amount: number): string | null {
+  return withinJournalDates(addDays(date, amount), amount);
 }
 
 /** "Sunday 22 November 2026". An invalid value is returned unchanged. */
@@ -199,19 +230,21 @@ export interface MonthGridDay {
   inMonth: boolean;
 }
 
-/** Monday-first weeks covering a month, padded with the neighbouring days. */
-export function monthGrid(year: number, month: number): MonthGridDay[][] {
+/**
+ * Monday-first weeks covering a month, padded with the neighbouring days. A padding day
+ * before the first or after the last journal date is null: there is no such date to offer.
+ */
+export function monthGrid(year: number, month: number): (MonthGridDay | null)[][] {
   const first = toIsoDate({ year, month, day: 1 });
-  const start = addDays(first, -weekdayIndex(first));
-  const last = toIsoDate({ year, month, day: daysInMonth(year, month) });
-  const end = addDays(last, 6 - weekdayIndex(last));
-  const weeks: MonthGridDay[][] = [];
-  for (let cursor = start; cursor <= end; ) {
-    const week: MonthGridDay[] = [];
-    for (let index = 0; index < 7; index += 1) {
-      const parsed = requireDate(cursor);
-      week.push({ date: cursor, day: parsed.day, inMonth: parsed.month === month && parsed.year === year });
-      cursor = addDays(cursor, 1);
+  const length = daysInMonth(year, month);
+  const weeks: (MonthGridDay | null)[][] = [];
+  // Days are counted from the 1st, starting on the Monday on or before it.
+  for (let start = -weekdayIndex(first); start < length; start += 7) {
+    const week: (MonthGridDay | null)[] = [];
+    for (let offset = start; offset < start + 7; offset += 1) {
+      const date = addDays(first, offset);
+      const inMonth = offset >= 0 && offset < length;
+      week.push(inMonth || isJournalDate(date) ? { date, day: requireDate(date).day, inMonth } : null);
     }
     weeks.push(week);
   }

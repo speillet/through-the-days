@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useApi, toCommandError } from '../../api/client';
+import { useApi, toCommandError, type JournalApi } from '../../api/client';
 import type { Entry, ReadingReport, ScoreMetric, SearchRequest } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Notice } from '../../components/Notice';
 import { formatLongDate } from '../../domain/dates';
 import { documentText } from '../../domain/entry';
 import { EMOTIONS, emotionById } from '../../domain/emotions';
+import { findSaver } from '../../state/autosave';
 import { useNavigation } from '../../state/navigation';
 import { usePreferences } from '../../state/preferences';
 import { useReading, type ReadingOrigin } from './state';
@@ -235,6 +236,30 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
   );
 }
 
+/**
+ * Saves an entry's insights choice. When Today left the same entry with input it has not saved
+ * (after a failed save, for example), the choice joins that input and both are saved together.
+ * Saving the listed version on its own would replace the revision that input builds on, so its
+ * next save would conflict and could only offer to reload without it. If that save fails, the
+ * choice is withdrawn again and the input keeps waiting for its retry.
+ */
+async function saveInsightsChoice(api: JournalApi, entry: Entry, includeInInsights: boolean) {
+  const saver = findSaver(entry.date, entry.slot);
+  const local = saver?.getSnapshot();
+  if (!saver || !local?.entry || local.entry.id !== entry.id || local.needsReload) {
+    await api.saveEntry({ ...entry, includeInInsights });
+    return;
+  }
+  const choose = (value: Entry['includeInInsights']) => (current: Entry) =>
+    current.includeInInsights === value ? current : { ...current, includeInInsights: value };
+  const previous = local.entry.includeInInsights;
+  saver.update(choose(includeInInsights));
+  if (await saver.flush()) return;
+  const { error } = saver.getSnapshot();
+  saver.update(choose(previous));
+  throw error;
+}
+
 export function EntryPreview({
   entry,
   origin = 'calendar',
@@ -247,18 +272,24 @@ export function EntryPreview({
   const api = useApi();
   const { navigate } = useNavigation();
   const { filters, setBookId, setReturnView, setBookRequest } = useReading();
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // A change belongs to the revision it replaces. Until the refreshed view shows the saved
+  // revision, the checkbox shows the requested value as busy and ignores further changes, so a
+  // second change cannot save over a stale revision. A failed save shows the saved value again
+  // and keeps its error until the entry changes or the person tries again.
+  const [change, setChange] = useState<{ revision: number; include: boolean; error: string | null } | null>(
+    null,
+  );
+  const current = change?.revision === entry.revision ? change : null;
+  const busy = current !== null && current.error === null;
+  const included = busy ? current.include : entry.includeInInsights !== false;
   const slot = SLOT_NAMES[entry.slot];
-  async function toggleInsights(includeInInsights: boolean) {
-    setBusy(true);
-    setError(null);
+  async function toggleInsights(include: boolean) {
+    const { revision } = entry;
+    setChange({ revision, include, error: null });
     try {
-      await api.saveEntry({ ...entry, includeInInsights });
+      await saveInsightsChoice(api, entry, include);
     } catch (caught) {
-      setError(toCommandError(caught).message);
-    } finally {
-      setBusy(false);
+      setChange({ revision, include, error: toCommandError(caught).message });
     }
   }
   return (
@@ -297,17 +328,22 @@ export function EntryPreview({
           Edit {slot} entry
         </Button>
       </div>
+      {/* Like a busy Button, the checkbox keeps keyboard focus while saving, looks busy (reading.css)
+          and ignores changes. */}
       <label className="reading-permission">
         <input
           type="checkbox"
           tabIndex={0}
-          checked={entry.includeInInsights !== false}
-          disabled={busy}
-          onChange={(e) => void toggleInsights(e.target.checked)}
+          checked={included}
+          aria-busy={busy || undefined}
+          aria-disabled={busy || undefined}
+          onChange={(e) => {
+            if (!busy) void toggleInsights(e.target.checked);
+          }}
         />
         Include in insights and timelines
       </label>
-      {error ? <Notice tone="error">{error}</Notice> : null}
+      {current?.error ? <Notice tone="error">{current.error}</Notice> : null}
     </section>
   );
 }

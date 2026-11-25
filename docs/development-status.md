@@ -1,8 +1,48 @@
 # Development status
 
+## Consolidation on November 25, 2026
+
+The validated corrections in PRs #28–31 and #33–43 are integrated into main. The local `fix/23-backup-folder-reads` branch is integrated with the restore error handling and interruption-safe staging. No milestone is archived by this Git cleanup; native manual acceptance remains open.
+
+### Current working copies
+
+| Directory | Branch | State |
+|---|---|---|
+| `through-the-days` | `main` | Consolidated working copy. |
+| `through-the-days-fixes-1` | `fix/13-v2-upgrade-reading-records` | Uncommitted correction retained. |
+| `through-the-days-fixes-3` | `fix/11-backup-off-journal-lock` | Local commit and uncommitted follow-up retained. |
+| `through-the-days-fixes-5` | `fix/7-guard-pending-saves` | Uncommitted correction retained. |
+
+The original journal/reading working files are preserved in stash `dc8299bf641e3e9629d4beb4fb54e8fe73eeb064`. The earlier reading recovery stash is also retained. Inspect a stash before restoring it into an isolated worktree: applying the older files over current main would replace later corrections.
+
+Merged branches and obsolete clean worktrees were removed after checking their ancestry and working files. Git recovery bundles and the old `.reference` verification logs are retained under `.git/cleanup-*20261125*`; these local recovery artifacts are not repository source or product data. Worktrees with unpublished changes were kept.
+
+### Combined verification
+
+All fixtures are synthetic. Validation ran against the assembled code before publication; the published code tree was compared with that snapshot.
+
+| Check | Observed result |
+|---|---|
+| `npm run check` | Passes after aligning callers of the revised summary API. |
+| `npm test -- --maxWorkers=2 --testTimeout=15000` | 514 tests in 44 files pass. The ten settings cases pass again after caller alignment. |
+| `TTD_E2E_PORT=1487 npm run test:e2e -- --workers=2` | 126 WebKit/Chromium cases pass against the bundled frontend. |
+| Rust workspace suites | 189 tests pass: 188 in the sandboxed run, plus the native second-process case rerun with access to its local Unix socket. |
+| `cargo test --workspace --locked --doc` | Both doc-test targets pass. |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | Passes. |
+| macOS debug bundle build | Passes for the assembled native/renderer code. |
+| `npm run smoke:native` | All five synthetic native launches pass, including authored reading-record recovery. |
+| `npm run spec:validate` | 18 proposed/main specification items pass strict validation. |
+| `npm run openspec -- validate --archived --no-interactive` | No archived changes; active acceptance tasks remain open. |
+
+Integration preserves bounded date navigation, stable reading refreshes, pending-entry insights choices, independent notes revisions, lost-reply recovery, formatted-word search and the year-10000 weekly query. Restore copies retain distinct source/storage errors while refusing non-regular inputs and enforcing size bounds.
+
+## Earlier development audit
+
+The sections below record the November 24 implementation audit and its original worktree layout. The current layout and combined verification above supersede that layout; the recorded earlier test runs and manual acceptance limits remain historical evidence.
+
 Audited on November 24, 2026. This records the development branch, not a published release or a completed OpenSpec archive.
 
-## Working copies
+### Working copies
 
 These directories are Git worktrees of the same repository, sharing committed history but keeping separate branches and working files:
 
@@ -14,7 +54,7 @@ These directories are Git worktrees of the same repository, sharing committed hi
 
 Milestone 1 has separate native-fix, browser-isolation, specification and quit-regression commits. Reading changes follow that base; the original worktree is not overwritten. A local Git stash preserves the pre-integration reading snapshot as an additional recovery point.
 
-## Implementation
+### Implementation
 
 | Milestone | Present in this branch | Remaining before completion |
 |---|---|---|
@@ -30,7 +70,7 @@ Weekly note saves and summary revisions are serialised per week. Editing and nav
 
 Book View retains its source selection without replacing the parent's filters. Timeline and weekly selections retain insight eligibility; original Calendar/Book reading still exposes the person's own records. Custom timeline dates are independent of My Journal dates. Gentle view suspends hidden numeric filters while preserving the saved choices, and an excluded win cannot affect insight win filters or denominators.
 
-## Verification performed
+### Verification performed
 
 All checks use synthetic data. The audit ran against the reading implementation in `through-the-days-reading`; its backend, views and verification are kept in separate commits.
 
@@ -56,7 +96,7 @@ The first PR #5 interface run reached the default five-second timeout in three m
 
 Independent standards and specification reviews were repeated after corrections. The notes/summary revision race, false empty-week error state and duplicated source-eligibility logic were addressed; neither review reports a remaining concrete finding. This does not replace the outstanding native manual checks.
 
-## Open acceptance and delivery work
+### Open acceptance and delivery work
 
 - Keep the original worktree intact. Its native cleanup is integrated through the milestone-1 base; neither this branch nor PR #4 includes the original worktree's uncommitted files indiscriminately.
 - Complete the original milestones' unchecked acceptance tasks. The [native checklist](../openspec/changes/confirm-native-macos-checks/tasks.md) tracks VoiceOver, real-key navigation, full screen, dialogs/Keychain, networking disabled, and an actual exFAT backup drive. These checks have not been performed by this audit.
