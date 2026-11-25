@@ -109,7 +109,8 @@ export function PathView() {
   // A custom range moved to end today keeps its length, unless it would then start before 1 January 0001.
   const todayFrom = validRange ? stepDays(today, 1 - span) : null;
   function endToday() {
-    if (range !== 0) setDate(today);
+    // A preset range with no chosen date follows today, also after midnight.
+    if (range !== 0) setDate(null);
     else if (todayFrom) setPathCustomRange({ from: todayFrom, to: today });
   }
   function openBook(id: string) {

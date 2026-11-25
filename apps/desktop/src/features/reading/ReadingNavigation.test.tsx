@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it } from 'vitest';
 import { App } from '../../App';
@@ -272,4 +272,112 @@ it('stops one-year and custom timelines and the weekly review at 1 January 0001'
   ).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Previous week' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Next week' })).toBeEnabled();
+});
+
+/** Calendar's own Today control, not the navigation's Today view. */
+function calendarToday() {
+  return within(screen.getByRole('main')).getByRole('button', { name: 'Today' });
+}
+
+/** Moves the synthetic clock and lets the app notice, as when the window is activated again. */
+function passTime(clock: { set(next: Date): void }, next: Date) {
+  clock.set(next);
+  act(() => {
+    window.dispatchEvent(new Event('focus'));
+  });
+}
+
+function clockedJournal(start: Date) {
+  let now = start;
+  const api = createMemoryApi({ storage: createMemoryStorage(), now: () => now });
+  return { api, clock: { set: (next: Date) => (now = next) } };
+}
+
+it("returns Calendar to today's month with Today after paging, also when today is already chosen", async () => {
+  const api = await journal();
+  render(<App api={api} initialView="calendar" />);
+  const user = userEvent.setup();
+  const todayCell = () => screen.getByRole('button', { name: 'Sunday 22 November 2026, today' });
+  expect(await screen.findByRole('grid', { name: 'November 2026' })).toBeInTheDocument();
+  // With no date chosen, with today's cell chosen, and after Today itself.
+  for (const choose of [async () => {}, () => user.click(todayCell()), () => user.click(calendarToday())]) {
+    await choose();
+    await user.click(screen.getByRole('button', { name: 'Previous month' }));
+    await user.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(screen.getByRole('grid', { name: 'September 2026' })).toBeInTheDocument();
+    await user.click(calendarToday());
+    expect(screen.getByRole('grid', { name: 'November 2026' })).toBeInTheDocument();
+    expect(todayCell()).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('heading', { level: 2, name: 'Sunday 22 November 2026' })).toBeInTheDocument();
+  }
+});
+
+it('follows today past midnight after Today in Calendar, in Calendar and Trends', async () => {
+  // 22:00 in Paris on Tuesday 24 November 2026.
+  const { api, clock } = clockedJournal(new Date('2026-11-24T21:00:00Z'));
+  render(<App api={api} initialView="calendar" />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: 'Friday 20 November 2026' }));
+  expect(screen.getByRole('heading', { level: 2, name: 'Friday 20 November 2026' })).toBeInTheDocument();
+  await user.click(calendarToday());
+  expect(screen.getByRole('heading', { level: 2, name: 'Tuesday 24 November 2026' })).toBeInTheDocument();
+
+  passTime(clock, new Date('2026-11-24T23:10:00Z')); // 00:10 on Wednesday 25 November.
+  expect(
+    await screen.findByRole('heading', { level: 2, name: 'Wednesday 25 November 2026' }),
+  ).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Wednesday 25 November 2026, today' })).toHaveAttribute(
+      'tabindex',
+      '0',
+    ),
+  );
+  await user.click(screen.getByRole('button', { name: 'Trends' }));
+  expect(await screen.findByLabelText('Ending on')).toHaveValue('2026-11-25');
+});
+
+it('follows today into the new week past midnight after This week', async () => {
+  // 22:00 in Paris on Sunday 29 November 2026.
+  const { api, clock } = clockedJournal(new Date('2026-11-29T21:00:00Z'));
+  render(<App api={api} initialView="weekly" />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: 'Previous week' }));
+  expect(
+    await screen.findByRole('heading', { name: 'Monday 16 November 2026 to Sunday 22 November 2026' }),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'This week' }));
+  expect(
+    await screen.findByRole('heading', { name: 'Monday 23 November 2026 to Sunday 29 November 2026' }),
+  ).toBeInTheDocument();
+
+  passTime(clock, new Date('2026-11-29T23:10:00Z')); // 00:10 on Monday 30 November.
+  expect(
+    await screen.findByRole('heading', { name: 'Monday 30 November 2026 to Sunday 6 December 2026' }),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Trends' }));
+  expect(await screen.findByLabelText('Ending on')).toHaveValue('2026-11-30');
+});
+
+it('follows today past midnight after End today on a preset range in The Path So Far', async () => {
+  // 22:00 in Paris on Sunday 29 November 2026.
+  const { api, clock } = clockedJournal(new Date('2026-11-29T21:00:00Z'));
+  render(<App api={api} initialView="path" />);
+  const user = userEvent.setup();
+  const range = (text: string) => screen.getByText(new RegExp(`^${text}\\.`));
+  await user.click(await screen.findByRole('button', { name: '7 days' }));
+  await user.click(screen.getByRole('button', { name: 'Earlier range' }));
+  expect(range('Monday 16 November 2026 to Sunday 22 November 2026')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'End today' }));
+  expect(range('Monday 23 November 2026 to Sunday 29 November 2026')).toBeInTheDocument();
+
+  passTime(clock, new Date('2026-11-29T23:10:00Z')); // 00:10 on Monday 30 November.
+  await waitFor(() =>
+    expect(range('Tuesday 24 November 2026 to Monday 30 November 2026')).toBeInTheDocument(),
+  );
+  await user.click(screen.getByRole('button', { name: 'Add milestone' }));
+  const dialog = screen.getByRole('dialog', { name: 'Add milestone' });
+  expect(within(dialog).getByLabelText('Date')).toHaveValue('2026-11-30');
+  await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  await user.click(screen.getByRole('button', { name: 'Trends' }));
+  expect(await screen.findByLabelText('Ending on')).toHaveValue('2026-11-30');
 });

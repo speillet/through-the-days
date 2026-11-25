@@ -79,7 +79,16 @@ export function WeeklyView() {
           <Button disabled={previousWeek === null} onClick={() => previousWeek && setDate(previousWeek)}>
             Previous week
           </Button>
-          <Button onClick={() => setDate(today)}>This week</Button>
+          <Button
+            onClick={() => {
+              // With no chosen week the review follows today again, also into a new week after
+              // midnight. This also lets go of an earlier week kept for notes still being saved.
+              setDate(null);
+              setFollowed(today);
+            }}
+          >
+            This week
+          </Button>
           <Button disabled={nextWeek === null} onClick={() => nextWeek && setDate(nextWeek)}>
             Next week
           </Button>

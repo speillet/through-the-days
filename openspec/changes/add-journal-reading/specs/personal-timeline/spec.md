@@ -42,6 +42,11 @@ The Path So Far SHALL offer 7/30/90-day, one-year, and custom ranges with access
 - **WHEN** Earlier range or Later range would move a preset range's end date, or either date of a custom range, before 1 January 0001 or after 31 December 9999, or a typed From or To date lies outside those dates
 - **THEN** that control is unavailable or the typed date is ignored, and the timeline keeps its current range.
 
+#### Scenario: End today followed past midnight
+
+- **WHEN** the person activates End today on a 7-, 30- or 90-day or one-year range and the clock then passes midnight while the app stays open
+- **THEN** the range ends on the new date, and Add milestone proposes that date.
+
 ### Requirement: Optional available layers
 
 The timeline SHALL offer hideable layers for check-ins, approved wins and manual milestones, respect insight permissions in every available layer, and identify unavailable later layers without invented data. Later experiments, tags, goals and imports remain owned by their respective changes.

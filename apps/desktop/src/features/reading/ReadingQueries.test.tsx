@@ -254,6 +254,44 @@ it('keeps the shown week while notes the person has left are still saving or fai
   }
 });
 
+it('shows the new week with This week while the notes of the week kept on screen are still saving', async () => {
+  // 23:58 in Paris on Sunday 29 November 2026.
+  let now = new Date('2026-11-29T22:58:00Z');
+  const journal = createMemoryApi({ storage: createMemoryStorage(), now: () => now });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const api: JournalApi = {
+    ...journal,
+    async saveWeeklyNotes(date, notes, revision) {
+      await held;
+      return journal.saveWeeklyNotes(date, notes, revision);
+    },
+  };
+  render(<App api={api} initialView="weekly" />);
+  const user = userEvent.setup();
+  const week = 'Monday 23 November 2026 to Sunday 29 November 2026';
+  expect(await screen.findByRole('heading', { name: week })).toBeInTheDocument();
+  const text = 'Synthetic notes still saving after midnight.';
+  await user.type(screen.getByRole('textbox', { name: 'Your notes' }), text);
+  await user.click(screen.getByRole('button', { name: 'Save notes' }));
+  now = new Date('2026-11-29T23:00:30Z'); // 00:00 on Monday 30 November.
+  await act(async () => {
+    window.dispatchEvent(new Event('focus'));
+  });
+  expect(screen.getByRole('heading', { name: week })).toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: 'This week' }));
+  expect(
+    await screen.findByRole('heading', { name: 'Monday 30 November 2026 to Sunday 6 December 2026' }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Your notes' })).toHaveValue('');
+  await act(async () => release());
+  await waitFor(async () => expect((await journal.weeklyReview('2026-11-29')).notes).toBe(text));
+  expect((await journal.weeklyReview('2026-11-30')).revision).toBe(0);
+});
+
 it('reports a weekly source load error and retries without claiming the week is empty', async () => {
   const api = createMemoryApi({
     storage: createMemoryStorage(),
@@ -345,6 +383,33 @@ it('keeps the browsed Calendar month and focus while a window activation refresh
   await reads.answer();
   expect(screen.getByText('December 2026')).toBeInTheDocument();
   expect(next).toHaveFocus();
+});
+
+it('keeps the browsed Calendar month while a new search or filter loads', async () => {
+  const journal = syntheticJournal();
+  await journal.saveEntry(writing('morning', 'Synthetic walk by the river.'));
+  const reads = heldReads(journal);
+  render(<App api={reads.api} initialView="calendar" />);
+  await opened(reads);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: 'Previous month' }));
+  await user.click(screen.getByRole('button', { name: 'Previous month' }));
+  const grid = screen.getByRole('grid', { name: 'September 2026' });
+  await user.type(screen.getByRole('searchbox', { name: 'Search journal' }), 'walk');
+  await reads.waiting();
+  expect(screen.getByText('Opening saved entries…')).toBeInTheDocument();
+  expect(screen.getByRole('grid', { name: 'September 2026' })).toBe(grid);
+  await reads.answer();
+  expect(screen.getByRole('grid', { name: 'September 2026' })).toBe(grid);
+  expect(screen.getByText('Synthetic walk by the river.')).toBeInTheDocument();
+
+  fireEvent.change(screen.getByRole('combobox', { name: 'Slot filter' }), { target: { value: 'evening' } });
+  await reads.waiting();
+  expect(screen.getByRole('grid', { name: 'September 2026' })).toBe(grid);
+  await reads.answer();
+  expect(screen.getByRole('grid', { name: 'September 2026' })).toBe(grid);
+  expect(screen.queryByText('Opening saved entries…')).not.toBeInTheDocument();
+  expect(screen.getByText('No saved entry on this date.')).toBeInTheDocument();
 });
 
 it('keeps the weekly notes caret and the summary button focused through refreshes', async () => {

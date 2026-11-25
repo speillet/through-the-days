@@ -32,6 +32,16 @@ The calendar SHALL provide previous/next month, Today, Monday-first dates, zero/
 - **WHEN** the calendar shows January 0001 or December 9999
 - **THEN** every date of that month is shown, no date before 1 January 0001 or after 31 December 9999 is offered, and month paging and keyboard moves stop at that limit.
 
+#### Scenario: Today after paging
+
+- **WHEN** the person pages the calendar to another month and activates Today, including when today is already the selected date
+- **THEN** the calendar shows today's month, with today's date as its keyboard stop and in the preview.
+
+#### Scenario: Today followed past midnight
+
+- **WHEN** the person activates Today and the clock then passes midnight while the app stays open
+- **THEN** the calendar selects and previews the new date, as when no date was chosen.
+
 ### Requirement: Consistent saved observations
 
 The calendar SHALL show the same current saved entry content and check-in values as the editor and other reading views.
@@ -69,3 +79,8 @@ The system SHALL provide local full-text search and combinable journal filters w
 
 - **WHEN** the person formats part of a saved word, such as "after" in bold within "afternoon", and searches the journal
 - **THEN** search finds the entry by the whole word but not by the formatted part alone, and its excerpt shows the text without a line break where the formatting changes.
+
+#### Scenario: Filters change while another month is shown
+
+- **WHEN** the person browses another month in Calendar and then types a search or changes a filter
+- **THEN** the calendar stays in place on that month while the matching entries load, showing no slot markers until they arrive.

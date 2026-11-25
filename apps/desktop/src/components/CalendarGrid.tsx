@@ -36,6 +36,11 @@ export interface CalendarGridProps {
   renderDay?: (date: string) => ReactNode;
   dayDescription?: (date: string) => string;
   dayMarkerLabel?: (date: string) => string;
+  /**
+   * Changing this number shows the chosen date's month again and puts that date in the Tab
+   * order, even when `value` is unchanged (a Today control after paging to another month).
+   */
+  reveal?: number;
 }
 
 interface Month {
@@ -78,6 +83,7 @@ export function CalendarGrid({
   renderDay,
   dayDescription,
   dayMarkerLabel,
+  reveal,
 }: CalendarGridProps) {
   const labelId = useId();
   const [focused, setFocused] = useState(value);
@@ -85,11 +91,11 @@ export function CalendarGrid({
   const gridRef = useRef<HTMLTableElement>(null);
   const moveFocus = useRef(autoFocus);
 
-  // A new chosen date from outside shows its month.
+  // A new chosen date from outside, or a new reveal, shows its month.
   useEffect(() => {
     setFocused(value);
     setVisible(monthOf(value));
-  }, [value]);
+  }, [value, reveal]);
 
   useEffect(() => {
     if (!moveFocus.current) return;
