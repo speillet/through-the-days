@@ -1595,6 +1595,16 @@ fn a_new_mac_restores_with_only_the_backup_file_and_its_passphrase() {
     assert_eq!(app.lock().pick_restore_file(None), None);
 }
 
+/// The notes, revision and local summary of the week of 22 November 2026, and the number of
+/// private milestones, as the reading commands return them.
+fn reading_records(app: &AppState) -> (String, u32, Option<String>, usize) {
+    let core = app.lock();
+    let journal = core.journal().unwrap();
+    let review = journal.weekly_review("2026-11-22").unwrap();
+    let milestones = journal.milestones().unwrap().len();
+    (review.notes, review.revision, review.summary, milestones)
+}
+
 #[test]
 fn erasing_removes_app_data_and_secrets_but_never_the_backup_folder() {
     let fixture = Fixture::new();
@@ -1609,6 +1619,28 @@ fn erasing_removes_app_data_and_secrets_but_never_the_backup_folder() {
             "Synthetic entry to erase.",
         ))
         .unwrap();
+    // Weekly notes, a local weekly summary and a private milestone, which Settings lists among
+    // what erasing removes.
+    {
+        let core = app.lock();
+        let journal = core.journal().unwrap();
+        let review = journal
+            .save_weekly_notes("2026-11-22", "Synthetic weekly notes to erase.", 0)
+            .unwrap();
+        journal
+            .generate_weekly_summary(&review.week_start, review.revision)
+            .unwrap();
+        journal
+            .save_milestone(journal_core::Milestone::new(
+                "2026-11-21",
+                "Synthetic milestone to erase",
+            ))
+            .unwrap();
+    }
+    let (notes, _, summary, milestones) = reading_records(&app);
+    assert_eq!(notes, "Synthetic weekly notes to erase.");
+    assert!(summary.is_some());
+    assert_eq!(milestones, 1);
     // Synthetic files stand in for earlier backups and other files in the chosen folder.
     fs::write(
         fixture.folder().join("ttd-1-synthetic.ttd.age"),
@@ -1636,6 +1668,7 @@ fn erasing_removes_app_data_and_secrets_but_never_the_backup_folder() {
     let startup = app.erase_app_data(ERASE_CONFIRMATION, noon()).unwrap();
     assert_eq!(startup.state, StartupState::Ready);
     assert!(app.lock().list_entries().unwrap().is_empty());
+    assert_eq!(reading_records(&app), (String::new(), 0, None, 0));
     assert!(!fixture.paths().plan.exists());
     assert!(leftovers.iter().all(|leftover| !leftover.exists()));
     assert_eq!(fixture.keychain.contents().item, None);
@@ -1647,6 +1680,7 @@ fn erasing_removes_app_data_and_secrets_but_never_the_backup_folder() {
     // The next launch finds the fresh journal and no remembered settings.
     let app = fixture.launch();
     assert!(app.lock().list_entries().unwrap().is_empty());
+    assert_eq!(reading_records(&app), (String::new(), 0, None, 0));
     assert_eq!(
         app.lock().backup_status(noon()).state,
         BackupState::NeedsFolder

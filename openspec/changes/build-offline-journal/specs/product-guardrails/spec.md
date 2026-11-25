@@ -91,6 +91,11 @@ The system SHALL allow clearing derived indexes, embeddings, generated summaries
 - **WHEN** the person clears generated summaries, pins, and semantic indexes
 - **THEN** the selected derived records disappear while original writing and explicitly authored review notes remain unchanged.
 
+#### Scenario: Cleared summaries remain in earlier backups
+
+- **WHEN** the app offers to clear generated summaries
+- **THEN** it explains that backups made before clearing still contain those summaries until the backups are removed.
+
 #### Scenario: Source removed during indexing
 
 - **WHEN** a source is trashed, deleted, or excluded while a rebuild is pending
