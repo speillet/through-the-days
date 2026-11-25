@@ -11,15 +11,22 @@ export interface PreviewReview {
   fingerprint: string | null;
 }
 // Native search indexes with SQLite FTS5's unicode61 tokenizer (remove_diacritics 2), approximated here.
-// Words are runs of letters, numbers and private-use characters. Case folds, and only letters with an
-// ASCII base lose their accents: an accented Latin e matches e, while a Greek letter keeps its accent.
+// Words are runs of letters, numbers, private-use characters and Thai vowel and tone marks. Case folds,
+// and only letters with an ASCII base lose their accents: an accented Latin e matches e, while a Greek
+// letter keeps its accent. Chinese, Japanese, Korean and Thai do not separate words with spaces, so each
+// Han, kana, Hangul or Thai character, with the Thai marks after it, is a word of its own. The character
+// ranges and marks are those of is_unspaced and THAI_MARKS in crates/journal-core/src/reading.rs.
+const UNSPACED_CHARACTER =
+  /([\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u1100-\u11ff\u3005-\u3007\u3021-\u3029\u3038-\u303b\u3041-\u30ff\u3131-\u318e\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\ua960-\ua97f\uac00-\ud7ff\uf900-\ufaff\uff66-\uffdc\u{1aff0}-\u{1b16f}\u{20000}-\u{3ffff}][\u0e31\u0e34-\u0e3a\u0e47-\u0e4e]*)/gu;
 const searchWords = (text: string): string[] =>
   text
     .toLowerCase()
+    // Before normalising, as natively: decomposed Hangul or kana then stays split by character.
+    .replace(UNSPACED_CHARACTER, ' $1 ')
     .normalize('NFD')
     .replace(/([a-z])[\u0300-\u036f]+/g, '$1')
     .normalize('NFC')
-    .match(/[\p{L}\p{N}\p{Co}]+/gu) ?? [];
+    .match(/[\p{L}\p{N}\p{Co}\u0e31\u0e34-\u0e3a\u0e47-\u0e4e]+/gu) ?? [];
 // Each space-separated part of the query must appear as consecutive words, so "well-being" finds
 // "well being" but not "being well". A part without a word, such as "?" or an emoji, is ignored,
 // and a query without any word finds nothing.

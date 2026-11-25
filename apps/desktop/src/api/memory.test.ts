@@ -370,6 +370,31 @@ describe('memory journal: search, as native search does', () => {
     await expect(api.searchEntries({ text: 'ΚΑΛΗΜΈΡΑ' })).resolves.toEqual([together]);
     await expect(api.searchEntries({ text: 'καλημερα' })).resolves.toEqual([]);
   });
+
+  it('finds words inside Chinese, Japanese, Korean and Thai text, in order and with Thai marks', async () => {
+    const { api } = setup();
+    // Deliberate multilingual synthetic fixtures; these scripts do not separate words with spaces.
+    const japanese = await api.saveEntry(
+      withText(draft('2026-11-18'), 'Synthetic 今日は公園を散歩した。iPhoneで写真を撮った'),
+    );
+    const chinese = await api.saveEntry(withText(draft('2026-11-19'), 'Synthetic 今天我去公园散步了。'));
+    const thai = await api.saveEntry(withText(draft('2026-11-20'), 'Synthetic วันนี้ฉันไปเดินเล่นที่สวน'));
+    const korean = await api.saveEntry(withText(draft('2026-11-21'), 'Synthetic 오늘 학교에 갔다.'));
+    const search = async (text: string) => (await api.searchEntries({ text })).map((entry) => entry.id);
+    for (const text of ['散歩', '公園を散歩', '「散歩した」', 'iphone', 'iPhoneで写真'])
+      expect(await search(text), text).toEqual([japanese.id]);
+    expect(await search('公园')).toEqual([chinese.id]);
+    expect(await search('今')).toEqual([chinese.id, japanese.id]);
+    for (const text of ['เดินเล่น', 'ไปเดิน']) expect(await search(text), text).toEqual([thai.id]);
+    // Hangul is split by syllable, so a noun finds its form with an attached particle.
+    for (const text of ['학교', '학교에', '교에']) expect(await search(text), text).toEqual([korean.id]);
+    // Characters out of order or apart, or a Thai word without its vowel mark, are not found.
+    for (const text of ['歩散', '公園散歩', 'เล่นเดิน', 'เดน', '교학', '花火', '散歩 OR 公园'])
+      expect(await search(text), text).toEqual([]);
+    const report = await api.readingReport({ text: '散歩', from: '2026-11-18', to: '2026-11-21' });
+    expect([report.entries, report.recordedDays]).toEqual([1, 1]);
+    expect(report.days[0].observations.map((observation) => observation.id)).toEqual([japanese.id]);
+  });
 });
 
 describe('memory journal: trash', () => {
