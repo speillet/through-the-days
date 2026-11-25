@@ -151,7 +151,7 @@ impl Journal {
         revision: u32,
     ) -> Result<WeeklyReview, Error> {
         let start = week_start(date)?;
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let mut stored = self.stored_review(&start)?;
         if stored.revision != revision {
             return Err(Error::Conflict);
@@ -170,7 +170,7 @@ impl Journal {
     ) -> Result<WeeklyReview, Error> {
         let request = self.week_request(date)?;
         let start = request.from.as_deref().ok_or(Error::Date)?;
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let mut stored = self.stored_review(start)?;
         if stored.revision != revision {
             return Err(Error::Conflict);
@@ -223,7 +223,7 @@ impl Journal {
 
     pub fn save_milestone(&self, mut milestone: Milestone) -> Result<Milestone, Error> {
         milestone.validate()?;
-        let transaction = self.connection.unchecked_transaction()?;
+        let transaction = self.write_transaction()?;
         let stored: Option<String> = transaction
             .query_row(
                 "SELECT payload FROM timeline_milestones WHERE id=?1",

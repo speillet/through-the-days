@@ -54,3 +54,12 @@ The application SHALL default to English en-GB dates and Monday-first calendars 
 
 - **WHEN** the person changes the journal time zone
 - **THEN** new-entry defaults use that setting while historical journal dates remain unchanged.
+
+### Requirement: One running copy
+
+The application SHALL run as a single copy: launching it again while it is open SHALL bring the open window forward, and that launch SHALL exit before it opens the journal or changes any application file.
+
+#### Scenario: Second launch while open
+
+- **WHEN** the person launches the app again while its window is open
+- **THEN** the open window comes forward with its writing intact, no second window opens, and the second launch leaves the journal, its backups and the backup settings untouched.
