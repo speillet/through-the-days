@@ -4,8 +4,9 @@
 
 import { useState, type Ref } from 'react';
 import { TextField } from '../../components/TextField';
+import { PASSPHRASE_MIN_LENGTH } from '../../domain/backup';
 import { Checkbox } from './Checkbox';
-import { PASSPHRASE_MIN_LENGTH, type PassphraseProblems } from './status';
+import type { PassphraseProblems } from './status';
 
 export interface PassphraseValues {
   passphrase: string;

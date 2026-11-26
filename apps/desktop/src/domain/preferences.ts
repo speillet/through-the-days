@@ -1,7 +1,10 @@
 // Display preferences shared by every surface, and the Gentle view rule that
 // composes them. Hiding something never changes or deletes saved values.
 
-import type { Preferences, TextScale, Theme } from '../api/types';
+import type { Preferences, ScoreMetric, TextScale, Theme } from '../api/types';
+
+/** The four score metrics, in display order; journal-core accepts exactly these values. */
+export const SCORE_METRICS: readonly ScoreMetric[] = ['mood', 'energy', 'pride', 'progress'];
 
 /** journal-core's Preferences::default(). */
 export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze<Preferences>({
@@ -39,6 +42,9 @@ export const TEXT_SCALE_OPTIONS: readonly { id: TextScale; label: string; descri
 export function isTextScale(value: unknown): value is TextScale {
   return TEXT_SCALES.includes(value as TextScale);
 }
+
+/** Day ranges of Trends and the timeline; journal-core accepts exactly these values. */
+export const TIMELINE_RANGES = [7, 14, 30] as const;
 
 /**
  * The next text size for the View shortcuts: Command-plus (+1), Command-minus (-1) and

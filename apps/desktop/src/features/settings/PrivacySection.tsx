@@ -5,7 +5,7 @@
 // here; backups made before that still contain them. SettingsView renders the h2.
 
 import { useStartup } from '../../state/startup';
-import { BACKUPS_KEPT } from '../backup/status';
+import { BACKUPS_KEPT } from '../../domain/backup';
 import '../backup/backup.css';
 import {useState} from 'react';
 import {useApi,toCommandError} from '../../api/client';

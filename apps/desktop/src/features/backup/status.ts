@@ -2,13 +2,8 @@
 // startup gate. Nothing here says a backup succeeded unless the journal reported it.
 
 import type { BackupStatus, KeychainWarning } from '../../api/types';
+import { PASSPHRASE_MIN_LENGTH } from '../../domain/backup';
 import { formatDateTime } from '../../domain/dates';
-
-/** journal-core's rule: at least 12 characters, counted as Unicode scalar values. */
-export const PASSPHRASE_MIN_LENGTH = 12;
-
-/** D-009: the 30 latest validated backups are kept. */
-export const BACKUPS_KEPT = 30;
 
 export function passphraseLength(passphrase: string): number {
   return Array.from(passphrase).length;

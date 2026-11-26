@@ -7,9 +7,7 @@
 import { Extension, type JSONContent } from '@tiptap/core';
 import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
-
-/** Deepest node level journal-core accepts, counting the doc node and text nodes. */
-export const MAX_DOCUMENT_DEPTH = 32;
+import { MAX_DOCUMENT_DEPTH } from '../../domain/document';
 
 /** Wrapping that pasting may add around pasted content (for example a list around list items). */
 const PASTE_WRAPPING_MARGIN = 2;

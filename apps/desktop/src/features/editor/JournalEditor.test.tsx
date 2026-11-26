@@ -5,10 +5,11 @@ import { TextSelection } from '@tiptap/pm/state';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { JOURNAL_MARK_TYPES, JOURNAL_NODE_TYPES, MAX_DOCUMENT_DEPTH } from '../../domain/document';
 import { canEditExactly } from './content';
-import { countWords, journalExtensions, JOURNAL_MARK_TYPES, JOURNAL_NODE_TYPES } from './extensions';
+import { countWords, journalExtensions } from './extensions';
 import { JournalEditor, PROTECTED_DOCUMENT_MESSAGE } from './JournalEditor';
-import { documentDepth, MAX_DOCUMENT_DEPTH } from './nesting';
+import { documentDepth } from './nesting';
 
 const editors: Editor[] = [];
 

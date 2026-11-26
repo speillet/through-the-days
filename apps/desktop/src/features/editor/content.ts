@@ -5,9 +5,10 @@
 
 import { getSchema, type JSONContent } from '@tiptap/core';
 import type { Node as ProseMirrorNode, Schema } from '@tiptap/pm/model';
+import { MAX_DOCUMENT_DEPTH } from '../../domain/document';
 import { documentText } from '../../domain/entry';
 import { journalExtensions } from './extensions';
-import { MAX_DOCUMENT_DEPTH, structuralDepth } from './nesting';
+import { structuralDepth } from './nesting';
 
 let schema: Schema | null = null;
 

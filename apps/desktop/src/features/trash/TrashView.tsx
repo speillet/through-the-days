@@ -13,7 +13,7 @@ import { SLOT_LABELS } from '../../domain/copy';
 import { formatDate, formatDateTime, formatLongDate, todayIn } from '../../domain/dates';
 import { documentText, isBlank } from '../../domain/entry';
 import { usePreferences } from '../../state/preferences';
-import { BACKUPS_KEPT } from '../backup/status';
+import { BACKUPS_KEPT } from '../../domain/backup';
 import './trash.css';
 
 /** Graphemes shown in a preview before it is shortened. */
