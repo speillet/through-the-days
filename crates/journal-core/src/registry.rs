@@ -27,7 +27,7 @@ use std::{
 pub(crate) const REGISTRY_FILE: &str = ".through-the-days-backups.json";
 const REGISTRY_VERSION: u32 = 1;
 /// Number of newest validated backups kept by pruning (D-009).
-pub(crate) const RETAINED_BACKUPS: usize = 30;
+const RETAINED_BACKUPS: usize = 30;
 /// Largest registry read: room for thousands of entries, where retention keeps about 30.
 const MAXIMUM_REGISTRY_BYTES: u64 = 1 << 20;
 /// Latest creation time of a registered backup, 9999-12-31T23:59:59Z in Unix seconds.
@@ -63,7 +63,7 @@ impl Registered {
 }
 
 /// A validated backup available in the chosen folder.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupRecord {
     /// File name inside the backup folder.
@@ -182,7 +182,7 @@ pub(crate) fn prune(folder: &Path, published: &str, published_at: i64) -> bool {
 }
 
 /// Whether `name` has the shape of a published backup file name, with no path components.
-pub(crate) fn is_backup_name(name: &str) -> bool {
+fn is_backup_name(name: &str) -> bool {
     name.len() <= 128
         && name.starts_with("ttd-")
         && name.ends_with(".ttd.age")

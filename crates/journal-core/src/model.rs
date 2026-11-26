@@ -65,17 +65,6 @@ pub struct Win {
     pub include_in_insights: bool,
 }
 
-impl Win {
-    pub fn manual(text: &str) -> Self {
-        Self {
-            id: Uuid::new_v4().to_string(),
-            text: text.to_owned(),
-            origin: "manual".into(),
-            include_in_insights: true,
-        }
-    }
-}
-
 /// The complete entry aggregate, saved and acknowledged as one revision.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -88,17 +77,13 @@ pub struct Entry {
     pub document: Value,
     /// Last acknowledged revision; 0 for an entry that has never been saved.
     pub revision: u32,
-    #[serde(default)]
     pub mood: Option<i32>,
-    #[serde(default)]
     pub energy: Option<i32>,
     #[serde(default)]
     pub complete: bool,
     #[serde(default)]
     pub title: String,
-    #[serde(default)]
     pub pride: Option<i32>,
-    #[serde(default)]
     pub progress: Option<i32>,
     /// Emotion vocabulary identifier, or an empty string when none was chosen.
     #[serde(default)]
@@ -200,18 +185,6 @@ impl Entry {
         self.mood.is_some()
             && self.energy.is_some()
             && !document_text(&self.document).trim().is_empty()
-    }
-
-    /// Adds one small win linked to the pride reflection, at most once.
-    pub fn promote_pride(&mut self) {
-        if self.reflection.proud_of.trim().is_empty()
-            || self.wins.iter().any(|win| win.origin == "pride")
-        {
-            return;
-        }
-        let mut win = Win::manual(&self.reflection.proud_of);
-        win.origin = "pride".into();
-        self.wins.push(win);
     }
 }
 

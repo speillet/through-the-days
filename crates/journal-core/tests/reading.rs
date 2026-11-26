@@ -2,8 +2,8 @@
 
 mod common;
 
-use common::files_containing;
-use journal_core::{Action, Entry, Journal, Milestone, SearchRequest, Slot, Win};
+use common::{files_containing, manual_win, promote_pride};
+use journal_core::{Action, Entry, Journal, Milestone, SearchRequest, Slot};
 use serde_json::json;
 
 #[test]
@@ -180,10 +180,8 @@ fn search_finds_words_in_reflection_answers_actions_wins_and_the_own_emotion_wor
         text: "Synthetic pottery class".into(),
         category: String::new(),
     });
-    evening
-        .wins
-        .push(Win::manual("Synthetic marathon finished"));
-    let mut private_win = Win::manual("Synthetic violin recital");
+    evening.wins.push(manual_win("Synthetic marathon finished"));
+    let mut private_win = manual_win("Synthetic violin recital");
     private_win.include_in_insights = false;
     evening.wins.push(private_win);
     evening.another_emotion = "sereine".into();
@@ -382,8 +380,7 @@ fn weekly_counts_use_distinct_dates_and_do_not_count_authored_notes_or_pride_twi
         text: "Synthetic rest".into(),
         category: "rest".into(),
     });
-    morning.promote_pride();
-    morning.promote_pride();
+    promote_pride(&mut morning);
     journal.save(morning).unwrap();
     let mut evening = Entry::draft("2026-11-20", Slot::Evening);
     evening.mood = Some(7);
@@ -546,13 +543,13 @@ fn insight_win_filters_use_only_included_wins_while_original_search_keeps_owned_
     let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
     let mut morning = Entry::draft("2026-11-22", Slot::Morning);
     morning.mood = Some(8);
-    let mut private_win = Win::manual("Synthetic excluded win.");
+    let mut private_win = manual_win("Synthetic excluded win.");
     private_win.include_in_insights = false;
     morning.wins.push(private_win);
     let morning = journal.save(morning).unwrap();
     let mut evening = Entry::draft("2026-11-22", Slot::Evening);
     evening.mood = Some(2);
-    evening.wins.push(Win::manual("Synthetic included win."));
+    evening.wins.push(manual_win("Synthetic included win."));
     let evening = journal.save(evening).unwrap();
     let mut request = SearchRequest {
         from: Some("2026-11-22".into()),

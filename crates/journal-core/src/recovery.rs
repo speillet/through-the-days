@@ -10,7 +10,6 @@ use crate::{
 };
 use age::{Decryptor, Encryptor, secrecy::SecretString};
 use rusqlite::{Connection, backup::Backup, params};
-use serde::Serialize;
 use std::{
     fs::{self, File},
     io::{self, BufReader, Read, Write},
@@ -39,8 +38,7 @@ const MAXIMUM_WORK_FACTOR: u8 = 22;
 const PROBE_PREFIX: &str = ".ttd-incomplete-probe-";
 
 /// A backup that was verified, published and registered.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 pub struct BackupInfo {
     pub path: PathBuf,
     pub created_at: i64,

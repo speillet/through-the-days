@@ -2,8 +2,10 @@
 
 mod common;
 
-use common::{DAY, NOW, document, files_containing, names_in, nested_document};
-use journal_core::{Action, Depth, Entry, Error, Journal, Preferences, Slot, Win};
+use common::{
+    DAY, NOW, document, files_containing, manual_win, names_in, nested_document, promote_pride,
+};
+use journal_core::{Action, Depth, Entry, Error, Journal, Preferences, Slot};
 use serde_json::json;
 
 fn temporary_journal() -> (tempfile::TempDir, Journal) {
@@ -44,10 +46,7 @@ fn optional_reflection_and_confirmed_wins_share_an_acknowledged_revision() {
         text: "Rest".into(),
         category: "rest".into(),
     });
-    assert!(draft.wins.is_empty());
-    draft.promote_pride();
-    draft.promote_pride();
-    assert_eq!(draft.wins.len(), 1);
+    promote_pride(&mut draft);
     let mut saved = journal.save(draft).unwrap();
     saved.depth = Depth::Quick;
     let saved = journal.save(saved).unwrap();
@@ -506,7 +505,7 @@ fn reported_actions_stay_separate_from_intentions_and_rest_is_not_a_win() {
         },
     ];
     evening.reflection.next_step = "Synthetic: a short walk tomorrow".into();
-    evening.promote_pride();
+    promote_pride(&mut evening);
     let evening = journal.save(evening).unwrap();
     assert_eq!(evening.actions.len(), 2);
     assert!(evening.wins.is_empty());
@@ -559,12 +558,11 @@ fn promoted_pride_counts_once_and_wins_stay_user_owned() {
     let (_directory, journal) = temporary_journal();
     let mut entry = Entry::draft("2026-11-22", Slot::Evening);
     entry.reflection.proud_of = "Synthetic: finished a small repair.".into();
-    entry.promote_pride();
-    entry.promote_pride();
-    let mut quiet = Win::manual("Synthetic: called a friend.");
+    promote_pride(&mut entry);
+    let mut quiet = manual_win("Synthetic: called a friend.");
     quiet.include_in_insights = false;
     entry.wins.push(quiet);
-    entry.wins.push(Win::manual("Synthetic: cooked dinner."));
+    entry.wins.push(manual_win("Synthetic: cooked dinner."));
     let saved = journal.save(entry).unwrap();
     let stored = journal.get(&saved.id).unwrap();
     assert_eq!(stored.wins.len(), 3);
@@ -585,7 +583,7 @@ fn promoted_pride_counts_once_and_wins_stay_user_owned() {
     );
 
     let mut second_promotion = stored.clone();
-    let mut copy = Win::manual("Synthetic: finished a small repair.");
+    let mut copy = manual_win("Synthetic: finished a small repair.");
     copy.origin = "pride".into();
     second_promotion.wins.push(copy);
     assert_eq!(journal.save(second_promotion), Err(Error::Reflection));

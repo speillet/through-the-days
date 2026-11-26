@@ -5,8 +5,8 @@ mod common;
 use common::{
     BACKUP_MAGIC, DAY, NOW, PASSPHRASE, REGISTRY_FILE, ReadOnlyFolder, SeededBackup,
     backup_plaintext, contains, decrypt, document, encrypt_quickly, execute, image_user_version,
-    names_in, nested_document, previous_journal, registered_names, seed_backup, sha256_hex,
-    write_registry,
+    names_in, nested_document, previous_journal, promote_pride, registered_names, seed_backup,
+    sha256_hex, write_registry,
 };
 use journal_core::{
     BackupPlan, BackupRecord, DailyBackup, Entry, Error, Journal, Preferences, Slot, list_backups,
@@ -70,7 +70,7 @@ fn encrypted_snapshot_restores_on_a_clean_store_and_rejects_bad_credentials() {
     let mut entry = Entry::draft("2026-11-22", Slot::Evening);
     entry.reflection.proud_of = "Synthetic journal content for recovery.".into();
     entry.progress = Some(7);
-    entry.promote_pride();
+    promote_pride(&mut entry);
     let saved = journal.save(entry).unwrap();
     let trashed = journal
         .save(Entry::draft("2026-11-21", Slot::Morning))

@@ -128,7 +128,7 @@ A backup is validated when it is created and again before it is restored:
 - at most one active entry for each date and slot;
 - weekly-review keys that match valid Monday week starts and positive stored revisions, and valid milestone IDs/dates that match their keys and revisions.
 
-Stored display preferences are not validated: a backup and a restore copy them exactly as stored (D-016). Preferences that this version cannot read, such as a newer version's, or that break the rules for saving them (a known time zone, the theme `system`, `light` or `dark`, and a text size of 100, 115, 130 or 150 per cent) therefore never stop a backup, a safety backup, a pre-migration backup or a restore. Until they are replaced, the journal reports them as unreadable, and the desktop app shows the defaults and offers Reset display settings.
+Stored display preferences are not validated: a backup and a restore copy them exactly as stored (D-016). Preferences that this version cannot read, such as a newer version's, or that break the rules for saving them (a known time zone, the theme `system`, `light` or `dark`, a text size of 100, 115, 130 or 150 per cent, a timeline of 7, 14 or 30 days, and timeline metrics among `mood`, `energy`, `pride` and `progress`) therefore never stop a backup, a safety backup, a pre-migration backup or a restore. Until they are replaced, the journal reports them as unreadable, and the desktop app shows the defaults and offers Reset display settings.
 
 The staged copy lives in memory with SQLite's defensive settings `trusted_schema=OFF` and `cell_size_check=ON`, and its temporary storage in memory.
 

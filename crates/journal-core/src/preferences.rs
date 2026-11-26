@@ -70,7 +70,7 @@ impl Preferences {
     }
 
     /// The rules every stored preference meets: a known time zone ([`Error::Date`]), and a
-    /// supported theme and text size ([`Error::Document`]).
+    /// supported theme, text size, timeline length and timeline metrics ([`Error::Document`]).
     ///
     /// Saving and reading apply the same rules. A backup and a restore copy stored preferences
     /// unchanged (D-016), so preferences that break these rules, such as a newer version's, are
@@ -118,7 +118,8 @@ impl Journal {
         }
     }
 
-    /// Validates the time zone, theme and text size, then stores the preferences.
+    /// Validates the time zone, theme, text size and timeline choices, then stores the
+    /// preferences.
     pub fn set_preferences(&self, preferences: &Preferences) -> Result<(), Error> {
         preferences.validate()?;
         self.connection.execute(

@@ -7,7 +7,7 @@ use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Measure {
     pub observations: usize,
@@ -15,7 +15,7 @@ pub struct Measure {
     pub mean: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Observation {
     pub id: String,
@@ -26,14 +26,14 @@ pub struct Observation {
     pub progress: Option<i32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DayObservations {
     pub date: String,
     pub observations: Vec<Observation>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadingReport {
     pub from: String,
@@ -60,7 +60,7 @@ pub enum ScoreMetric {
 }
 
 impl ScoreMetric {
-    pub fn value(self, entry: &Entry) -> Option<i32> {
+    fn value(self, entry: &Entry) -> Option<i32> {
         match self {
             Self::Mood => entry.mood,
             Self::Energy => entry.energy,
@@ -87,7 +87,7 @@ pub struct SearchRequest {
 /// Inclusive date bounds of a request, compared as dates: as text, `+10000-01-02`, the Sunday
 /// that ends the week of Monday 27 December 9999, would sort before `9999-12-27`.
 #[derive(Clone, Copy)]
-pub(crate) struct DateBounds {
+struct DateBounds {
     from: Option<NaiveDate>,
     to: Option<NaiveDate>,
 }
@@ -105,7 +105,7 @@ impl DateBounds {
 
 impl SearchRequest {
     /// Checks the request and returns its date bounds.
-    pub(crate) fn validate(&self) -> Result<DateBounds, Error> {
+    fn validate(&self) -> Result<DateBounds, Error> {
         let from = self.from.as_deref().map(parse_date).transpose()?;
         let to = self.to.as_deref().map(parse_date).transpose()?;
         if from.zip(to).is_some_and(|(from, to)| from > to) {
