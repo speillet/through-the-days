@@ -1,6 +1,5 @@
-use crate::{Depth, Error, Journal};
+use crate::{Depth, Error, Journal, store::payload};
 use chrono::{DateTime, Utc};
-use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 
 /// Interface text sizes the person can choose, in percent of the default size.
@@ -100,17 +99,13 @@ impl Journal {
     /// Stored preferences that this version cannot read, or that break the rules for saving
     /// them, are an error and stay stored as they are until they are replaced.
     pub fn preferences(&self) -> Result<Preferences, Error> {
-        let stored: Option<String> = self
-            .connection
-            .query_row(
-                "SELECT value FROM preferences WHERE key='display'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
+        let stored: Option<Preferences> = payload(
+            &self.connection,
+            "SELECT value FROM preferences WHERE key='display'",
+            [],
+        )?;
         match stored {
-            Some(value) => {
-                let preferences: Preferences = serde_json::from_str(&value)?;
+            Some(preferences) => {
                 preferences.validate()?;
                 Ok(preferences)
             }
