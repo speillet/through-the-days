@@ -51,6 +51,11 @@ The system SHALL default new entries to the current civil date in the configured
 - **WHEN** Today shows the current date with no entry open, and its window is reported hidden across midnight, then reported visible again without regaining focus
 - **THEN** Today moves on to the new date as soon as the window is reported visible, so the first answer or keystroke starts the entry on that date.
 
+#### Scenario: Open across midnight
+
+- **WHEN** Today shows the current date with no entry open, and the clock passes midnight in the configured time zone while the window stays shown, with no focus or visibility event
+- **THEN** Today moves on to the new date at midnight, also on a day that daylight saving shortens, so an answer or keystroke in the first minute starts the entry on that date.
+
 #### Scenario: Travel
 
 - **WHEN** the configured time zone changes after entries were saved

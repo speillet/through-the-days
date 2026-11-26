@@ -204,6 +204,17 @@ export function todayIn(timeZone: string, now: Date = new Date()): string {
   return toIsoDate({ year: parts.year, month: parts.month, day: parts.day });
 }
 
+/**
+ * Milliseconds left before midnight in a time zone, by its wall clock. A daylight-saving
+ * change before then makes midnight come that much sooner or later.
+ */
+export function msUntilMidnight(timeZone: string, now: Date = new Date()): number {
+  const { hour, minute } = zonedParts(now, timeZone, true);
+  // Zone offsets are whole minutes, so seconds and milliseconds are those of UTC.
+  const elapsed = ((hour * 60 + minute) * 60 + now.getUTCSeconds()) * 1000 + now.getUTCMilliseconds();
+  return 24 * 60 * 60 * 1000 - elapsed;
+}
+
 /** Shown instead of a time that no date can describe, such as a damaged record's. */
 const UNKNOWN_DATE_TIME = 'Unknown date';
 

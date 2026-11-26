@@ -11,6 +11,7 @@ import {
   isValidTimeZone,
   LAST_JOURNAL_DATE,
   monthGrid,
+  msUntilMidnight,
   stepDays,
   supportedTimeZones,
   todayIn,
@@ -152,6 +153,14 @@ describe('time zones', () => {
     expect(todayIn('Europe/Paris', new Date('2026-10-24T22:00:00Z'))).toBe('2026-10-25');
     expect(todayIn('Europe/Paris', new Date('2026-10-25T22:59:00Z'))).toBe('2026-10-25');
     expect(todayIn('Europe/Paris', new Date('2026-10-25T23:00:00Z'))).toBe('2026-10-26');
+  });
+
+  it('counts the wall-clock time left before midnight in the journal time zone', () => {
+    const lateEvening = new Date('2026-11-22T22:59:50.250Z'); // 23:59:50.250 in Paris
+    expect(msUntilMidnight('Europe/Paris', lateEvening)).toBe(9_750);
+    expect(msUntilMidnight('America/Los_Angeles', lateEvening)).toBe(9 * 3_600_000 + 9_750);
+    expect(msUntilMidnight('Asia/Kolkata', new Date('2026-11-22T18:29:59Z'))).toBe(1_000);
+    expect(msUntilMidnight('Europe/Paris', new Date('2026-11-22T23:00:00Z'))).toBe(24 * 3_600_000);
   });
 
   it('formats a Unix time as an English date and 24-hour time in a time zone', () => {
