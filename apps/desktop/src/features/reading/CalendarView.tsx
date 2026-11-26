@@ -23,10 +23,10 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
   const selectedEntries = entries.filter((entry) => entry.date === selected);
   return (
     <div className="view reading-view">
-      <header className="reading-heading">
+      <header className="view-header reading-heading">
         <div>
-          <h1>{journal ? 'My Journal' : 'Calendar'}</h1>
-          <p>Return to a day, in your own words.</p>
+          <h1 className="view-title">{journal ? 'My Journal' : 'Calendar'}</h1>
+          <p className="view-subtitle">Return to a day, in your own words.</p>
         </div>
         <Button onClick={() => setDate(today)}>Today</Button>
       </header>

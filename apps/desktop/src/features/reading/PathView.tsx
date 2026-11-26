@@ -4,6 +4,7 @@ import type { Milestone } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
 import { addDays, formatLongDate, isIsoDate, isJournalDate, stepDays } from '../../domain/dates';
 import { newId } from '../../domain/entry';
@@ -120,10 +121,10 @@ export function PathView() {
   }
   return (
     <div className="view reading-view path-view">
-      <header className="reading-heading">
+      <header className="view-header reading-heading">
         <div>
-          <h1>The Path So Far</h1>
-          <p>Recorded days and moments you chose to keep.</p>
+          <h1 className="view-title">The Path So Far</h1>
+          <p className="view-subtitle">Recorded days and moments you chose to keep.</p>
         </div>
         <Button
           onClick={() => setEditing({ id: newId(), date: selected, title: '', notes: '', revision: 0 })}
@@ -177,7 +178,7 @@ export function PathView() {
             From
             <input
               type="date"
-              tabIndex={0}
+              tabIndex={TAB_STOP}
               lang="en-GB"
               value={from}
               onChange={(e) => {
@@ -190,7 +191,7 @@ export function PathView() {
             To
             <input
               type="date"
-              tabIndex={0}
+              tabIndex={TAB_STOP}
               lang="en-GB"
               value={to}
               onChange={(e) => {
@@ -216,7 +217,7 @@ export function PathView() {
         <label>
           <input
             type="checkbox"
-            tabIndex={0}
+            tabIndex={TAB_STOP}
             checked={layers.scores}
             onChange={(e) => setLayers({ ...layers, scores: e.target.checked })}
           />
@@ -225,7 +226,7 @@ export function PathView() {
         <label>
           <input
             type="checkbox"
-            tabIndex={0}
+            tabIndex={TAB_STOP}
             checked={layers.wins}
             onChange={(e) => setLayers({ ...layers, wins: e.target.checked })}
           />
@@ -234,7 +235,7 @@ export function PathView() {
         <label>
           <input
             type="checkbox"
-            tabIndex={0}
+            tabIndex={TAB_STOP}
             checked={layers.milestones}
             onChange={(e) => setLayers({ ...layers, milestones: e.target.checked })}
           />
@@ -389,7 +390,7 @@ function MilestoneDialog({ milestone, onClose }: { milestone: Milestone; onClose
         <label className="reading-field">
           Date
           <input
-            tabIndex={0}
+            tabIndex={TAB_STOP}
             type="date"
             lang="en-GB"
             value={value.date}
@@ -400,7 +401,7 @@ function MilestoneDialog({ milestone, onClose }: { milestone: Milestone; onClose
           Title
           <input
             ref={titleField}
-            tabIndex={0}
+            tabIndex={TAB_STOP}
             value={value.title}
             onChange={(e) => setValue({ ...value, title: e.target.value })}
           />
@@ -408,7 +409,7 @@ function MilestoneDialog({ milestone, onClose }: { milestone: Milestone; onClose
         <label className="reading-field">
           Notes
           <textarea
-            tabIndex={0}
+            tabIndex={TAB_STOP}
             rows={4}
             value={value.notes}
             onChange={(e) => setValue({ ...value, notes: e.target.value })}

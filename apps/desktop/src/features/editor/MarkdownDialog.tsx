@@ -5,6 +5,7 @@ import { Copy } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
+import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
 
 export function MarkdownDialog({ markdown, onClose }: { markdown: string; onClose(): void }) {
@@ -40,7 +41,7 @@ export function MarkdownDialog({ markdown, onClose }: { markdown: string; onClos
       {markdown.trim() === '' ? (
         <p className="markdown-dialog__empty">Nothing written yet.</p>
       ) : (
-        <pre className="markdown-dialog__text" tabIndex={0} aria-label="Markdown text">
+        <pre className="markdown-dialog__text" tabIndex={TAB_STOP} aria-label="Markdown text">
           {markdown}
         </pre>
       )}

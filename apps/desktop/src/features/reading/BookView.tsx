@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { useApi } from '../../api/client';
 import type { SearchRequest } from '../../api/types';
 import { Button } from '../../components/Button';
+import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
 import { formatLongDate } from '../../domain/dates';
 import { useToday } from '../../state/clock';
@@ -101,8 +102,8 @@ export function BookView() {
   }, [entries, index, turn]);
   return (
     <div className="view reading-view book-view">
-      <header className="reading-heading">
-        <h1>Book View</h1>
+      <header className="view-header reading-heading">
+        <h1 className="view-title">Book View</h1>
         <Button onClick={() => navigate(returnView)}>Return to {RETURN_LABELS[returnView]}</Button>
       </header>
       {error ? (
@@ -147,7 +148,7 @@ export function BookView() {
           <div
             ref={page}
             className="book-page"
-            tabIndex={0}
+            tabIndex={TAB_STOP}
             aria-label="Scrollable journal page"
             onScroll={(event) => bookPositions.current.set(entry.id, event.currentTarget.scrollTop)}
           >
