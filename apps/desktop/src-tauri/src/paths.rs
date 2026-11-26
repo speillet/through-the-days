@@ -1,11 +1,12 @@
 //! Where the application keeps its device-local files, and how a restore from the startup screen
 //! replaces the journal file so that an interruption at any moment is settled at the next launch.
 
+use journal_core::fs::{TEMPORARY_PREFIX, sync_directory, write_file_atomically};
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::OsString,
-    fs::{self, File, OpenOptions},
-    io::{self, Write},
+    fs::{self, File},
+    io,
     path::{Path, PathBuf},
 };
 
@@ -16,10 +17,6 @@ pub const DATA_DIR_OVERRIDE: &str = "TTD_DATA_DIR";
 /// Suffix of the data folder debug builds use when no override is set: a development run opens
 /// `~/Library/Application Support/com.throughthedays.app.dev`, never the real journal.
 pub const DEVELOPMENT_SUFFIX: &str = ".dev";
-
-/// Prefix of temporary files written next to a file that is replaced atomically. It matches
-/// journal-core, whose backup plan writes use it in the data folder.
-pub const TEMPORARY_PREFIX: &str = ".ttd-incomplete-";
 
 /// Prefix of the private copy of a backup that a restore reads. A backup published into a
 /// folder removes leftovers named with [`TEMPORARY_PREFIX`] there, so a copy that is still being
@@ -189,72 +186,29 @@ fn same_file(_first: &fs::Metadata, _second: &fs::Metadata) -> bool {
     false
 }
 
-/// A journal that could not be opened, kept in the data folder under a new name and never
-/// deleted: `journal.unreadable-<unix seconds>.sqlite`, with its companions under the same name
-/// and their usual suffixes.
-#[derive(Debug)]
-pub struct SetAside {
-    /// File name of the journal database as it is now kept.
-    name: String,
-    /// Each moved file: its original path and its path now.
-    moved: Vec<(PathBuf, PathBuf)>,
-}
-
-impl SetAside {
-    /// Moves the journal database at `journal` and its companions aside under `name`, a name
-    /// from [`free_name`], so no file is replaced. Returns `None` when none of these files
-    /// exists.
-    ///
-    /// Companions move first: a write-ahead log left behind could otherwise be replayed into the
-    /// new journal that takes the database's place. If a move fails, the files already moved are
-    /// moved back.
-    pub fn move_journal(journal: &Path, name: &str) -> io::Result<Option<Self>> {
-        let present: Vec<&str> = JOURNAL_FILES
-            .into_iter()
-            .filter(|suffix| fs::symlink_metadata(with_suffix(journal, suffix)).is_ok())
-            .collect();
-        if present.is_empty() {
-            return Ok(None);
+/// Moves the journal database at `journal` and its companions aside as `set_aside`, a path named
+/// by [`free_name`], so no file is replaced. Returns whether any of these files existed.
+///
+/// A journal kept aside is never deleted: `journal.unreadable-<unix seconds>.sqlite`, with its
+/// companions under the same name and their usual suffixes. Companions move first: a write-ahead
+/// log left behind could otherwise be replayed into the new journal that takes the database's
+/// place. If a move fails, the files already moved are put back at once. [`settle_replacement`],
+/// which [`replace_journal`] runs next, would also put them back, but only once it has read the
+/// marker; putting them back here keeps the journal in place even when that read fails.
+fn move_aside(journal: &Path, set_aside: &Path) -> io::Result<bool> {
+    let present: Vec<&str> = JOURNAL_FILES
+        .into_iter()
+        .filter(|suffix| fs::symlink_metadata(with_suffix(journal, suffix)).is_ok())
+        .collect();
+    for suffix in &present {
+        if let Err(error) = fs::rename(with_suffix(journal, suffix), with_suffix(set_aside, suffix))
+        {
+            let _ = put_back(journal, set_aside);
+            return Err(error);
         }
-        let target = journal.with_file_name(name);
-        let mut set_aside = Self {
-            name: name.to_owned(),
-            moved: Vec::new(),
-        };
-        for suffix in present {
-            let original = with_suffix(journal, suffix);
-            let aside = with_suffix(&target, suffix);
-            if let Err(error) = fs::rename(&original, &aside) {
-                let _ = set_aside.put_back();
-                return Err(error);
-            }
-            set_aside.moved.push((original, aside));
-            interruption_point();
-        }
-        Ok(Some(set_aside))
+        interruption_point();
     }
-
-    /// File name of the journal database as it is now kept.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Moves the files back to their original names, which must be free again. Best effort: a
-    /// file that cannot be moved back stays aside, never deleted.
-    pub fn put_back(self) -> io::Result<()> {
-        let mut result = Ok(());
-        for (original, aside) in self.moved.iter().rev() {
-            let moved = if fs::symlink_metadata(original).is_ok() {
-                Err(io::ErrorKind::AlreadyExists.into())
-            } else {
-                fs::rename(aside, original)
-            };
-            if let Err(error) = moved {
-                result = result.and(Err(error));
-            }
-        }
-        result
-    }
+    Ok(!present.is_empty())
 }
 
 /// What a restore from the startup screen is doing while [`DataPaths::restore_marker`] exists:
@@ -295,26 +249,7 @@ impl RestoreMarker {
     /// place, and the folder flushed, so a launch finds either no marker or a whole one.
     fn store(&self, paths: &DataPaths) -> io::Result<()> {
         let bytes = serde_json::to_vec(self).map_err(io::Error::other)?;
-        let temporary = paths.data_dir.join(format!(
-            "{TEMPORARY_PREFIX}restore-marker-{}",
-            std::process::id()
-        ));
-        let mut options = OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        let stored = options
-            .open(&temporary)
-            .and_then(|mut file| {
-                file.write_all(&bytes)?;
-                file.sync_all()
-            })
-            .and_then(|()| fs::rename(&temporary, &paths.restore_marker))
-            .and_then(|()| sync_directory(&paths.data_dir));
-        if stored.is_err() {
-            let _ = fs::remove_file(&temporary);
-        }
-        stored
+        write_file_atomically(&paths.restore_marker, &bytes)
     }
 }
 
@@ -338,10 +273,11 @@ pub fn replace_journal(paths: &DataPaths, restored: &Path, now: i64) -> io::Resu
         }
     };
     interruption_point();
-    let replaced = SetAside::move_journal(&paths.journal, &name).and_then(|set_aside| {
+    let set_aside = paths.journal.with_file_name(&name);
+    let replaced = move_aside(&paths.journal, &set_aside).and_then(|moved| {
         fs::rename(restored, &paths.journal)?;
         interruption_point();
-        Ok(set_aside.map(|set_aside| set_aside.name().to_owned()))
+        Ok(moved.then_some(name))
     });
     // Whether settling succeeds or leaves the marker for the next launch, the outcome is that of
     // the replacement: complete once `restored` has the journal's name.
@@ -441,11 +377,6 @@ fn remove_journal_files(database: &Path) {
     for suffix in JOURNAL_FILES {
         let _ = fs::remove_file(with_suffix(database, suffix));
     }
-}
-
-/// Flushes `folder`, so the renames and removals in it survive a power cut.
-fn sync_directory(folder: &Path) -> io::Result<()> {
-    File::open(folder)?.sync_all()
 }
 
 /// Removes the journals that restores kept aside beside `journal`, with their companions.
@@ -662,11 +593,11 @@ mod tests {
         fs::write(&earlier, b"synthetic earlier journal").unwrap();
 
         let name = free_name(&journal, 1_795_363_200).unwrap();
-        let set_aside = SetAside::move_journal(&journal, &name).unwrap().unwrap();
-        assert_eq!(set_aside.name(), "journal.unreadable-1795363201.sqlite");
+        assert_eq!(name, "journal.unreadable-1795363201.sqlite");
+        let kept = folder.path().join(&name);
+        assert!(move_aside(&journal, &kept).unwrap());
         assert!(!journal.exists());
         assert!(!with_suffix(&journal, "-wal").exists());
-        let kept = folder.path().join(set_aside.name());
         assert_eq!(fs::read(&kept).unwrap(), b"synthetic damaged journal");
         assert_eq!(
             fs::read(with_suffix(&kept, "-wal")).unwrap(),
@@ -674,7 +605,7 @@ mod tests {
         );
         assert_eq!(fs::read(&earlier).unwrap(), b"synthetic earlier journal");
 
-        set_aside.put_back().unwrap();
+        put_back(&journal, &kept).unwrap();
         assert_eq!(fs::read(&journal).unwrap(), b"synthetic damaged journal");
         assert_eq!(
             fs::read(with_suffix(&journal, "-wal")).unwrap(),
@@ -723,7 +654,53 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let journal = folder.path().join("journal.sqlite");
         let name = free_name(&journal, 1).unwrap();
-        assert!(SetAside::move_journal(&journal, &name).unwrap().is_none());
+        assert!(!move_aside(&journal, &journal.with_file_name(name)).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_restore_marker_is_written_whole_and_private_to_the_account() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let paths = DataPaths::new(folder.path().to_path_buf());
+        let marker = RestoreMarker {
+            set_aside: "journal.unreadable-1795363200.sqlite".to_owned(),
+            restored: ".ttd-restore-staging-1".to_owned(),
+        };
+        marker.store(&paths).unwrap();
+        let names: Vec<_> = fs::read_dir(folder.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["restore-in-progress.json"]);
+        let mode = fs::metadata(&paths.restore_marker)
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+        let stored =
+            RestoreMarker::parse(&fs::read(&paths.restore_marker).unwrap(), &paths.journal);
+        assert_eq!(stored.unwrap().set_aside, marker.set_aside);
+    }
+
+    #[test]
+    fn a_journal_that_cannot_be_moved_aside_whole_is_put_back() {
+        let folder = tempfile::tempdir().unwrap();
+        let journal = folder.path().join("journal.sqlite");
+        fs::write(&journal, b"synthetic damaged journal").unwrap();
+        fs::write(with_suffix(&journal, "-wal"), b"synthetic log").unwrap();
+        // The log moves aside, then a folder in the database's way stops the move.
+        let kept = folder.path().join("journal.unreadable-1795363200.sqlite");
+        fs::create_dir(&kept).unwrap();
+        fs::write(kept.join("synthetic"), b"synthetic").unwrap();
+        move_aside(&journal, &kept).unwrap_err();
+        assert_eq!(fs::read(&journal).unwrap(), b"synthetic damaged journal");
+        assert_eq!(
+            fs::read(with_suffix(&journal, "-wal")).unwrap(),
+            b"synthetic log"
+        );
+        assert!(!with_suffix(&kept, "-wal").exists());
+        assert!(kept.join("synthetic").is_file());
     }
 
     /// A data folder with a journal and its log that cannot be opened, and a complete restored

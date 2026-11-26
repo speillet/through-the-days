@@ -11,33 +11,35 @@ use std::{
 ///
 /// Backup publication removes leftovers with this prefix from the backup folder, so an
 /// interrupted write never accumulates there.
-pub(crate) const TEMPORARY_PREFIX: &str = ".ttd-incomplete-";
+pub const TEMPORARY_PREFIX: &str = ".ttd-incomplete-";
 
 /// Replaces `path` atomically and durably.
 ///
-/// The bytes are written and flushed to a temporary file in the same directory, renamed over the
-/// destination, and the directory entry is flushed. Readers see the previous or the new content,
-/// never a partial file. `classify` turns each I/O failure into the caller's error.
-pub(crate) fn write_atomically(
-    path: &Path,
-    bytes: &[u8],
-    classify: impl Fn(&io::Error) -> Error,
-) -> Result<(), Error> {
+/// The bytes are written and flushed to a temporary file in the same directory, readable and
+/// writable only by the owner, renamed over the destination, and the directory entry is flushed.
+/// Readers see the previous or the new content, never a partial file. A failed write removes its
+/// temporary file.
+pub fn write_file_atomically(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let directory = match path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),
     };
     let mut file = tempfile::Builder::new()
         .prefix(TEMPORARY_PREFIX)
-        .tempfile_in(directory)
-        .map_err(|error| classify(&error))?;
-    file.write_all(bytes).map_err(|error| classify(&error))?;
-    file.as_file()
-        .sync_all()
-        .map_err(|error| classify(&error))?;
-    file.persist(path)
-        .map_err(|failure| classify(&failure.error))?;
-    sync_directory(directory).map_err(|error| classify(&error))
+        .tempfile_in(directory)?;
+    file.write_all(bytes)?;
+    file.as_file().sync_all()?;
+    file.persist(path).map_err(|failure| failure.error)?;
+    sync_directory(directory)
+}
+
+/// [`write_file_atomically`], with `classify` turning its I/O failure into the caller's error.
+pub(crate) fn write_atomically(
+    path: &Path,
+    bytes: &[u8],
+    classify: impl Fn(&io::Error) -> Error,
+) -> Result<(), Error> {
+    write_file_atomically(path, bytes).map_err(|error| classify(&error))
 }
 
 /// Opens a file of the backup folder for reading when it is a regular file, or returns `None`
@@ -68,7 +70,7 @@ pub(crate) fn open_regular_file(path: &Path) -> io::Result<Option<File>> {
 }
 
 /// Flushes a directory so a rename into it survives power loss.
-pub(crate) fn sync_directory(directory: &Path) -> io::Result<()> {
+pub fn sync_directory(directory: &Path) -> io::Result<()> {
     File::open(directory)?.sync_all()
 }
 

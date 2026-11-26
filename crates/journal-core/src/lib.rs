@@ -30,3 +30,9 @@ pub use registry::{BackupRecord, list_backups};
 pub use reviews::{Milestone, WeeklyReview};
 pub use schema::schema_version;
 pub use store::{Journal, TrashItem, erase_journal_files};
+
+/// File helpers that the desktop shell shares with this crate, so the files it keeps in the
+/// application data folder are written the same way as the journal's own.
+pub mod fs {
+    pub use crate::fsutil::{TEMPORARY_PREFIX, sync_directory, write_file_atomically};
+}
