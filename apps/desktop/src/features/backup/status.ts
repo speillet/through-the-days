@@ -1,7 +1,7 @@
 // English wording for backup status, shared by the banner, Settings and the
 // startup gate. Nothing here says a backup succeeded unless the journal reported it.
 
-import type { BackupStatus, KeychainWarning } from '../../api/types';
+import type { BackupStatus } from '../../api/types';
 import { PASSPHRASE_MIN_LENGTH } from '../../domain/backup';
 import { formatDateTime } from '../../domain/dates';
 
@@ -62,9 +62,27 @@ export const KEYCHAIN_ACCESS_HINT = 'You can delete it yourself in the Keychain 
 export const KEYCHAIN_PENDING_TEXT =
   'Waiting for macOS Keychain: answer its prompt, which may be behind this window, to use your remembered backup passphrase.';
 
-/** The outcome of saving a passphrase that macOS Keychain did not follow; null when it did. */
-export function passphraseSavedWarning(warning: KeychainWarning | null): string | null {
-  switch (warning) {
+/**
+ * The outcome of saving a passphrase that macOS Keychain or the backup settings of this Mac did
+ * not follow; null when they did, or when the next launch makes the same choice anyway.
+ */
+export function passphraseSavedWarning({
+  keychainWarning,
+  settingsNotSaved,
+  remembered,
+}: Pick<BackupStatus, 'keychainWarning' | 'settingsNotSaved' | 'remembered'>): string | null {
+  // Unsaved settings leave the next launch with the Keychain choice stored before. That matters
+  // only for a passphrase remembered now, or for an earlier one that Keychain kept.
+  if (settingsNotSaved && keychainWarning === 'notReplaced') {
+    return `Passphrase saved for this session, but macOS Keychain could not remember it, and backup settings on this Mac could not be saved. After the app restarts, it may use the passphrase Keychain remembered before. ${KEYCHAIN_ACCESS_HINT}`;
+  }
+  if (settingsNotSaved && keychainWarning === 'notRemoved') {
+    return `Passphrase saved for this session, but macOS Keychain could not remove the passphrase it may have remembered before, and backup settings on this Mac could not be saved. After the app restarts, it may use that earlier passphrase. ${KEYCHAIN_ACCESS_HINT}`;
+  }
+  if (settingsNotSaved && keychainWarning === null && remembered) {
+    return 'Passphrase saved and remembered in macOS Keychain, but backup settings on this Mac could not be saved, so the app may ask for it again after it restarts. Check the available disk space on this Mac, then save the passphrase again.';
+  }
+  switch (keychainWarning) {
     case 'notRemembered':
       return 'Passphrase saved for this session, but macOS Keychain could not remember it. The app will ask for it again after it restarts.';
     case 'notReplaced':
@@ -76,9 +94,18 @@ export function passphraseSavedWarning(warning: KeychainWarning | null): string 
   }
 }
 
-/** The outcome of forgetting a passphrase that macOS Keychain could not remove; null when it did. */
-export function passphraseForgottenWarning(warning: KeychainWarning | null): string | null {
-  if (warning === null) return null;
+/**
+ * The outcome of forgetting a passphrase that macOS Keychain could not remove; null when it did,
+ * since the next launch then finds nothing to read, whether or not the backup settings were saved.
+ */
+export function passphraseForgottenWarning({
+  keychainWarning,
+  settingsNotSaved,
+}: Pick<BackupStatus, 'keychainWarning' | 'settingsNotSaved'>): string | null {
+  if (keychainWarning === null) return null;
+  if (settingsNotSaved) {
+    return `The app forgot the passphrase for this session, but macOS Keychain could not remove it, and backup settings on this Mac could not be saved. After the app restarts, it may use that passphrase again. ${KEYCHAIN_ACCESS_HINT}`;
+  }
   return `The app forgot the passphrase and will ask for it when the next backup is due, but macOS Keychain could not remove it, so it may still be stored there. ${KEYCHAIN_ACCESS_HINT}`;
 }
 

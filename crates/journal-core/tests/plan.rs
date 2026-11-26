@@ -42,7 +42,9 @@ fn backup_plan_round_trips_and_a_missing_file_is_the_default() {
     );
 }
 
-/// A damaged plan is reported instead of silently forgetting the folder and last success.
+/// A damaged plan is reported instead of silently forgetting the folder and last success. Like
+/// every failure to read or write the plan, it is a storage failure of this Mac, never a backup
+/// failure: no backup is involved.
 #[test]
 fn corrupt_or_unknown_backup_plans_are_reported_instead_of_reset() {
     let directory = tempfile::tempdir().unwrap();
@@ -54,7 +56,7 @@ fn corrupt_or_unknown_backup_plans_are_reported_instead_of_reset() {
         "[]",
     ] {
         fs::write(&path, damaged).unwrap();
-        assert_eq!(BackupPlan::load(&path), Err(Error::Backup), "{damaged:?}");
+        assert_eq!(BackupPlan::load(&path), Err(Error::Storage), "{damaged:?}");
         assert_eq!(fs::read_to_string(&path).unwrap(), damaged);
     }
     fs::write(&path, r#"{"remember":true}"#).unwrap();
@@ -69,6 +71,9 @@ fn corrupt_or_unknown_backup_plans_are_reported_instead_of_reset() {
 
     let not_a_file = directory.path().join("plan-directory");
     fs::create_dir(&not_a_file).unwrap();
-    assert_eq!(BackupPlan::load(&not_a_file), Err(Error::Backup));
-    assert_eq!(BackupPlan::default().store(&not_a_file), Err(Error::Backup));
+    assert_eq!(BackupPlan::load(&not_a_file), Err(Error::Storage));
+    assert_eq!(
+        BackupPlan::default().store(&not_a_file),
+        Err(Error::Storage)
+    );
 }

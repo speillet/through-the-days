@@ -121,7 +121,7 @@ The system SHALL validate a backup before making it active and SHALL preserve th
 
 ### Requirement: Portable backup recovery
 
-Backups SHALL be recoverable on another Mac with a dedicated backup passphrase and SHALL offer optional passphrase storage in macOS Keychain without requiring it. A Keychain failure SHALL NOT undo a passphrase change; after a change in Settings or the backup banner, the app SHALL say what Keychain did not do. A remembered passphrase read at launch SHALL NOT hold up or override a passphrase change, and the app SHALL say when a due backup or opening the journal waits for that read.
+Backups SHALL be recoverable on another Mac with a dedicated backup passphrase and SHALL offer optional passphrase storage in macOS Keychain without requiring it. A Keychain or backup-settings failure SHALL NOT undo a passphrase change; after a change in Settings or the backup banner, the app SHALL say what was not kept. A remembered passphrase read at launch SHALL NOT hold up or override a passphrase change, and the app SHALL say when a due backup or opening the journal waits for that read.
 
 #### Scenario: New Mac restoration
 
@@ -137,6 +137,11 @@ Backups SHALL be recoverable on another Mac with a dedicated backup passphrase a
 
 - **WHEN** macOS Keychain refuses to store or remove the backup passphrase while the person sets, changes or forgets it in Settings or from the backup banner
 - **THEN** the change still applies to the current session, a due backup proceeds with a newly entered passphrase, and the app says what Keychain did not do: the passphrase was not remembered, one remembered before may remain in Keychain, or both, with how to delete one that may remain.
+
+#### Scenario: Backup settings cannot be saved after a passphrase change
+
+- **WHEN** the backup settings of this Mac cannot be saved, for example because its startup disk is full, while the person sets, changes or forgets the backup passphrase in Settings, from the backup banner or on the protected-upgrade screen
+- **THEN** the change still applies to the current session, a due backup or the upgrade proceeds with a newly entered passphrase, no backup failure is reported, and in Settings or the banner the app says when the next launch may follow the earlier Keychain choice: asking again for a passphrase remembered now, or using one that Keychain still holds, with how to delete it.
 
 #### Scenario: Keychain prompt unanswered with the journal open
 

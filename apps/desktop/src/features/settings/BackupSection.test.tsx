@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { JournalApi } from '../../api/client';
 import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES, MEMORY_STORAGE_KEY } from '../../api/memory';
-import type { BackupStatus, Entry } from '../../api/types';
+import type { BackupStatus, Entry, KeychainWarning } from '../../api/types';
 import { newDraft } from '../../domain/entry';
 import { useStartup, type StartupContextValue } from '../../state/startup';
 import { createTestApi, renderWithProviders, TEST_NOW } from '../../test/render';
@@ -70,6 +70,26 @@ function keychainRefuses(api: JournalApi) {
   vi.spyOn(api, 'forgetBackupPassphrase').mockImplementation(async () => ({
     ...(await forgetBackupPassphrase()),
     keychainWarning: 'notRemoved',
+  }));
+}
+
+/**
+ * The startup disk refuses the backup settings of this Mac, as when it is full: the native shell
+ * still applies each passphrase change, and its reply says the settings were not saved. With a
+ * `keychainWarning`, macOS Keychain refuses the change too and keeps nothing new.
+ */
+function settingsCannotBeSaved(api: JournalApi, keychainWarning: KeychainWarning | null = null) {
+  const setBackupPassphrase = api.setBackupPassphrase.bind(api);
+  const forgetBackupPassphrase = api.forgetBackupPassphrase.bind(api);
+  vi.spyOn(api, 'setBackupPassphrase').mockImplementation(async (passphrase, remember) => ({
+    ...(await setBackupPassphrase(passphrase, remember && keychainWarning === null)),
+    keychainWarning,
+    settingsNotSaved: true,
+  }));
+  vi.spyOn(api, 'forgetBackupPassphrase').mockImplementation(async () => ({
+    ...(await forgetBackupPassphrase()),
+    keychainWarning,
+    settingsNotSaved: true,
   }));
 }
 
@@ -308,6 +328,7 @@ describe('Backups settings', () => {
       remembered: false,
       keychainPending: false,
       keychainWarning: null,
+      settingsNotSaved: false,
       lastSuccessDate: '2026-11-20',
       lastSuccessAt: 1795165200,
       lastError: {
@@ -458,5 +479,86 @@ describe('Backups settings', () => {
     expect(facts()).toHaveTextContent('Entered for this session only.');
     expect(screen.getByRole('button', { name: 'Forget passphrase' })).toBeInTheDocument();
     expect(api.setBackupPassphrase).toHaveBeenCalledWith(NEW_PASSPHRASE, true);
+  });
+
+  it('says a remembered passphrase may be asked for again when the backup settings could not be saved', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    settingsCannotBeSaved(api);
+    await renderSection(api);
+    await user.click(screen.getByRole('button', { name: 'Set passphrase…' }));
+    await setPassphrase(user, PASSPHRASE, { remember: true });
+
+    expect(
+      await screen.findByText(
+        'Passphrase saved and remembered in macOS Keychain, but backup settings on this Mac could not be saved, so the app may ask for it again after it restarts. Check the available disk space on this Mac, then save the passphrase again.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('Passphrase saved and remembered in macOS Keychain.')).not.toBeInTheDocument();
+    expect(await screen.findByText('Today’s backup is done.')).toBeInTheDocument();
+    expect(facts()).toHaveTextContent('Remembered in macOS Keychain on this Mac.');
+  });
+
+  it('adds nothing when the next launch makes the same choice although the backup settings were not saved', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    settingsCannotBeSaved(api);
+    await renderSection(api);
+    // Nothing is left in Keychain, so the next launch asks for the passphrase whatever was saved.
+    await user.click(screen.getByRole('button', { name: 'Set passphrase…' }));
+    await setPassphrase(user, PASSPHRASE);
+    expect(
+      await screen.findByText('Passphrase saved for this session. The app will ask for it again after it restarts.'),
+    ).toBeVisible();
+    expect(await screen.findByText('Today’s backup is done.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Forget passphrase' }));
+    expect(
+      await screen.findByText(
+        'The passphrase was forgotten on this Mac. The app will ask for it when the next backup is due.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/could not be saved/)).not.toBeInTheDocument();
+    expect(facts()).toHaveTextContent('Not entered in this session.');
+  });
+
+  it('says a forgotten passphrase that Keychain kept may be used again when the backup settings could not be saved', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE, true);
+    settingsCannotBeSaved(api, 'notRemoved');
+    await renderSection(api);
+    await user.click(screen.getByRole('button', { name: 'Forget passphrase' }));
+
+    expect(
+      await screen.findByText(
+        'The app forgot the passphrase for this session, but macOS Keychain could not remove it, and backup settings on this Mac could not be saved. After the app restarts, it may use that passphrase again. You can delete it yourself in the Keychain Access app: search for “throughthedays”.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/The passphrase was forgotten on this Mac/)).not.toBeInTheDocument();
+    expect(facts()).toHaveTextContent('Not entered in this session.');
+  });
+
+  it('says the earlier passphrase may be used again when Keychain could not replace it and the settings were not saved', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE, true);
+    settingsCannotBeSaved(api, 'notReplaced');
+    await renderSection(api);
+    await user.click(screen.getByRole('button', { name: 'Change passphrase…' }));
+    await setPassphrase(user, NEW_PASSPHRASE);
+
+    expect(
+      await screen.findByText(
+        'Passphrase saved for this session, but macOS Keychain could not remember it, and backup settings on this Mac could not be saved. After the app restarts, it may use the passphrase Keychain remembered before. You can delete it yourself in the Keychain Access app: search for “throughthedays”.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/which the app no longer uses/)).not.toBeInTheDocument();
+    expect(facts()).toHaveTextContent('Entered for this session only.');
   });
 });

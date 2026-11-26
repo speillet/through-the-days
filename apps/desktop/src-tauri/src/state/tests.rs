@@ -342,7 +342,7 @@ fn first_launch_opens_an_empty_journal_and_asks_for_a_backup_folder() {
         json!({
             "state": "needsFolder", "folderName": null, "folderPath": null,
             "passphraseAvailable": false, "remembered": false, "keychainPending": false,
-            "keychainWarning": null, "lastSuccessDate": null,
+            "keychainWarning": null, "settingsNotSaved": false, "lastSuccessDate": null,
             "lastSuccessAt": null, "lastError": null, "retentionWarning": false, "backupCount": 0
         })
     );
@@ -694,6 +694,42 @@ fn an_upgrade_without_a_new_passphrase_needs_the_one_in_the_session() {
         Some(PASSPHRASE)
     );
     assert!(fixture.stored_plan().remember);
+}
+
+/// local-data-protection — Backup settings cannot be saved after a passphrase change, on the
+/// protected-upgrade screen: they never stop an upgrade whose passphrase the session and Keychain
+/// already hold, whether it is typed on the upgrade screen or already in the session.
+#[test]
+fn an_upgrade_goes_on_when_the_backup_settings_cannot_be_saved() {
+    for typed in [true, false] {
+        let fixture = Fixture::new();
+        fixture.store_plan(&BackupPlan {
+            folder: Some(fixture.folder()),
+            ..BackupPlan::default()
+        });
+        previous_journal(&fixture.paths().journal);
+        let app = fixture.launch();
+        assert_eq!(app.startup_status().state, StartupState::NeedsMigration);
+        if !typed {
+            app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
+                .unwrap();
+        }
+        // A folder in place of the backup settings, so they cannot be replaced.
+        fs::remove_file(&fixture.paths().plan).unwrap();
+        fs::create_dir(&fixture.paths().plan).unwrap();
+
+        let startup = app
+            .migrate_journal(typed.then(|| secret(PASSPHRASE)), true, noon())
+            .unwrap();
+        assert_eq!(startup.state, StartupState::Ready, "typed: {typed}");
+        assert_eq!(list_backups(&fixture.folder()).unwrap().len(), 1);
+        assert_eq!(
+            fixture.keychain.contents().item.as_deref(),
+            Some(PASSPHRASE)
+        );
+        let status = app.lock().backup_status(noon());
+        assert!(status.passphrase_available && status.remembered);
+    }
 }
 
 /// local-data-protection — Recoverable pre-migration backup: when the older journal itself stops
@@ -1564,6 +1600,108 @@ fn unreadable_backup_settings_are_reported_and_kept_until_a_folder_is_chosen() {
     let status = app.lock().backup_status(noon());
     assert_eq!(status.state, BackupState::Due);
     assert!(status.passphrase_available);
+}
+
+/// local-data-protection — Backup settings cannot be saved after a passphrase change: a data
+/// folder that refuses the backup settings never undoes a passphrase change that Keychain and
+/// the session already follow. The reply matches the session and says the settings were not
+/// saved.
+#[test]
+fn a_passphrase_change_applies_to_the_session_when_the_backup_settings_cannot_be_saved() {
+    let fixture = Fixture::new();
+    let app = fixture.launch();
+    app.choose_backup_folder(fixture.folder(), noon()).unwrap();
+    app.set_backup_passphrase(secret(PASSPHRASE), true, noon())
+        .unwrap();
+    let another = fixture.backups.path().join("another synthetic folder");
+    fs::create_dir(&another).unwrap();
+
+    // The startup disk refuses new files in the data folder, as when it is full or read-only.
+    let data_dir = fixture.paths().data_dir;
+    fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o500)).unwrap();
+    let forgotten = app.forget_backup_passphrase(noon());
+    let keychain_after_forgetting = fixture.keychain.contents().item.clone();
+    let session_only =
+        app.set_backup_passphrase(secret("synthetic replacement passphrase"), false, noon());
+    let remembered = app.set_backup_passphrase(secret(PASSPHRASE), true, noon());
+    let chosen = app.choose_backup_folder(another, noon());
+    let stored_meanwhile = fixture.stored_plan();
+    fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o700)).unwrap();
+
+    // Keychain removed the passphrase and the session forgot it; only the settings were not
+    // saved.
+    let status = forgotten.unwrap();
+    assert!(status.settings_not_saved);
+    assert_eq!(keychain_after_forgetting, None);
+    assert_eq!(status.keychain_warning, None);
+    assert_eq!(status.state, BackupState::NeedsPassphrase);
+    assert!(!status.passphrase_available && !status.remembered);
+
+    let status = session_only.unwrap();
+    assert!(status.settings_not_saved);
+    assert_eq!(status.state, BackupState::Due);
+    assert!(status.passphrase_available && !status.remembered);
+
+    let status = remembered.unwrap();
+    assert!(status.settings_not_saved);
+    assert!(status.passphrase_available && status.remembered);
+    assert_eq!(
+        fixture.keychain.contents().item.as_deref(),
+        Some(PASSPHRASE)
+    );
+
+    // A folder choice that cannot be saved changes nothing, and the cause is this Mac's storage,
+    // not the backup folder.
+    assert_eq!(chosen.unwrap_err(), CommandError::from(Error::Storage));
+    assert_eq!(stored_meanwhile.folder, Some(fixture.folder()));
+    assert!(stored_meanwhile.remember);
+    let status = app.lock().backup_status(noon());
+    assert_eq!(
+        status.folder_path,
+        Some(fixture.folder().display().to_string())
+    );
+    // The warning belongs to the replies only.
+    assert!(!status.settings_not_saved);
+
+    // Once the data folder takes files again, the next change saves the settings.
+    let status = app.forget_backup_passphrase(noon()).unwrap();
+    assert!(!status.settings_not_saved);
+    assert!(!status.passphrase_available && !status.remembered);
+    assert!(!fixture.stored_plan().remember);
+}
+
+/// docs/backup-format.md, backup settings that cannot be saved: a backup whose success cannot be
+/// recorded in the backup settings is still reported as done, daily or explicit, because it is
+/// published and registered. The next launch reads the settings stored before and backs up again.
+#[test]
+fn a_backup_stays_done_when_its_success_cannot_be_recorded() {
+    let fixture = Fixture::new();
+    let app = fixture.launch();
+    app.choose_backup_folder(fixture.folder(), noon()).unwrap();
+    app.set_backup_passphrase(secret(PASSPHRASE), true, noon())
+        .unwrap();
+
+    let data_dir = fixture.paths().data_dir;
+    fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o500)).unwrap();
+    let daily = app.lock().run_daily_backup(noon());
+    let explicit = app.lock().backup_now(noon());
+    fs::set_permissions(&data_dir, fs::Permissions::from_mode(0o700)).unwrap();
+
+    for status in [daily.unwrap(), explicit.unwrap()] {
+        assert_eq!(status.state, BackupState::UpToDate);
+        assert_eq!(status.last_error, None);
+    }
+    assert_eq!(list_backups(&fixture.folder()).unwrap().len(), 2);
+    assert_eq!(fixture.stored_plan().last_success_date, None);
+
+    drop(app);
+    let app = fixture.launch();
+    assert_eq!(app.lock().backup_status(noon()).state, BackupState::Due);
+    assert_eq!(
+        app.lock().run_daily_backup(noon()).unwrap().state,
+        BackupState::UpToDate
+    );
+    assert_eq!(list_backups(&fixture.folder()).unwrap().len(), 3);
 }
 
 #[test]
