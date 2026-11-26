@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
@@ -230,6 +230,27 @@ describe('application shell', () => {
     // Without Command the keys are ordinary typing.
     await user.keyboard('=');
     expect(await textScale()).toBe(100);
+  });
+
+  it('follows the characters of a French keyboard: the key labelled "-" reduces the text, ")" does nothing', async () => {
+    const { api } = await openWorkspace();
+    const textScale = async () => (await api.getPreferences()).textScale;
+    // Deliberate multilingual synthetic fixture. On the French layout, "=" sits where US
+    // keyboards have "/", "-" where they have "=", ")" where they have "-", and the key
+    // that holds 0 types "à" without Shift.
+    const press = (key: string, code: string) => fireEvent.keyDown(document.body, { key, code, metaKey: true });
+
+    press('=', 'Slash');
+    await vi.waitFor(async () => expect(await textScale()).toBe(115));
+    press('=', 'Slash');
+    await vi.waitFor(async () => expect(await textScale()).toBe(130));
+    // Not a shortcut: the event is left alone.
+    expect(press(')', 'Minus')).toBe(true);
+    press('-', 'Equal');
+    await vi.waitFor(async () => expect(await textScale()).toBe(115));
+    expect(document.documentElement.style.fontSize).toBe('115%');
+    press('à', 'Digit0');
+    await vi.waitFor(async () => expect(await textScale()).toBe(100));
   });
 
   it('ignores the text-size shortcuts while a dialog is open', async () => {

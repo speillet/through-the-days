@@ -3,20 +3,46 @@
 // journal and also offered in Settings, under Appearance. They do nothing while a modal
 // dialog is open: Restore and Erase replace the journal from such a dialog, and a size
 // saved meanwhile would carry the replaced journal's preferences into the new one.
+// The character a key types decides, so the key labelled "-" makes text smaller on
+// every layout, including the French one, where it sits where US keyboards have "=".
 
 import { useEffect, useRef } from 'react';
 import { steppedTextScale } from '../domain/preferences';
 import { usePreferences } from './preferences';
 
 type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'altKey'>;
+type Step = -1 | 0 | 1;
 
-/** +1 for Command-plus (or Command-equals), -1 for Command-minus, 0 for Command-0, else null. */
-export function textSizeStep(event: ShortcutKey): -1 | 0 | 1 | null {
+const STEP_BY_CHARACTER = new Map<string, Step>([
+  ['=', 1],
+  ['+', 1],
+  ['-', -1],
+  ['0', 0],
+]);
+
+const STEP_BY_POSITION = new Map<string, Step>([
+  ['Equal', 1],
+  ['NumpadAdd', 1],
+  ['Minus', -1],
+  ['NumpadSubtract', -1],
+  ['Digit0', 0],
+  ['Numpad0', 0],
+]);
+
+/** One printable ASCII character, such as ")" where US keyboards have "-" on a French one. */
+const ASCII_CHARACTER = /^[\x20-\x7e]$/;
+
+/**
+ * +1 for Command-plus (or Command-equals), -1 for Command-minus, 0 for Command-0, else null.
+ * The key's position counts only when it types no ASCII character, as the French key that
+ * holds 0 (an accented letter without Shift), or a key on a non-Latin layout.
+ */
+export function textSizeStep(event: ShortcutKey): Step | null {
   if (!(event.metaKey || event.ctrlKey) || event.altKey) return null;
-  if (event.key === '=' || event.key === '+' || event.code === 'Equal' || event.code === 'NumpadAdd') return 1;
-  if (event.key === '-' || event.code === 'Minus' || event.code === 'NumpadSubtract') return -1;
-  if (event.key === '0' || event.code === 'Digit0' || event.code === 'Numpad0') return 0;
-  return null;
+  const byCharacter = STEP_BY_CHARACTER.get(event.key);
+  if (byCharacter !== undefined) return byCharacter;
+  if (ASCII_CHARACTER.test(event.key)) return null;
+  return STEP_BY_POSITION.get(event.code) ?? null;
 }
 
 /** Installs the text-size shortcuts while the workspace is open. */

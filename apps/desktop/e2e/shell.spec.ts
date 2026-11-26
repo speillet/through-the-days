@@ -109,6 +109,29 @@ test('enlarges all text, the journal page included, from Settings and the keyboa
   await expect.poll(rootSize).toBeCloseTo(24, 1);
   await page.keyboard.press('Meta+Digit0');
   await expect.poll(rootSize).toBe(16);
+
+  // Deliberate multilingual synthetic fixture. On a French keyboard the character
+  // decides: "=" sits where US keyboards have "/", "-" where they have "=", ")" where
+  // they have "-", and the 0 key types "à". Playwright types with a US layout, so these
+  // key presses are dispatched directly.
+  const pressFrench = (key: string, code: string) =>
+    page.evaluate(
+      ({ key, code }) => {
+        const event = new KeyboardEvent('keydown', { key, code, metaKey: true, bubbles: true, cancelable: true });
+        document.body.dispatchEvent(event);
+        return event.defaultPrevented;
+      },
+      { key, code },
+    );
+  expect(await pressFrench('=', 'Slash')).toBe(true);
+  await expect.poll(rootSize).toBeCloseTo(18.4, 1);
+  expect(await pressFrench('=', 'Slash')).toBe(true);
+  await expect.poll(rootSize).toBeCloseTo(20.8, 1);
+  expect(await pressFrench(')', 'Minus')).toBe(false);
+  expect(await pressFrench('-', 'Equal')).toBe(true);
+  await expect.poll(rootSize).toBeCloseTo(18.4, 1);
+  expect(await pressFrench('à', 'Digit0')).toBe(true);
+  await expect.poll(rootSize).toBe(16);
   await openView(page, 'Settings');
   await expect(textSize.getByRole('radio', { name: /Default/ })).toBeChecked();
 });

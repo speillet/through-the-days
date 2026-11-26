@@ -29,7 +29,7 @@ The application SHALL launch as a macOS desktop application and provide a collap
 
 ### Requirement: Appearance and navigation
 
-The application SHALL support system-matched light/dark appearance, a manual override, standard full-screen behavior, keyboard focus, and usable small-window layouts.
+The application SHALL support system-matched light/dark appearance, a manual override, adjustable text size, standard full-screen behavior, keyboard focus, and usable small-window layouts.
 
 #### Scenario: Manual theme choice
 
@@ -40,6 +40,11 @@ The application SHALL support system-matched light/dark appearance, a manual ove
 
 - **WHEN** the person navigates the sidebar and opens a draft using the keyboard
 - **THEN** focus remains visible and the editor is reachable without a mouse.
+
+#### Scenario: Text size keys on any keyboard layout
+
+- **WHEN** the person presses Command with the key labelled "+" or "=", "-", or "0" on their keyboard layout, such as the French layout, where "-" sits where US keyboards have "="
+- **THEN** the text size steps up, steps down or returns to the default as that label says, and Command with the French ")" key, where US keyboards have "-", leaves it unchanged.
 
 ### Requirement: Stored display preferences
 
