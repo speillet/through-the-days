@@ -404,7 +404,7 @@ it('keeps an insights checkbox focused and ignores it until its saved change is 
   await user.click(include);
   await reads.waiting();
   const excluded = { includeInInsights: false, revision: saved.revision + 1 };
-  expect(await journal.getEntry(saved.id)).toMatchObject(excluded);
+  expect(await journal.listEntries()).toMatchObject([excluded]);
   // The requested value shows at once, marked busy, while the refreshed revision is on its way.
   expect(include).not.toBeChecked();
   expect(include).toHaveFocus();
@@ -422,7 +422,7 @@ it('keeps an insights checkbox focused and ignores it until its saved change is 
   expect(include).not.toHaveAttribute('aria-busy');
   expect(include).not.toHaveAttribute('aria-disabled');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  expect(await journal.getEntry(saved.id)).toMatchObject(excluded);
+  expect(await journal.listEntries()).toMatchObject([excluded]);
 });
 
 it('shows a failed insights change and accepts the next one', async () => {
@@ -446,7 +446,7 @@ it('shows a failed insights change and accepts the next one', async () => {
   expect(include).toBeChecked();
   expect(include).not.toHaveAttribute('aria-busy');
   expect(include).not.toHaveAttribute('aria-disabled');
-  expect(await journal.getEntry(saved.id)).toMatchObject({ includeInInsights: true, revision: saved.revision });
+  expect(await journal.listEntries()).toMatchObject([{ includeInInsights: true, revision: saved.revision }]);
 
   await user.click(include);
   expect(save).toHaveBeenCalledTimes(2);
@@ -460,7 +460,7 @@ it('shows a failed insights change and accepts the next one', async () => {
   expect(include).not.toBeChecked();
   expect(include).not.toHaveAttribute('aria-disabled');
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  expect(await journal.getEntry(saved.id)).toMatchObject({ includeInInsights: false, revision: saved.revision + 1 });
+  expect(await journal.listEntries()).toMatchObject([{ includeInInsights: false, revision: saved.revision + 1 }]);
 });
 
 it('keeps The Path So Far sources in place when a milestone is saved', async () => {

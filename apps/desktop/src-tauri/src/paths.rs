@@ -1,4 +1,5 @@
-//! Where the application keeps its device-local files.
+//! Where the application keeps its device-local files, and how a restore from the startup screen
+//! replaces the journal file so that an interruption at any moment is settled at the next launch.
 
 use serde::{Deserialize, Serialize};
 use std::{

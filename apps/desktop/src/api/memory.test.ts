@@ -53,7 +53,7 @@ describe('memory journal: entries', () => {
     const saved = await api.saveEntry(withText(draft(), 'Synthetic: a quiet start.'));
     expect(saved.revision).toBe(1);
     expect(saved).toMatchObject({ mood: null, energy: null, pride: null, progress: null, complete: false });
-    await expect(api.getEntry(saved.id)).resolves.toEqual(saved);
+    await expect(api.listEntries()).resolves.toEqual([saved]);
   });
 
   it('restores the exact acknowledged revision after a restart', async () => {
@@ -66,7 +66,7 @@ describe('memory journal: entries', () => {
       reflection: { ...draft().reflection, difficulty: 'A long synthetic queue.' },
     });
     const reopened = restart();
-    await expect(reopened.getEntry(saved.id)).resolves.toEqual(saved);
+    await expect(reopened.listEntries()).resolves.toEqual([saved]);
   });
 
   it('keeps Morning and Evening observations independent on one date', async () => {
@@ -103,7 +103,7 @@ describe('memory journal: entries', () => {
     const morning = await api.saveEntry({ ...draft('2026-11-22', 'morning'), mood: 3 });
     const evening = await api.saveEntry({ ...draft('2026-11-22', 'evening'), mood: 8 });
     await expect(api.saveEntry({ ...evening, slot: 'morning' })).rejects.toEqual(commandError('occupied'));
-    await expect(api.getEntry(morning.id)).resolves.toEqual(morning);
+    await expect(api.entriesOn('2026-11-22')).resolves.toEqual([morning, evening]);
     const moved = await api.saveEntry({ ...evening, date: '2026-11-21' });
     expect(moved).toMatchObject({ date: '2026-11-21', slot: 'evening', revision: 2, mood: 8 });
   });
@@ -146,7 +146,7 @@ describe('memory journal: entries', () => {
     const { api } = setup();
     const saved = await api.saveEntry({ ...draft(), mood: 2, energy: 3, pride: 6, progress: 5 });
     await expect(api.saveEntry({ ...saved, ...change })).rejects.toEqual(commandError('score'));
-    await expect(api.getEntry(saved.id)).resolves.toEqual(saved);
+    await expect(api.listEntries()).resolves.toEqual([saved]);
   });
 
   it('refuses completion without writing or a required score, keeping the draft', async () => {
@@ -157,7 +157,7 @@ describe('memory journal: entries', () => {
     await expect(api.saveEntry({ ...blank, complete: true })).rejects.toEqual(commandError('completion'));
     const noEnergy = { ...withText(saved, 'Synthetic words.'), energy: null };
     await expect(api.saveEntry({ ...noEnergy, complete: true })).rejects.toEqual(commandError('completion'));
-    await expect(api.getEntry(saved.id)).resolves.toEqual(saved);
+    await expect(api.listEntries()).resolves.toEqual([saved]);
   });
 
   it('completes with writing, mood 0 and energy 10 while pride stays missing', async () => {
@@ -288,7 +288,7 @@ describe('memory journal: entries', () => {
     await expect(api.saveEntry({ ...saved, document: { type: 'doc', content } })).rejects.toEqual(
       commandError('document'),
     );
-    await expect(api.getEntry(saved.id)).resolves.toEqual(saved);
+    await expect(api.listEntries()).resolves.toEqual([saved]);
   });
 
   it('accepts exactly the node and mark types journal-core accepts', () => {
@@ -319,7 +319,7 @@ describe('memory journal: entries', () => {
     const saved = await api.saveEntry({ ...draft(), document: nested(32) });
     expect(saved.revision).toBe(1);
     await expect(api.saveEntry({ ...saved, document: nested(33) })).rejects.toEqual(commandError('document'));
-    await expect(api.getEntry(saved.id)).resolves.toEqual(saved);
+    await expect(api.listEntries()).resolves.toEqual([saved]);
   });
 
   it('checks the emotion before the creation time zone, as journal-core does', async () => {
@@ -351,7 +351,7 @@ describe('memory journal: entries', () => {
     });
     await expect(api.saveEntry(withText(saved, 'Unsaved synthetic words.'))).rejects.toEqual(commandError('storage'));
     vi.restoreAllMocks();
-    await expect(api.getEntry(saved.id)).resolves.toEqual(saved);
+    await expect(api.listEntries()).resolves.toEqual([saved]);
   });
 });
 
@@ -397,7 +397,7 @@ describe('memory journal: trash', () => {
     await api.trashEntry(saved.id, saved.revision);
     const [item] = await api.listTrash();
     expect(item).toEqual({ entry: saved, deletedAt: clock.unix(), expiresAt: clock.unix() + 30 * 86_400 });
-    await expect(api.getEntry(saved.id)).rejects.toEqual(commandError('notFound'));
+    await expect(api.listEntries()).resolves.toEqual([]);
     await expect(api.entriesOn('2026-11-22')).resolves.toEqual([]);
     await expect(api.saveEntry(saved)).rejects.toEqual(commandError('notFound'));
   });

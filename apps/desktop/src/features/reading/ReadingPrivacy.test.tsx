@@ -52,7 +52,7 @@ it('suspends hidden score filters in Gentle view and restores them without chang
   expect(screen.getByLabelText('Measure')).toHaveValue('mood');
   expect(screen.getByLabelText('Minimum score')).toHaveValue(8);
   await waitFor(() => expect(screen.queryByText('Synthetic quiet morning.')).not.toBeInTheDocument());
-  for (const entry of saved) expect(await api.getEntry(entry.id)).toEqual(entry);
+  expect(await api.listEntries()).toEqual(saved);
 });
 
 it('keeps a win excluded from insights out of weekly and timeline layers while retaining its original', async () => {
@@ -199,10 +199,11 @@ it('saves an insights change together with writing whose save failed, so its ret
   await user.click(include);
   await waitFor(
     async () =>
-      expect(await journal.getEntry(saved.id)).toMatchObject({ includeInInsights: false, revision: 2 }),
+      expect(await journal.listEntries()).toMatchObject([{ id: saved.id, includeInInsights: false, revision: 2 }]),
     APP_WAIT,
   );
-  expect(documentText((await journal.getEntry(saved.id)).document)).toBe(WAITING_WRITING);
+  const [stored] = await journal.listEntries();
+  expect(documentText(stored.document)).toBe(WAITING_WRITING);
   await openToday(user);
 });
 
@@ -212,11 +213,12 @@ it('withdraws an insights change that could not be saved with the waiting writin
   const preview = screen.getByRole('region', { name: 'Morning entry from 22 November 2026' });
   expect(await within(preview).findByRole('alert', {}, APP_WAIT)).toHaveTextContent(ERROR_MESSAGES.storage);
   expect(include).toBeChecked();
-  expect(await journal.getEntry(saved.id)).toMatchObject({ includeInInsights: true, revision: 1 });
+  expect(await journal.listEntries()).toMatchObject([{ id: saved.id, includeInInsights: true, revision: 1 }]);
 
   // Today's retry saves the writing alone: the failed change did not stay behind with it.
   free();
   await openToday(user);
-  expect(await journal.getEntry(saved.id)).toMatchObject({ includeInInsights: true, revision: 2 });
-  expect(documentText((await journal.getEntry(saved.id)).document)).toBe(WAITING_WRITING);
+  const [stored] = await journal.listEntries();
+  expect(stored).toMatchObject({ id: saved.id, includeInInsights: true, revision: 2 });
+  expect(documentText(stored.document)).toBe(WAITING_WRITING);
 });

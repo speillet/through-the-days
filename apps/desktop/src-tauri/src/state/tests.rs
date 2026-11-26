@@ -369,7 +369,7 @@ fn acknowledged_entries_and_preferences_survive_a_new_session() {
 
     let app = fixture.launch();
     let core = app.lock();
-    let reopened = core.get_entry(&saved.id).unwrap();
+    let reopened = core.journal().unwrap().get(&saved.id).unwrap();
     assert_eq!(text_of(&reopened), text);
     assert_eq!(core.entries_on("2026-11-22").unwrap(), vec![saved]);
     let preferences = core.preferences().unwrap();
@@ -410,7 +410,7 @@ fn malformed_input_is_refused_with_english_errors_and_changes_nothing() {
         assert_eq!(error.code, code, "{field}");
         assert!(error.message.ends_with('.'), "{field}");
     }
-    assert_eq!(core.get_entry(&saved.id).unwrap(), saved);
+    assert_eq!(core.journal().unwrap().get(&saved.id).unwrap(), saved);
     for (field, value, code) in [
         ("timeZone", json!("Synthetic/Nowhere"), "date"),
         ("theme", json!("synthetic"), "document"),
@@ -582,7 +582,7 @@ fn an_older_journal_waits_for_its_protected_upgrade_without_being_changed() {
         .unwrap();
     assert_eq!(startup.state, StartupState::Ready);
     assert_eq!(startup.from_version, None);
-    let entry = app.lock().get_entry(&id).unwrap();
+    let entry = app.lock().journal().unwrap().get(&id).unwrap();
     // The frozen version-1 payload, with perceived progress recorded as missing.
     assert_eq!(entry.progress, None);
     assert_eq!(entry.mood, Some(3));
@@ -619,7 +619,7 @@ fn an_older_journal_upgrades_at_launch_when_its_backup_can_be_made() {
     let app = fixture.launch();
     assert_eq!(app.startup_status().state, StartupState::Ready);
     assert_eq!(
-        text_of(&app.lock().get_entry(&id).unwrap()),
+        text_of(&app.lock().journal().unwrap().get(&id).unwrap()),
         "Synthetic previous journal."
     );
     assert_eq!(list_backups(&fixture.folder()).unwrap().len(), 1);
@@ -940,7 +940,7 @@ fn backup_status_follows_the_folder_passphrase_and_todays_result() {
         .unwrap();
     assert_eq!(later, status);
     assert_eq!(app.lock().list_backups().unwrap().len(), 1);
-    assert_eq!(app.lock().get_entry(&entry.id).unwrap(), entry);
+    assert_eq!(app.lock().journal().unwrap().get(&entry.id).unwrap(), entry);
 }
 
 #[test]
@@ -1646,8 +1646,8 @@ fn restore_publishes_a_safety_backup_first_and_brings_back_the_backed_up_journal
     );
     assert_eq!(app.lock().list_entries().unwrap(), vec![kept]);
     assert_eq!(
-        app.lock().get_entry(&later.id).unwrap_err(),
-        CommandError::from(Error::NotFound)
+        app.lock().journal().unwrap().get(&later.id).unwrap_err(),
+        Error::NotFound
     );
     // No private copy of the backup is left in the data folder.
     assert!(
