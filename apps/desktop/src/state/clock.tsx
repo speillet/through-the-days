@@ -19,7 +19,7 @@ import { useApi } from '../api/client';
 import { msUntilMidnight, todayIn } from '../domain/dates';
 import { usePreferences } from './preferences';
 
-export const TODAY_REFRESH_MS = 60_000;
+const TODAY_REFRESH_MS = 60_000;
 
 /** The wait for midnight is worked out again at least this often (see the effect below). */
 const MIDNIGHT_PLAN_MS = 60 * 60_000;

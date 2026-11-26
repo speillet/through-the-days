@@ -12,7 +12,7 @@ import { RadioGroup } from '../../components/RadioGroup';
 import { SLOT_LABELS } from '../../domain/copy';
 import { formatLongDate } from '../../domain/dates';
 
-export interface MoveEntryDialogProps {
+interface MoveEntryDialogProps {
   date: string;
   slot: Slot;
   today: string;

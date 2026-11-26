@@ -15,7 +15,7 @@ import { ENERGY_SCALE, MOOD_SCALE, PRIDE_SCALE, PROGRESS_SCALE } from './scales'
 import type { StageId } from './stages';
 import { WinsList } from './WinsList';
 
-export interface FieldsProps {
+interface FieldsProps {
   values: Entry;
   showScores: boolean;
   onChange(change: EntryChange): void;

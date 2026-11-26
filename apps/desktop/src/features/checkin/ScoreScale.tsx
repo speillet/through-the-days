@@ -9,13 +9,13 @@ import { classNames } from '../../components/classNames';
 import { TAB_STOP } from '../../components/keyboard';
 import type { ScaleWording } from './scales';
 
-export interface ScoreScaleProps {
+interface ScoreScaleProps {
   wording: ScaleWording;
   value: number | null;
   onChange(value: number | null): void;
 }
 
-export function scoreSummary(wording: ScaleWording, value: number): string {
+function scoreSummary(wording: ScaleWording, value: number): string {
   const words = wording.describe(value);
   return words ? `${value}, ${words}` : String(value);
 }

@@ -25,8 +25,8 @@ export function insightSources(entries: readonly Entry[], report: ReadingReport 
   const includedIds = new Set(report?.days.flatMap((day) => day.observations.map((entry) => entry.id)));
   return entries.filter((entry) => entry.includeInInsights !== false && includedIds.has(entry.id));
 }
-export const plainDate = (date: string) => formatLongDate(date).split(' ').slice(1).join(' ');
-export function scoreLabel(metric: ScoreMetric, value: number) {
+const plainDate = (date: string) => formatLongDate(date).split(' ').slice(1).join(' ');
+function scoreLabel(metric: ScoreMetric, value: number) {
   return `${METRIC_LABELS[metric]} ${value}/10${(metric === 'mood' || metric === 'energy') && value === 5 ? ' (neutral)' : ''}`;
 }
 export function numericFamily(entry: Pick<Entry, 'mood' | 'energy'>): string {

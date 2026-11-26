@@ -8,7 +8,7 @@ import { Component, type ReactNode } from 'react';
 import { Button } from './Button';
 import { Notice } from './Notice';
 
-export interface ViewErrorBoundaryProps {
+interface ViewErrorBoundaryProps {
   /** A new value, such as the next navigation request, shows the view again. */
   resetKey: unknown;
   /** Called after a view failed, for example to bring back navigation hidden by focus mode. */

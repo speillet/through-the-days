@@ -35,10 +35,6 @@ export const DEPTH_OPTIONS: readonly DepthOption[] = [
   },
 ];
 
-export function depthLabel(depth: Depth): string {
-  return DEPTH_OPTIONS.find((option) => option.id === depth)?.label ?? depth;
-}
-
 export const SAVE_STATE_LABELS = {
   saving: 'Saving…',
   saved: 'Saved',

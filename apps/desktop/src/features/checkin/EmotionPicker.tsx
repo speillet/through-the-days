@@ -10,7 +10,7 @@ import { TAB_STOP } from '../../components/keyboard';
 import { TextField } from '../../components/TextField';
 import { EMOTION_FAMILIES, EMOTIONS, emotionById, emotionsInFamily, type Emotion } from '../../domain/emotions';
 
-export interface EmotionPickerProps {
+interface EmotionPickerProps {
   emotion: string;
   anotherEmotion: string;
   onEmotionChange(id: string): void;

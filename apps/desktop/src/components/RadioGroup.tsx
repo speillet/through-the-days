@@ -11,7 +11,7 @@ export interface RadioOption<T extends string> {
   description?: ReactNode;
 }
 
-export interface RadioGroupProps<T extends string> {
+interface RadioGroupProps<T extends string> {
   legend: ReactNode;
   value: T | null;
   options: readonly RadioOption<T>[];

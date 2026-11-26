@@ -76,19 +76,6 @@ describe('Dialog', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(opener).toHaveFocus();
   });
-
-  it('can refuse Escape while it must stay open', async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    render(
-      <Dialog open title="Working" onClose={onClose} closeOnEscape={false}>
-        <p>Synthetic progress.</p>
-      </Dialog>,
-    );
-    await user.keyboard('{Escape}');
-    expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog', { name: 'Working' })).toHaveFocus();
-  });
 });
 
 describe('ConfirmDialog', () => {

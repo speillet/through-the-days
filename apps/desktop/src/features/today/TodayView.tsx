@@ -53,7 +53,7 @@ function isWriting(panel: HTMLElement | null): boolean {
   return active instanceof HTMLElement && active.closest('.ProseMirror') !== null && (panel?.contains(active) ?? false);
 }
 
-export interface TodayViewProps {
+interface TodayViewProps {
   /** Quiet period before an automatic save; tests shorten it. */
   autosaveDelayMs?: number;
   initialDate?: string;

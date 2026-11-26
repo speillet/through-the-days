@@ -4,7 +4,7 @@
 import { useId, type ReactNode } from 'react';
 import { TAB_STOP } from '../../components/keyboard';
 
-export interface CheckboxProps {
+interface CheckboxProps {
   label: ReactNode;
   checked: boolean;
   onChange(checked: boolean): void;

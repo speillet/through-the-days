@@ -13,7 +13,7 @@ import { isBlank } from '../../domain/entry';
 import type { EntryChange } from '../../state/autosave';
 import { useTypedItem } from './typedItem';
 
-export interface WinsListProps {
+interface WinsListProps {
   wins: readonly Win[];
   onChange(change: EntryChange): void;
 }

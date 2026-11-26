@@ -23,7 +23,7 @@ export interface RestoreTarget {
   label: string;
 }
 
-export interface RestoreDialogProps {
+interface RestoreDialogProps {
   target: RestoreTarget | null;
   /** Used to say whether a safety backup of the current journal can be made first. */
   status: BackupStatus | null;
@@ -33,7 +33,7 @@ export interface RestoreDialogProps {
   onRestored(outcome: RestoreOutcome): void;
 }
 
-export const JOURNAL_UNCHANGED = 'Your current journal is unchanged.';
+const JOURNAL_UNCHANGED = 'Your current journal is unchanged.';
 
 export const UNSAVED_WRITING_NOT_RESTORED =
   'Some writing hasn’t been saved yet, so the backup was not restored. Wait until it shows Saved, then try again.';

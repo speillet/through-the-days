@@ -15,7 +15,7 @@ import { FeelingScores, StageFields } from './CheckInFields';
 import { checkInStages, type StageId } from './stages';
 import './checkin.css';
 
-export interface CheckInProps {
+interface CheckInProps {
   slot: Slot;
   /** Current answers; a blank draft when nothing was recorded yet. */
   values: Entry;

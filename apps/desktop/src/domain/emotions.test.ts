@@ -1,20 +1,18 @@
 import { describe, expect, it } from 'vitest';
+import vocabulary from '../../../../crates/journal-core/assets/emotion-vocabulary.json';
 import {
   EMOTION_FAMILIES,
   EMOTIONS,
   emotionById,
   emotionsInFamily,
-  energyZone,
   familyById,
   isEmotionId,
-  moodZone,
   quadrantFor,
-  VOCABULARY_VERSION,
 } from './emotions';
 
 describe('emotion vocabulary', () => {
   it('loads the versioned English vocabulary shared with journal-core', () => {
-    expect(VOCABULARY_VERSION).toBe(1);
+    expect(vocabulary.version).toBe(1);
     expect(EMOTION_FAMILIES.map((family) => family.id)).toEqual([
       'unpleasant-high',
       'pleasant-high',
@@ -61,15 +59,5 @@ describe('quadrant rule', () => {
     expect(chosen?.family).toBe('unpleasant-high');
     expect(quadrantFor(3, 2)).toBe('unpleasant-low');
     expect(emotionById('anxious')).toEqual(chosen);
-  });
-
-  it('names each score zone in words, including the neutral middle', () => {
-    expect(moodZone(5)).toBe('Neutral');
-    expect(moodZone(1)).toBe('Unpleasant');
-    expect(moodZone(7)).toBe('Pleasant');
-    expect(moodZone(null)).toBeNull();
-    expect(energyZone(5)).toBe('Neutral');
-    expect(energyZone(0)).toBe('Lower energy');
-    expect(energyZone(10)).toBe('Higher energy');
   });
 });

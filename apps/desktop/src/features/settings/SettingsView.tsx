@@ -17,7 +17,7 @@ import { TimeZoneSection } from './TimeZoneSection';
 import { WritingSection } from './WritingSection';
 import './settings.css';
 
-export const SETTINGS_SECTIONS: readonly { id: SettingsSection; title: string; Body: ComponentType }[] = [
+const SETTINGS_SECTIONS: readonly { id: SettingsSection; title: string; Body: ComponentType }[] = [
   { id: 'appearance', title: 'Appearance', Body: AppearanceSection },
   { id: 'writing', title: 'Writing', Body: WritingSection },
   { id: 'timeZone', title: 'Time zone', Body: TimeZoneSection },

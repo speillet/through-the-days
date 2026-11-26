@@ -3,7 +3,6 @@ import type { Entry, ReadingReport, SearchRequest, ScoreMetric, WeeklyReview } f
 import { addDays, isIsoDate, weekdayIndex } from '../domain/dates';
 import { documentText, isBlank } from '../domain/entry';
 
-export const METRICS: readonly ScoreMetric[] = ['mood', 'energy', 'pride', 'progress'];
 export interface PreviewReview {
   weekStart: string;
   notes: string;

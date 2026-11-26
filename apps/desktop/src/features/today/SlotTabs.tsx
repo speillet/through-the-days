@@ -14,7 +14,7 @@ export function slotTabId(slot: Slot): string {
   return `slot-tab-${slot}`;
 }
 
-export interface SlotTabsProps {
+interface SlotTabsProps {
   slot: Slot;
   /** Null while the date's entries are still being read. */
   statuses: Record<Slot, EntryStatus | null>;

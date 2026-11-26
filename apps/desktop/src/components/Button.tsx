@@ -4,7 +4,7 @@ import { TAB_STOP } from './keyboard';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger';
 
-export interface ButtonProps extends ComponentPropsWithRef<'button'> {
+interface ButtonProps extends ComponentPropsWithRef<'button'> {
   variant?: ButtonVariant;
   size?: 'regular' | 'small';
   /** Decorative icon shown before the label. */

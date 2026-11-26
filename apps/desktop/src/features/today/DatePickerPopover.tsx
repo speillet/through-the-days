@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { CalendarGrid } from '../../components/CalendarGrid';
 
-export interface DatePickerPopoverProps {
+interface DatePickerPopoverProps {
   value: string;
   today: string;
   onSelect(date: string): void;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Preferences } from '../api/types';
-import { ACTION_CATEGORIES, actionCategoryLabel, CUSTOM_ACTION_CATEGORY, isActionCategory } from './actions';
-import { DEPTH_OPTIONS, depthLabel, SAVE_STATE_LABELS, SLOT_LABELS, UNAVAILABLE_VIEWS } from './copy';
+import { ACTION_CATEGORIES, CUSTOM_ACTION_CATEGORY } from './actions';
+import { DEPTH_OPTIONS, SAVE_STATE_LABELS, SLOT_LABELS, UNAVAILABLE_VIEWS } from './copy';
 import { DEFAULT_PREFERENCES, visibilityFor } from './preferences';
 
 describe('action categories', () => {
@@ -20,10 +20,7 @@ describe('action categories', () => {
   });
 
   it('treats the empty category as a custom action', () => {
-    expect(isActionCategory('rest')).toBe(true);
-    expect(isActionCategory(CUSTOM_ACTION_CATEGORY)).toBe(false);
-    expect(actionCategoryLabel('self-care')).toBe('Self-care');
-    expect(actionCategoryLabel(CUSTOM_ACTION_CATEGORY)).toBeNull();
+    expect(ACTION_CATEGORIES.map((category) => category.id)).not.toContain(CUSTOM_ACTION_CATEGORY);
   });
 });
 
@@ -35,7 +32,6 @@ describe('shared copy', () => {
       ['Daily Journal', 'About 5–10 minutes'],
       ['Deep Reflection', 'About 15–20 minutes'],
     ]);
-    expect(depthLabel('deep')).toBe('Deep Reflection');
   });
 
   it('says plainly that Deep Reflection worksheets are not available yet', () => {

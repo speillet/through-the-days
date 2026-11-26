@@ -26,7 +26,7 @@ const TITLES: Record<PassphrasePurpose, string> = {
   due: 'Enter your backup passphrase',
 };
 
-export interface PassphraseDialogProps {
+interface PassphraseDialogProps {
   open: boolean;
   purpose: PassphrasePurpose;
   /** The passphrase is remembered in Keychain now; the Remember choice starts from it. */

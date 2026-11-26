@@ -19,9 +19,9 @@ import { toCommandError, useApi } from '../api/client';
 import type { BackupStatus, CommandError } from '../api/types';
 import { useToday } from './clock';
 
-export const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
+const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
 /** How soon the routine looks again while the launch waits for macOS Keychain. */
-export const KEYCHAIN_RECHECK_MS = 3_000;
+const KEYCHAIN_RECHECK_MS = 3_000;
 
 export interface BackupContextValue {
   /** Null until the first status arrives. */

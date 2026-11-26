@@ -4,20 +4,13 @@
 // or quoting past the limit does nothing, and deeper pasted content keeps its words
 // as plain blocks at the deepest level that still fits.
 
-import { Extension, type JSONContent } from '@tiptap/core';
+import { Extension } from '@tiptap/core';
 import { Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { MAX_DOCUMENT_DEPTH } from '../../domain/document';
 
 /** Wrapping that pasting may add around pasted content (for example a list around list items). */
 const PASTE_WRAPPING_MARGIN = 2;
-
-/** Node levels in a stored document: the doc node is level 1 and a text node is a level. */
-export function documentDepth(node: JSONContent): number {
-  let deepest = 0;
-  for (const child of node.content ?? []) deepest = Math.max(deepest, documentDepth(child));
-  return 1 + deepest;
-}
 
 /**
  * Levels a node takes, counting itself. A text block always counts its text, even
@@ -77,7 +70,7 @@ function edgeDepth(fragment: Fragment, side: 'start' | 'end'): number {
 }
 
 /** Flattens a pasted slice so that each of its nodes takes at most `levels` levels. */
-export function fitSlice(slice: Slice, levels: number): Slice {
+function fitSlice(slice: Slice, levels: number): Slice {
   const allowed = Math.max(levels, 2);
   const nodes: ProseMirrorNode[] = [];
   let changed = false;

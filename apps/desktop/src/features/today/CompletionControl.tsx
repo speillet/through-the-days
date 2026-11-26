@@ -12,7 +12,7 @@ import { isStaleRefusal } from '../../state/autosave';
 import { ENTRY_STATUS_LABELS, entryStatus } from './status';
 
 /** What a completion request still needs, in plain English. */
-export function completionExplanation(entry: Entry | null, showScores: boolean): string {
+function completionExplanation(entry: Entry | null, showScores: boolean): string {
   const missing: string[] = [];
   if (!entry || isBlank(documentText(entry.document))) missing.push('some writing');
   if (!entry || entry.mood === null) missing.push('a mood score');
@@ -26,7 +26,7 @@ export function completionExplanation(entry: Entry | null, showScores: boolean):
   return `To mark this entry complete, add ${list}. It stays a draft until then, with everything kept.${scoresHidden}`;
 }
 
-export interface CompletionControlProps {
+interface CompletionControlProps {
   entry: Entry | null;
   /** False in Gentle view: no completion prompts or control. */
   showControl: boolean;

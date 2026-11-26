@@ -14,7 +14,7 @@ import { newId } from '../../domain/entry';
 import type { EntryChange } from '../../state/autosave';
 import { useTypedItem } from './typedItem';
 
-export interface ActionsPickerProps {
+interface ActionsPickerProps {
   legend: string;
   hint?: string;
   actions: readonly Action[];

@@ -42,7 +42,7 @@ export interface EntryWorkspaceHandle {
   focusEditor(): void;
 }
 
-export interface EntryWorkspaceProps {
+interface EntryWorkspaceProps {
   date: string;
   slot: Slot;
   /** The saved entry for this date and slot, or null. */
