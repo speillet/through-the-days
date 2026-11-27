@@ -237,7 +237,8 @@ impl Journal {
     /// Literal-token search: Unicode case folding and Latin accent folding, no FTS operators,
     /// prefixes or stemming. Each space-separated part of the query must appear as consecutive
     /// words; a part with no indexed word, such as `?` or `🌿`, is ignored, and a query made only
-    /// of such parts finds nothing.
+    /// of such parts finds nothing. Each Han, kana, Hangul or Thai character is a word of its own
+    /// (see `separate_unspaced_characters`), so `散歩` finds `公園を散歩した`.
     /// Every query indexes the current active records, so edits/trash cannot leave stale excerpts.
     pub fn search(&self, request: &SearchRequest) -> Result<Vec<Entry>, Error> {
         let dates = request.validate()?;
@@ -250,24 +251,32 @@ impl Journal {
             return Ok(entries);
         }
         let index = Connection::open_in_memory()?;
-        index.execute_batch("PRAGMA temp_store=MEMORY; CREATE VIRTUAL TABLE source_text USING fts5(id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2');")?;
+        index.execute_batch(&format!("PRAGMA temp_store=MEMORY; CREATE VIRTUAL TABLE source_text USING fts5(id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2 tokenchars {THAI_MARKS}');"))?;
         {
             let mut insert = index.prepare("INSERT INTO source_text(id,text) VALUES(?1,?2)")?;
             for entry in &entries {
                 insert.execute(params![
                     entry.id,
-                    format!("{}\n{}", entry.title, document_text(&entry.document))
+                    separate_unspaced_characters(&format!(
+                        "{}\n{}",
+                        entry.title,
+                        document_text(&entry.document)
+                    ))
                 ])?;
             }
         }
         // Quotes make every user token a literal phrase; input never supplies MATCH operators or SQL.
         // An implicit AND (a space) drops a phrase the tokenizer leaves empty, such as "?" or "🌿",
         // whereas an explicit AND keeps it and then matches nothing. A query of empty phrases alone
-        // still matches nothing.
+        // still matches nothing. The spaces that separate Han, kana, Hangul and Thai characters are
+        // added inside the quotes, so those characters still match only consecutive and in order.
         let query = request
             .text
             .split_whitespace()
-            .map(|word| format!("\"{}\"", word.replace('"', "\"\"")))
+            .map(|word| {
+                let phrase = separate_unspaced_characters(word);
+                format!("\"{}\"", phrase.replace('"', "\"\""))
+            })
             .collect::<Vec<_>>()
             .join(" ");
         let mut select = index.prepare("SELECT id FROM source_text WHERE source_text MATCH ?1")?;
@@ -279,4 +288,60 @@ impl Journal {
             .filter(|entry| matches.contains(&entry.id))
             .collect())
     }
+}
+
+/// Thai vowel and tone marks written above or below a letter. unicode61 treats these combining
+/// marks as separators, which would drop them from Thai words; the index declares them token
+/// characters, and `separate_unspaced_characters` keeps each one with the letter before it.
+/// `apps/desktop/src/api/reading-preview.ts` mirrors this list.
+const THAI_MARKS: &str = "\u{0E31}\u{0E34}\u{0E35}\u{0E36}\u{0E37}\u{0E38}\u{0E39}\u{0E3A}\
+                          \u{0E47}\u{0E48}\u{0E49}\u{0E4A}\u{0E4B}\u{0E4C}\u{0E4D}\u{0E4E}";
+
+/// Characters of the scripts written without spaces between words: Thai letters and Han, kana and
+/// Hangul blocks. The ranges also hold punctuation, such as `・`, and Japanese combining sound
+/// marks, which the tokenizer ignores anyway. `apps/desktop/src/api/reading-preview.ts` mirrors
+/// these ranges.
+fn is_unspaced(character: char) -> bool {
+    matches!(character,
+        // Thai letters and the vowels written beside them; digits keep their number words.
+        '\u{0E01}'..='\u{0E30}' | '\u{0E32}'..='\u{0E33}' | '\u{0E40}'..='\u{0E46}'
+        // Hangul Jamo, then the ideographic iteration and number marks such as 々, 〆 and 〇.
+        | '\u{1100}'..='\u{11FF}'
+        | '\u{3005}'..='\u{3007}' | '\u{3021}'..='\u{3029}' | '\u{3038}'..='\u{303B}'
+        // Hiragana, Katakana with ー, Hangul compatibility jamo and Katakana extensions.
+        | '\u{3041}'..='\u{30FF}' | '\u{3131}'..='\u{318E}' | '\u{31F0}'..='\u{31FF}'
+        // CJK Unified Ideographs and Extension A.
+        | '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}'
+        // Hangul Jamo Extended-A, Hangul syllables and Jamo Extended-B.
+        | '\u{A960}'..='\u{A97F}' | '\u{AC00}'..='\u{D7FF}'
+        // CJK Compatibility Ideographs, then halfwidth Katakana and Hangul.
+        | '\u{F900}'..='\u{FAFF}' | '\u{FF66}'..='\u{FFDC}'
+        // Historic kana, then the ideograph extensions in planes 2 and 3.
+        | '\u{1AFF0}'..='\u{1B16F}' | '\u{20000}'..='\u{3FFFF}'
+    )
+}
+
+/// Puts a space before each Han, kana, Hangul or Thai character and after it, past the Thai marks
+/// that follow it, so that unicode61 makes each one a word of its own. These scripts do not
+/// separate words with spaces, so a whole run would otherwise be one word, and a word inside it
+/// could never be found. Search applies this to the indexed text and inside each quoted query
+/// part alike: `散歩` becomes the phrase `"散 歩"`, which still needs both characters consecutive.
+/// Hangul is split by syllable too, so `학교` finds `학교에`, and also `대학교`. Other text is
+/// unchanged.
+fn separate_unspaced_characters(text: &str) -> String {
+    let mut separated = String::with_capacity(text.len());
+    let mut after_unspaced = false;
+    for character in text.chars() {
+        if THAI_MARKS.contains(character) {
+            separated.push(character);
+            continue;
+        }
+        let unspaced = is_unspaced(character);
+        if unspaced || after_unspaced {
+            separated.push(' ');
+        }
+        separated.push(character);
+        after_unspaced = unspaced;
+    }
+    separated
 }

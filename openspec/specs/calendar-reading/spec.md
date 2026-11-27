@@ -75,6 +75,11 @@ The system SHALL provide local full-text search and combinable journal filters w
 - **WHEN** the person types a minimum score that is not a whole number from 0 to 10, such as 7.5, 11 or -1
 - **THEN** the filters keep their previous minimum, and the reading views that share them keep their results without an error.
 
+#### Scenario: Words in text written without spaces
+
+- **WHEN** the person searches characters that appear in the same order inside saved Chinese, Japanese, Korean or Thai text, such as "散歩" in "今日は公園を散歩した。", "公园" in "今天我去公园散步了。", "เดินเล่น" in "วันนี้ฉันไปเดินเล่นที่สวน" or "학교" in "학교에"
+- **THEN** search finds that entry, and characters that are not consecutive and in that order in the saved text, such as "公園散歩" or "歩散", match no entry.
+
 #### Scenario: Edit invalidates search
 
 - **WHEN** an entry is edited so that a previous match disappears

@@ -93,6 +93,71 @@ fn search_keeps_the_words_of_each_query_part_together_and_folds_only_latin_accen
     assert!(search_ids(&journal, "καλημερα").is_empty());
 }
 
+/// calendar-reading — Local search and filtering / Words in text written without spaces: each
+/// Han, kana, Hangul or Thai character is a word of its own, so a query finds the same characters
+/// in the same order inside a longer run, and Thai vowel and tone marks still count.
+#[test]
+fn search_finds_words_inside_chinese_japanese_korean_and_thai_text() {
+    let directory = tempfile::tempdir().unwrap();
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    // Deliberate multilingual synthetic fixtures; the browser preview mirrors these rules.
+    let save = |date: &str, text: &str| {
+        let mut entry = Entry::draft(date, Slot::Morning);
+        entry.document = json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":text}]}]});
+        journal.save(entry).unwrap().id
+    };
+    let japanese = save(
+        "2026-11-18",
+        "Synthetic 今日は公園を散歩した。iPhoneで写真を撮った",
+    );
+    let chinese = save("2026-11-19", "Synthetic 今天我去公园散步了。");
+    let thai = save("2026-11-20", "Synthetic วันนี้ฉันไปเดินเล่นที่สวน");
+    let korean = save("2026-11-21", "Synthetic 오늘 학교에 갔다.");
+    for text in [
+        "散歩",
+        "公園を散歩",
+        "「散歩した」",
+        "iphone",
+        "iPhoneで写真",
+    ] {
+        assert_eq!(search_ids(&journal, text), [japanese.as_str()], "{text}");
+    }
+    assert_eq!(search_ids(&journal, "公园"), [chinese.as_str()]);
+    assert_eq!(
+        search_ids(&journal, "今"),
+        [chinese.as_str(), japanese.as_str()]
+    );
+    for text in ["เดินเล่น", "ไปเดิน"] {
+        assert_eq!(search_ids(&journal, text), [thai.as_str()], "{text}");
+    }
+    // Hangul is split by syllable, so a noun finds its form with an attached particle.
+    for text in ["학교", "학교에", "교에"] {
+        assert_eq!(search_ids(&journal, text), [korean.as_str()], "{text}");
+    }
+    // Characters out of order or apart, or a Thai word without its vowel mark, are not found.
+    for text in [
+        "歩散",
+        "公園散歩",
+        "เล่นเดิน",
+        "เดน",
+        "교학",
+        "花火",
+        "散歩 OR 公园",
+    ] {
+        assert!(search_ids(&journal, text).is_empty(), "{text}");
+    }
+    let report = journal
+        .reading_report(&SearchRequest {
+            text: "散歩".into(),
+            from: Some("2026-11-18".into()),
+            to: Some("2026-11-21".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!((report.entries, report.recorded_days), (1, 1));
+    assert_eq!(report.days[0].observations[0].id, japanese);
+}
+
 #[test]
 fn weekly_notes_and_milestones_survive_restart_and_source_changes_invalidate_summaries() {
     let directory = tempfile::tempdir().unwrap();
