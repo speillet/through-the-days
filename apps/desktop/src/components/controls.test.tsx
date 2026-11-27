@@ -7,7 +7,6 @@ import { Notice } from './Notice';
 import { RadioGroup } from './RadioGroup';
 import { TextArea, TextField } from './TextField';
 import { Toggle } from './Toggle';
-import { VisuallyHidden } from './VisuallyHidden';
 
 describe('Button', () => {
   it('renders each variant as a real button that defaults to type="button"', () => {
@@ -147,17 +146,5 @@ describe('RadioGroup', () => {
     expect(screen.getByRole('radio', { name: /System/ })).toBeChecked();
     await user.click(screen.getByRole('radio', { name: 'Dark' }));
     expect(onChange).toHaveBeenCalledWith('dark');
-  });
-});
-
-describe('VisuallyHidden', () => {
-  it('renders text for assistive technology only', () => {
-    render(
-      <button type="button">
-        <span aria-hidden="true">×</span>
-        <VisuallyHidden>Close</VisuallyHidden>
-      </button>,
-    );
-    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
   });
 });

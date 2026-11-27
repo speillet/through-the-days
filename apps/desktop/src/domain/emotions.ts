@@ -26,8 +26,6 @@ function asFamilyId(value: string): EmotionFamilyId {
   return value as EmotionFamilyId;
 }
 
-export const VOCABULARY_VERSION: number = vocabulary.version;
-
 export const EMOTION_FAMILIES: readonly EmotionFamily[] = vocabulary.families.map((family) => ({
   id: asFamilyId(family.id),
   label: family.label,
@@ -69,18 +67,4 @@ export function quadrantFor(mood: number | null, energy: number | null): Emotion
   const valence = mood > 5 ? 'pleasant' : 'unpleasant';
   const activation = energy > 5 ? 'high' : 'low';
   return `${valence}-${activation}`;
-}
-
-/** English reading of a mood score: "Unpleasant", "Neutral" or "Pleasant". */
-export function moodZone(mood: number | null): 'Unpleasant' | 'Neutral' | 'Pleasant' | null {
-  if (mood === null) return null;
-  if (mood === 5) return 'Neutral';
-  return mood > 5 ? 'Pleasant' : 'Unpleasant';
-}
-
-/** English reading of an energy score: "Lower energy", "Neutral" or "Higher energy". */
-export function energyZone(energy: number | null): 'Lower energy' | 'Neutral' | 'Higher energy' | null {
-  if (energy === null) return null;
-  if (energy === 5) return 'Neutral';
-  return energy > 5 ? 'Higher energy' : 'Lower energy';
 }

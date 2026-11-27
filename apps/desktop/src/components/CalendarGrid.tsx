@@ -24,7 +24,7 @@ import { classNames } from './classNames';
 import { TAB_STOP } from './keyboard';
 import './CalendarGrid.css';
 
-export interface CalendarGridProps {
+interface CalendarGridProps {
   /** The chosen journal date, YYYY-MM-DD. */
   value: string;
   /** Today's journal date, marked in the grid. */

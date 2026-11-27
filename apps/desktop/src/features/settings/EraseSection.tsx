@@ -26,7 +26,7 @@ export const UNSAVED_WRITING_NOT_ERASED =
   'Some writing hasn’t been saved yet, so nothing was erased. Wait until it shows Saved, then try again.';
 
 /** The warning shown in the reopened workspace when erasing stopped part of the way. */
-export function incompleteErasureNotice(error: CommandError): string {
+function incompleteErasureNotice(error: CommandError): string {
   if (error.code === 'keychain') {
     return `Your journal and backup settings on this Mac were erased, but the backup passphrase could not be removed from macOS Keychain. ${KEYCHAIN_ACCESS_HINT} Backup files in your backup folder were not deleted.`;
   }
@@ -50,7 +50,7 @@ function EraseScope() {
 const BACKUP_FILES_KEPT =
   'Backup files in your backup folder are not deleted. Delete them yourself in Finder if you no longer want them: anyone with a backup file and its passphrase can restore it.';
 
-export const OTHER_COPIES_KEPT =
+const OTHER_COPIES_KEPT =
   'Copies made outside the app are not removed either. Time Machine backups of this Mac, including its local snapshots, contain your journal unencrypted unless the backup disk is encrypted. If iCloud Drive or another service syncs your backup folder, it keeps its own copies of the encrypted backups.';
 
 export function EraseSection() {
@@ -87,7 +87,7 @@ export function EraseSection() {
   );
 }
 
-export interface EraseDialogProps {
+interface EraseDialogProps {
   open: boolean;
   onClose(): void;
   /**

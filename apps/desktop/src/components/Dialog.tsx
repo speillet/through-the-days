@@ -6,7 +6,7 @@ import { useId, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode, typ
 import { createPortal } from 'react-dom';
 import { classNames } from './classNames';
 
-export interface DialogProps {
+interface DialogProps {
   open: boolean;
   title: ReactNode;
   onClose(): void;
@@ -17,8 +17,6 @@ export interface DialogProps {
   role?: 'dialog' | 'alertdialog';
   /** Element to focus first; defaults to the first focusable element. */
   initialFocus?: RefObject<HTMLElement | null>;
-  /** Escape calls onClose unless this is false. */
-  closeOnEscape?: boolean;
   className?: string;
 }
 
@@ -48,7 +46,6 @@ function OpenDialog({
   footer,
   role = 'dialog',
   initialFocus,
-  closeOnEscape = true,
   className,
 }: Omit<DialogProps, 'open'>) {
   const titleId = useId();
@@ -80,10 +77,8 @@ function OpenDialog({
     if (!panel) return;
     if (event.key === 'Escape') {
       event.stopPropagation();
-      if (closeOnEscape) {
-        event.preventDefault();
-        onClose();
-      }
+      event.preventDefault();
+      onClose();
       return;
     }
     if (event.key !== 'Tab') return;

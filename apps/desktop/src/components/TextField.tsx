@@ -12,8 +12,8 @@ interface FieldOwnProps {
   labelHidden?: boolean;
 }
 
-export type TextFieldProps = FieldOwnProps & Omit<ComponentPropsWithRef<'input'>, 'children'>;
-export type TextAreaProps = FieldOwnProps & Omit<ComponentPropsWithRef<'textarea'>, 'children'>;
+type TextFieldProps = FieldOwnProps & Omit<ComponentPropsWithRef<'input'>, 'children'>;
+type TextAreaProps = FieldOwnProps & Omit<ComponentPropsWithRef<'textarea'>, 'children'>;
 
 function useFieldIds(id: string | undefined, hint: ReactNode, error: ReactNode, describedBy: string | undefined) {
   const generated = useId();

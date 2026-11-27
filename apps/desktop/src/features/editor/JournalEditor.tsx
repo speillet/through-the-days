@@ -24,7 +24,7 @@ export interface JournalEditorHandle {
   getMarkdown(): string;
 }
 
-export interface JournalEditorProps {
+interface JournalEditorProps {
   /** The document when the editor opens; later edits flow out through onChange only. */
   initialContent: JSONContent;
   /** Accessible name of the writing area. */

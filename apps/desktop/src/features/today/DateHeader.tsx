@@ -10,7 +10,7 @@ import { Button } from '../../components/Button';
 import { formatLongDate, stepDays } from '../../domain/dates';
 import { DatePickerPopover } from './DatePickerPopover';
 
-export interface DateHeaderProps {
+interface DateHeaderProps {
   date: string;
   today: string;
   /** Hides the navigation in focus mode; the date itself stays. */

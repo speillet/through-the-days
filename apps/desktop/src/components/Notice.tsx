@@ -7,7 +7,7 @@ import { classNames } from './classNames';
 
 export type NoticeTone = 'info' | 'success' | 'warning' | 'error';
 
-export interface NoticeProps {
+interface NoticeProps {
   tone?: NoticeTone;
   title?: ReactNode;
   children?: ReactNode;

@@ -30,7 +30,7 @@ export const THEME_OPTIONS: readonly { id: Theme; label: string; description: st
 ];
 
 /** Text sizes, smallest first; journal-core accepts exactly these values. */
-export const TEXT_SCALES: readonly TextScale[] = [100, 115, 130, 150];
+const TEXT_SCALES: readonly TextScale[] = [100, 115, 130, 150];
 
 export const TEXT_SCALE_OPTIONS: readonly { id: TextScale; label: string; description: string }[] = [
   { id: 100, label: 'Default', description: '100%' },

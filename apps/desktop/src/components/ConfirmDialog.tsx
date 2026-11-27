@@ -7,13 +7,12 @@ import { Button } from './Button';
 import { Dialog } from './Dialog';
 import { Notice } from './Notice';
 
-export interface ConfirmDialogProps {
+interface ConfirmDialogProps {
   open: boolean;
   title: ReactNode;
   /** What will happen, read when the dialog opens. */
   children?: ReactNode;
   confirmLabel: string;
-  cancelLabel?: string;
   tone?: 'primary' | 'danger';
   /** May return a promise; a rejection is shown in the dialog. */
   onConfirm(): unknown;
@@ -28,7 +27,6 @@ function OpenConfirmDialog({
   title,
   children,
   confirmLabel,
-  cancelLabel = 'Cancel',
   tone = 'primary',
   onConfirm,
   onCancel,
@@ -63,7 +61,7 @@ function OpenConfirmDialog({
       footer={
         <>
           <Button ref={cancelRef} variant="secondary" onClick={onCancel} disabled={busy}>
-            {cancelLabel}
+            Cancel
           </Button>
           <Button
             ref={confirmRef}

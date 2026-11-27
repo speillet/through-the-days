@@ -16,7 +16,7 @@ export interface PassphraseValues {
 
 export const EMPTY_PASSPHRASE: PassphraseValues = { passphrase: '', confirmation: '', remember: false };
 
-export interface PassphraseFieldsProps {
+interface PassphraseFieldsProps {
   values: PassphraseValues;
   onChange(values: PassphraseValues): void;
   problems?: PassphraseProblems;

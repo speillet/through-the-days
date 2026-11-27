@@ -3,25 +3,22 @@
 // state without relying on colour.
 
 import { useId, type ReactNode } from 'react';
-import { classNames } from './classNames';
 import { TAB_STOP } from './keyboard';
 
-export interface ToggleProps {
+interface ToggleProps {
   label: ReactNode;
   checked: boolean;
   onChange(checked: boolean): void;
   hint?: ReactNode;
   disabled?: boolean;
-  id?: string;
-  className?: string;
 }
 
-export function Toggle({ label, checked, onChange, hint, disabled, id, className }: ToggleProps) {
+export function Toggle({ label, checked, onChange, hint, disabled }: ToggleProps) {
   const generated = useId();
-  const controlId = id ?? `toggle-${generated}`;
+  const controlId = `toggle-${generated}`;
   const hintId = hint ? `${controlId}-hint` : undefined;
   return (
-    <div className={classNames('toggle-field', className)}>
+    <div className="toggle-field">
       <label className="toggle" htmlFor={controlId}>
         <input
           id={controlId}

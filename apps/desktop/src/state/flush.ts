@@ -11,7 +11,7 @@ export interface Flusher {
 }
 
 /** Keep the caller responsive so it can recheck pending input; a timeout never approves exit. */
-export const FLUSH_TIMEOUT_MS = 8_000;
+const FLUSH_TIMEOUT_MS = 8_000;
 
 const flushers = new Set<Flusher>();
 

@@ -10,7 +10,6 @@ import type { CommandError, Entry, TrashItem } from '../../api/types';
 import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Notice, type NoticeTone } from '../../components/Notice';
-import { VisuallyHidden } from '../../components/VisuallyHidden';
 import { SLOT_LABELS } from '../../domain/copy';
 import { formatDate, formatDateTime, formatLongDate, todayIn } from '../../domain/dates';
 import { documentText, isBlank } from '../../domain/entry';
@@ -43,7 +42,7 @@ export function previewText(entry: Pick<Entry, 'document' | 'title'>): string {
 }
 
 /** "the Morning entry from Sunday 22 November 2026" */
-export function describeEntry(entry: Pick<Entry, 'date' | 'slot'>): string {
+function describeEntry(entry: Pick<Entry, 'date' | 'slot'>): string {
   return `the ${SLOT_LABELS[entry.slot]} entry from ${formatLongDate(entry.date)}`;
 }
 
@@ -232,10 +231,10 @@ export function TrashView() {
                 ) : null}
                 <div className="trash-item__actions">
                   <Button data-trash-restore="" busy={busyId === entry.id} onClick={() => void restore(item)}>
-                    Restore <VisuallyHidden>{described}</VisuallyHidden>
+                    Restore <span className="visually-hidden">{described}</span>
                   </Button>
                   <Button variant="quiet" disabled={busyId === entry.id} onClick={() => setConfirming(item)}>
-                    Delete permanently <VisuallyHidden>{described}</VisuallyHidden>
+                    Delete permanently <span className="visually-hidden">{described}</span>
                   </Button>
                 </div>
               </li>

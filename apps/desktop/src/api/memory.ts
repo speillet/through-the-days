@@ -40,11 +40,11 @@ import type {
 } from './types';
 
 export const MEMORY_STORAGE_KEY = 'ttd-preview-v1';
-export const SYNTHETIC_BACKUP_FOLDER = 'Synthetic backups';
-export const SYNTHETIC_BACKUP_PATH = '~/Documents/Synthetic backups';
-export const TRASH_RETENTION_SECONDS = 30 * 86_400;
+const SYNTHETIC_BACKUP_FOLDER = 'Synthetic backups';
+const SYNTHETIC_BACKUP_PATH = '~/Documents/Synthetic backups';
+const TRASH_RETENTION_SECONDS = 30 * 86_400;
 /** After a failed automatic backup, the daily routine waits this long unless the folder or passphrase changes. */
-export const AUTOMATIC_RETRY_SECONDS = 60 * 60;
+const AUTOMATIC_RETRY_SECONDS = 60 * 60;
 /** The native shell's message when the journal could not be opened for another reason. */
 export const OPEN_FAILED_MESSAGE = 'The journal could not be opened. It has not been changed.';
 const PREVIEW_DATA_LOCATION = 'Browser preview storage (synthetic data only)';

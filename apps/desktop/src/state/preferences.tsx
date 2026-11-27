@@ -161,8 +161,3 @@ export function usePreferences(): PreferencesContextValue {
   if (!value) throw new Error('usePreferences must be used inside <PreferencesProvider>.');
   return value;
 }
-
-/** Shortcut for surfaces that only need to know what to show. */
-export function useVisibility(): Visibility {
-  return usePreferences().visibility;
-}

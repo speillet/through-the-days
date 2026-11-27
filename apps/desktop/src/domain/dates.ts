@@ -3,7 +3,7 @@
 // from fixed English tables, so neither the Mac's time zone nor its language can
 // shift or translate a date.
 
-export const MONTH_NAMES = [
+const MONTH_NAMES = [
   'January',
   'February',
   'March',

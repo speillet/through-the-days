@@ -5,7 +5,7 @@ import type { BackupStatus, KeychainWarning } from '../../api/types';
 import { PASSPHRASE_MIN_LENGTH } from '../../domain/backup';
 import { formatDateTime } from '../../domain/dates';
 
-export function passphraseLength(passphrase: string): number {
+function passphraseLength(passphrase: string): number {
   return Array.from(passphrase).length;
 }
 
@@ -27,11 +27,11 @@ export function hasProblems(problems: PassphraseProblems): boolean {
   return Boolean(problems.passphrase || problems.confirmation);
 }
 
-/** One sentence for the current state, in the order the journal derives it. */
 /** Shown wherever the backup plan of this Mac could not be read; it is never dismissible. */
 export const SETTINGS_UNREADABLE_TEXT =
   'Backup settings on this Mac could not be read. Choose your backup folder and passphrase again; earlier backups are not affected.';
 
+/** One sentence for the current state, in the order the journal derives it. */
 export function backupStateText(status: BackupStatus): string {
   switch (status.state) {
     case 'settingsUnreadable':

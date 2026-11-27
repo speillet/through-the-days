@@ -9,7 +9,6 @@ import { JOURNAL_MARK_TYPES, JOURNAL_NODE_TYPES, MAX_DOCUMENT_DEPTH } from '../.
 import { canEditExactly } from './content';
 import { countWords, journalExtensions } from './extensions';
 import { JournalEditor, PROTECTED_DOCUMENT_MESSAGE } from './JournalEditor';
-import { documentDepth } from './nesting';
 
 const editors: Editor[] = [];
 
@@ -383,6 +382,13 @@ describe('journal editor schema', () => {
     expect(editor.getText()).toHaveLength(long.length);
   });
 });
+
+/** Node levels in a stored document: the doc node is level 1 and a text node is a level. */
+function documentDepth(node: JSONContent): number {
+  let deepest = 0;
+  for (const child of node.content ?? []) deepest = Math.max(deepest, documentDepth(child));
+  return 1 + deepest;
+}
 
 function nestedLists(levels: number, last: JSONContent[] = [paragraph(`Level ${levels}`)]): JSONContent {
   let list: JSONContent = { type: 'bulletList', content: [{ type: 'listItem', content: last }] };

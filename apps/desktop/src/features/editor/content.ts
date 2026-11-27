@@ -13,7 +13,7 @@ import { structuralDepth } from './nesting';
 let schema: Schema | null = null;
 
 /** The editor's schema, built once from the same extensions as the editor. */
-export function journalSchema(): Schema {
+function journalSchema(): Schema {
   schema ??= getSchema(journalExtensions(''));
   return schema;
 }

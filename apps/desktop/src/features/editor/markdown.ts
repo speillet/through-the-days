@@ -30,7 +30,7 @@ const LEADING_SPACE = /^[ \t]*/;
 const TABLE_DELIMITER_ROW = /^\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
 
 /** Escapes inline Markdown syntax, keeping every other character as typed. */
-export function escapeInlineMarkdown(text: string): string {
+function escapeInlineMarkdown(text: string): string {
   return text.replace(INLINE_SYNTAX, '\\$&').replace(ENTITY_START, '\\&').replace(TAG_START, '\\<');
 }
 
