@@ -79,6 +79,16 @@ Reading views SHALL honour Gentle view and score-display preferences by hiding n
 - **WHEN** Gentle view is enabled with weekly notes and excluded wins present
 - **THEN** notes and permitted sources remain accessible, numeric summaries stay hidden, and excluded wins do not reappear in any insight layer.
 
+#### Scenario: Notice names why measures are hidden
+
+- **WHEN** Show scores is off in Settings while Gentle view is off
+- **THEN** Trends, Weekly Review and The Path So Far say that scores are hidden in Settings, under Writing, without mentioning Gentle view; when Gentle view hides them, the notice names Gentle view.
+
+#### Scenario: Exercises notice with hidden scores
+
+- **WHEN** Gentle view or Show scores in Settings hides scores and the person opens Weekly Review before CBT exercises are available
+- **THEN** the win and action counts stay hidden, and the review still states that exercises are unavailable and not counted.
+
 ### Requirement: Multiple progress dimensions
 
 Progress views SHALL distinguish experience, reported actions, coping, and explicitly reported follow-through, with links to their sources and descriptive rather than causal language.

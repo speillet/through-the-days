@@ -31,7 +31,7 @@ export function PathView() {
   const api = useApi();
   const { today } = useToday();
   const { navigate } = useNavigation();
-  const { visibility } = usePreferences();
+  const { visibility, preferences } = usePreferences();
   const {
     date,
     setDate,
@@ -318,11 +318,16 @@ export function PathView() {
           })}
         </div>
       )}
-      {!visibility.scores ? (
+      {visibility.scores ? null : preferences.gentle ? (
         <p className="reading-meta">
           Gentle view hides numeric tracking while keeping your writing, wins and milestones accessible.
         </p>
-      ) : null}
+      ) : (
+        <p className="reading-meta">
+          Scores are hidden in Settings, under Writing. Numeric tracking is not shown; your writing, wins and
+          milestones stay accessible.
+        </p>
+      )}
       {editing ? (
         <MilestoneDialog key={editing.id} milestone={editing} onClose={() => setEditing(null)} />
       ) : null}
