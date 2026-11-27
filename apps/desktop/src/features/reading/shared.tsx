@@ -105,7 +105,7 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
           aria-label="Search journal"
           tabIndex={TAB_STOP}
           value={filters.text ?? ''}
-          placeholder="Find a word in your writing"
+          placeholder="Find a word in your entries"
           onChange={(e) => setFilters({ ...filters, text: e.target.value })}
         />
       </label>

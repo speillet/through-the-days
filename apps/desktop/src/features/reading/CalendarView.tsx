@@ -56,7 +56,8 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
                 {entries.length} saved {entries.length === 1 ? 'entry' : 'entries'}.{' '}
               </>
             )}
-            Search matches words in titles and writing, ignoring letter case and Latin accents.
+            Search matches words in titles, writing, check-in answers, actions, small wins and your own
+            emotion words, ignoring letter case and Latin accents.
           </p>
           {entries.length ? (
             entries.map((entry) => <EntryPreview key={entry.id} entry={entry} origin="journal" />)

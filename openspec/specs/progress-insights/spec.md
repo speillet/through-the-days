@@ -65,6 +65,11 @@ The system SHALL include saved scored drafts and completed entries (D-010), omit
 - **WHEN** one entry has only an excluded win and another has an included win
 - **THEN** the insight filter With a small win selects only the latter, Without a small win selects only the former, and their denominators use the same eligible sources.
 
+#### Scenario: Search word only in an excluded win
+
+- **WHEN** a searched word appears in an entry only in a small win excluded from insights
+- **THEN** My Journal, Calendar and Book View still find the entry, while Trends and The Path So Far leave it out of their insight sources and denominators.
+
 ### Requirement: Consistent gentle visibility
 
 Reading views SHALL honour Gentle view and score-display preferences by hiding numeric tracking and optional counts and suspending numeric filters without deleting stored data or filter choices. Writing, original sources, authored notes, permitted wins, save errors and backup prompts SHALL remain accessible.

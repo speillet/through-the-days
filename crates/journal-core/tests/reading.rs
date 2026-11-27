@@ -158,6 +158,70 @@ fn search_finds_words_inside_chinese_japanese_korean_and_thai_text() {
     assert_eq!(report.days[0].observations[0].id, japanese);
 }
 
+/// calendar-reading — Local search and filtering / Whole saved entry: search finds a word written
+/// only in a reflection answer, an action, a small win or the person's own emotion word (D-017).
+/// Insight reports match a win's text only while that win is included in insights.
+#[test]
+fn search_finds_words_in_reflection_answers_actions_wins_and_the_own_emotion_word() {
+    let directory = tempfile::tempdir().unwrap();
+    let journal = Journal::open(&directory.path().join("journal.sqlite")).unwrap();
+    // Deliberate multilingual synthetic fixture; the browser preview mirrors these rules.
+    let mut evening = Entry::draft("2026-11-22", Slot::Evening);
+    evening.mood = Some(6);
+    evening.document = json!({"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Synthetic quiet evening."}]}]});
+    evening.reflection.intention = "Synthetic lantern".into();
+    evening.reflection.proud_of = "Synthetic orchard".into();
+    evening.reflection.difficulty = "Synthetic drizzle".into();
+    evening.reflection.next_step = "Synthetic kettle".into();
+    evening.reflection.helped = "Synthetic long walk along the Seine".into();
+    evening.reflection.learned = "Synthetic 公園を散歩した".into();
+    evening.actions.push(Action {
+        id: "synthetic-pottery".into(),
+        text: "Synthetic pottery class".into(),
+        category: String::new(),
+    });
+    evening
+        .wins
+        .push(Win::manual("Synthetic marathon finished"));
+    let mut private_win = Win::manual("Synthetic violin recital");
+    private_win.include_in_insights = false;
+    evening.wins.push(private_win);
+    evening.another_emotion = "sereine".into();
+    let evening = journal.save(evening).unwrap();
+    for text in [
+        "lantern",
+        "orchard",
+        "drizzle",
+        "kettle",
+        "walk along the seine",
+        "散歩",
+        "pottery",
+        "marathon",
+        "violin",
+        "SEREINE",
+        "quiet seine marathon",
+    ] {
+        assert_eq!(search_ids(&journal, text), [evening.id.as_str()], "{text}");
+    }
+    assert!(search_ids(&journal, "seine absent").is_empty());
+    let report = |text: &str| {
+        journal
+            .reading_report(&SearchRequest {
+                text: text.into(),
+                from: Some("2026-11-22".into()),
+                to: Some("2026-11-22".into()),
+                ..Default::default()
+            })
+            .unwrap()
+            .entries
+    };
+    for text in ["seine", "pottery", "marathon", "sereine"] {
+        assert_eq!(report(text), 1, "{text}");
+    }
+    // An excluded win stays out of insights, so its words do not select the entry there.
+    assert_eq!(report("violin"), 0);
+}
+
 #[test]
 fn weekly_notes_and_milestones_survive_restart_and_source_changes_invalidate_summaries() {
     let directory = tempfile::tempdir().unwrap();
