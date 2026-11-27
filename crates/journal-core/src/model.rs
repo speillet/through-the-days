@@ -233,7 +233,7 @@ fn default_true() -> bool {
 }
 
 /// Node types of the editor schema, `JOURNAL_NODE_TYPES` in
-/// `apps/desktop/src/features/editor/extensions.ts`.
+/// `apps/desktop/src/domain/document.ts`.
 const NODE_TYPES: [&str; 11] = [
     "doc",
     "paragraph",
@@ -349,7 +349,7 @@ mod tests {
     fn accepted_node_and_mark_types_match_the_editor_schema() {
         let source = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../apps/desktop/src/features/editor/extensions.ts"
+            "/../../apps/desktop/src/domain/document.ts"
         ))
         .unwrap();
         let editor_list = |name: &str| -> Vec<String> {

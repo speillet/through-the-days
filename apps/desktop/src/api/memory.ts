@@ -19,9 +19,12 @@
 import { canComplete, isBlank, newId } from '../domain/entry';
 import { isEmotionId } from '../domain/emotions';
 import { isIsoDate, isValidTimeZone, todayIn } from '../domain/dates';
-import { DEFAULT_PREFERENCES, isTextScale } from '../domain/preferences';
+import { DEFAULT_PREFERENCES, isTextScale, SCORE_METRICS, THEME_OPTIONS, TIMELINE_RANGES } from '../domain/preferences';
+import { BACKUPS_KEPT, PASSPHRASE_MIN_LENGTH } from '../domain/backup';
+import { DEPTH_OPTIONS } from '../domain/copy';
+import { JOURNAL_MARK_TYPES, JOURNAL_NODE_TYPES, MAX_DOCUMENT_DEPTH } from '../domain/document';
 import { UNKNOWN_ERROR_MESSAGE, type JournalApi } from './client';
-import {filterPreviewEntries, previewReport, previewWeek, previewFingerprint, isoWeekStart, localSummary} from './reading-preview';
+import {filterPreviewEntries, fnv1a, previewReport, previewWeek, previewFingerprint, isoWeekStart, localSummary} from './reading-preview';
 import type {
   BackupState,
   BackupStatus,
@@ -40,10 +43,6 @@ export const MEMORY_STORAGE_KEY = 'ttd-preview-v1';
 export const SYNTHETIC_BACKUP_FOLDER = 'Synthetic backups';
 export const SYNTHETIC_BACKUP_PATH = '~/Documents/Synthetic backups';
 export const TRASH_RETENTION_SECONDS = 30 * 86_400;
-/** D-009: keep the 30 latest validated backups. */
-export const BACKUP_RETENTION_COUNT = 30;
-/** journal-core refuses documents nested deeper than this; the doc node is level 1. */
-export const MAX_DOCUMENT_DEPTH = 32;
 /** After a failed automatic backup, the daily routine waits this long unless the folder or passphrase changes. */
 export const AUTOMATIC_RETRY_SECONDS = 60 * 60;
 /** The native shell's message when the journal could not be opened for another reason. */
@@ -217,16 +216,13 @@ function defaultStorage(): Storage {
 
 /** Simulation only: FNV-1a tells backups apart by passphrase. It is not cryptography. */
 function fingerprint(passphrase: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < passphrase.length; index += 1) {
-    hash ^= passphrase.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash.toString(16).padStart(8, '0');
+  return fnv1a(passphrase).toString(16).padStart(8, '0');
 }
 
 function validatePassphrase(passphrase: string): void {
-  if (typeof passphrase !== 'string' || Array.from(passphrase).length < 12) throw failure('passphrase');
+  if (typeof passphrase !== 'string' || Array.from(passphrase).length < PASSPHRASE_MIN_LENGTH) {
+    throw failure('passphrase');
+  }
 }
 
 function copy<T>(value: T): T {
@@ -395,21 +391,9 @@ function normaliseEntry(input: unknown): Entry {
 
 const UUID =
   /^(?:urn:uuid:)?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\{[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}|[0-9a-f]{32})$/i;
-/** The editor schema's nodes and marks (features/editor/extensions.ts); it has no links. */
-export const DOCUMENT_NODE_TYPES: ReadonlySet<string> = new Set([
-  'doc',
-  'paragraph',
-  'text',
-  'heading',
-  'bulletList',
-  'orderedList',
-  'listItem',
-  'blockquote',
-  'codeBlock',
-  'hardBreak',
-  'horizontalRule',
-]);
-export const DOCUMENT_MARK_TYPES: ReadonlySet<string> = new Set(['bold', 'italic', 'strike', 'code', 'underline']);
+/** The editor schema's nodes and marks (domain/document.ts); it has no links. */
+const DOCUMENT_NODE_TYPES: ReadonlySet<string> = new Set(JOURNAL_NODE_TYPES);
+const DOCUMENT_MARK_TYPES: ReadonlySet<string> = new Set(JOURNAL_MARK_TYPES);
 
 /**
  * Mirrors journal-core's validate_node: every node has a node type of the editor schema and every
@@ -476,10 +460,16 @@ function normalisePreferences(input: unknown): Preferences {
   }
   const preferences = merged as unknown as Preferences;
   if (!isValidTimeZone(preferences.timeZone)) throw failure('date');
-  if (!['system', 'light', 'dark'].includes(preferences.theme)) throw failure('document');
-  if (!['quick', 'daily', 'deep'].includes(preferences.defaultDepth)) throw failure('document');
+  if (!THEME_OPTIONS.some((option) => option.id === preferences.theme)) throw failure('document');
+  if (!DEPTH_OPTIONS.some((option) => option.id === preferences.defaultDepth)) throw failure('document');
   if (!isTextScale(preferences.textScale)) throw failure('document');
-  if (![7,14,30].includes(preferences.timelineDays ?? 14) || !Array.isArray(preferences.timelineMetrics) || preferences.timelineMetrics.some((metric)=>!['mood','energy','pride','progress'].includes(metric))) throw failure('document');
+  if (
+    !TIMELINE_RANGES.includes(preferences.timelineDays ?? 14) ||
+    !Array.isArray(preferences.timelineMetrics) ||
+    preferences.timelineMetrics.some((metric) => !SCORE_METRICS.includes(metric))
+  ) {
+    throw failure('document');
+  }
   return preferences;
 }
 
@@ -633,7 +623,7 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
     });
     // Keep the 30 latest, pruning only after the new backup exists, and never the new one.
     state.folder.sort((a, b) => a.createdAt - b.createdAt);
-    while (state.folder.length > BACKUP_RETENTION_COUNT) state.folder.shift();
+    while (state.folder.length > BACKUPS_KEPT) state.folder.shift();
   }
 
   /** Backs up, records success only once the result is stored, and tracks failures. */
@@ -727,11 +717,7 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
     },
 
     async listEntries() {
-      requireReady();
-      return entriesOf(load().state)
-        .filter((item) => item.trashedAt === null)
-        .sort((a, b) => (a.entry.date === b.entry.date ? sortBySlot(a, b) : a.entry.date < b.entry.date ? 1 : -1))
-        .map((item) => item.entry);
+      return activeEntries(load().state);
     },
 
     async getEntry(id) {

@@ -110,14 +110,19 @@ export function isoWeekStart(date: string): string {
   return addDays(date, -weekdayIndex(date));
 }
 
+/** 32-bit FNV-1a over UTF-16 code units. It tells synthetic data apart; it is not cryptography. */
+export function fnv1a(text: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index++)
+    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193) >>> 0;
+  return hash;
+}
+
 export function previewFingerprint(entries: Entry[], from: string, to: string): string {
   const text = JSON.stringify(
     entries.filter((e) => e.date >= from && e.date <= to && e.includeInInsights !== false),
   );
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index++)
-    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193) >>> 0;
-  return hash.toString(16);
+  return fnv1a(text).toString(16);
 }
 
 export function previewWeek(entries: Entry[], date: string, stored?: PreviewReview): WeeklyReview {

@@ -8,8 +8,6 @@ import type { MemoryApiOptions } from './memory';
 import {
   createMemoryApi,
   createMemoryStorage,
-  DOCUMENT_MARK_TYPES,
-  DOCUMENT_NODE_TYPES,
   ERROR_MESSAGES,
   MEMORY_STORAGE_KEY,
   OPEN_FAILED_MESSAGE,
@@ -289,22 +287,6 @@ describe('memory journal: entries', () => {
       commandError('document'),
     );
     await expect(api.getEntry(saved.id)).resolves.toEqual(saved);
-  });
-
-  it('accepts exactly the node and mark types journal-core accepts', () => {
-    const model = readFileSync(join(APP_ROOT, '../../crates/journal-core/src/model.rs'), 'utf8');
-    /** The string literals of a Rust constant such as `const NODE_TYPES: [&str; 11] = [...]`. */
-    const constant = (name: string) =>
-      Array.from(
-        model.match(new RegExp(`const ${name}[^=]*=\\s*\\[([^\\]]*)\\]`))?.[1].matchAll(/"(\w+)"/g) ?? [],
-        (match) => match[1],
-      );
-    const nodes = constant('NODE_TYPES');
-    const marks = constant('MARK_TYPES');
-    expect(nodes.length).toBeGreaterThan(5);
-    expect(marks.length).toBeGreaterThan(3);
-    expect(new Set(nodes)).toEqual(DOCUMENT_NODE_TYPES);
-    expect(new Set(marks)).toEqual(DOCUMENT_MARK_TYPES);
   });
 
   it('accepts nesting up to 32 levels and refuses anything deeper', async () => {

@@ -7,12 +7,12 @@ import { toCommandError, useApi } from '../../api/client';
 import type { BackupRecord, BackupStatus, RestoreOutcome } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Notice, type NoticeTone } from '../../components/Notice';
+import { BACKUPS_KEPT } from '../../domain/backup';
 import { formatDateTime } from '../../domain/dates';
 import { PassphraseDialog, type PassphrasePurpose } from '../backup/PassphraseDialog';
 import { PassphraseGuidance } from '../backup/PassphraseFields';
 import { RestoreDialog, restoredNotice, type RestoreTarget } from '../backup/RestoreDialog';
 import {
-  BACKUPS_KEPT,
   RETENTION_WARNING,
   SETTINGS_UNREADABLE_TEXT,
   backupStateText,
