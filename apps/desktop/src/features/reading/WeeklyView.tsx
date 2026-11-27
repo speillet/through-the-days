@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { useApi, toCommandError } from '../../api/client';
 import { Button } from '../../components/Button';
+import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
 import { addDays, formatLongDate, isIsoDate, weekdayIndex, stepDays } from '../../domain/dates';
 import { useToday } from '../../state/clock';
@@ -70,10 +71,10 @@ export function WeeklyView() {
   const nextWeek = stepDays(selected, 7);
   return (
     <div className="view reading-view">
-      <header className="reading-heading">
+      <header className="view-header reading-heading">
         <div>
-          <h1>Weekly Review</h1>
-          <p>A few recorded moments, and your own reflection.</p>
+          <h1 className="view-title">Weekly Review</h1>
+          <p className="view-subtitle">A few recorded moments, and your own reflection.</p>
         </div>
         <div className="reading-actions">
           <Button disabled={previousWeek === null} onClick={() => previousWeek && setDate(previousWeek)}>
@@ -112,7 +113,7 @@ export function WeeklyView() {
               Your notes
               <textarea
                 ref={notesField}
-                tabIndex={0}
+                tabIndex={TAB_STOP}
                 rows={7}
                 value={draft.value}
                 onFocus={() => setWriting(true)}

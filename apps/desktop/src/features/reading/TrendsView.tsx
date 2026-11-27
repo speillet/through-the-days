@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useApi } from '../../api/client';
 import { Button } from '../../components/Button';
+import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
 import { addDays, formatLongDate, isJournalDate } from '../../domain/dates';
 import { useToday } from '../../state/clock';
@@ -23,17 +24,17 @@ export function TrendsView() {
   const { data, error } = useReadingQuery(useCallback(() => api.readingReport(JSON.parse(key)), [api, key]));
   return (
     <div className="view reading-view">
-      <header className="reading-heading">
+      <header className="view-header reading-heading">
         <div>
-          <h1>Trends</h1>
-          <p>Recorded experiences, with room for the gaps.</p>
+          <h1 className="view-title">Trends</h1>
+          <p className="view-subtitle">Recorded experiences, with room for the gaps.</p>
         </div>
         <label className="reading-field">
           Ending on
           <input
             type="date"
             lang="en-GB"
-            tabIndex={0}
+            tabIndex={TAB_STOP}
             value={selected}
             onChange={(e) => {
               // An empty field, or a year outside 0001–9999 (date fields take six digits), keeps the date.

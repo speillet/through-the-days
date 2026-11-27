@@ -1,22 +1,19 @@
 .reading-view {
   max-width: 1240px;
 }
-.reading-heading {
-  display: flex;
-  justify-content: space-between;
+/* A reading header is a shared view header (layout.css) that centres its controls beside a
+   two-line title. Its spacing and title letter spacing still differ from the shared header and
+   are kept so the views look unchanged. This file loads before layout.css, hence two classes. */
+.view-header.reading-heading {
   align-items: center;
   gap: var(--space-4);
   margin-bottom: var(--space-6);
-  flex-wrap: wrap;
 }
-.reading-heading h1 {
-  font-family: var(--font-writing);
-  font-size: var(--text-2xl);
-  margin: 0;
+.reading-heading .view-title {
+  letter-spacing: normal;
 }
-.reading-heading p {
-  margin: 0.5rem 0 0;
-  color: var(--color-text-muted);
+.reading-heading .view-subtitle {
+  margin-top: 0.5rem;
 }
 .reading-meta {
   color: var(--color-text-muted);
@@ -55,15 +52,16 @@
   flex: 1;
   min-width: 180px;
 }
+/* Compact reading fields. Unlike .field__control (components.css) they keep their own width,
+   tighter padding and the global focus ring. */
 .reading-view input:not([type='checkbox']),
 .reading-view select,
 .reading-view textarea {
-  font: inherit;
   color: var(--color-text);
   background: var(--color-page);
   border: 1px solid var(--color-control-border);
-  border-radius: 6px;
-  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) 10px;
   min-width: 0;
   max-width: 100%;
 }
@@ -81,7 +79,7 @@
 .calendar-reading {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(300px, 1fr);
-  gap: var(--space-7, 32px);
+  gap: var(--space-7);
   align-items: start;
 }
 .calendar--journal {
@@ -196,7 +194,7 @@
   scrollbar-gutter: stable;
 }
 .book-page__heading {
-  margin-bottom: var(--space-7, 32px);
+  margin-bottom: var(--space-7);
 }
 .book-page__heading h2 {
   font-family: var(--font-writing);
@@ -370,13 +368,12 @@
 }
 .milestone-form input,
 .milestone-form textarea {
-  font: inherit;
   width: 100%;
   padding: 10px;
   background: var(--color-page);
   color: var(--color-text);
   border: 1px solid var(--color-control-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 @media (max-width: 1050px) {
   .calendar-reading {

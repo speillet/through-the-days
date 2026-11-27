@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useApi } from '../../api/client';
 import type { ReadingReport } from '../../api/types';
 import { Button } from '../../components/Button';
+import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
 import { addDays, formatLongDate } from '../../domain/dates';
 import { usePreferences } from '../../state/preferences';
@@ -19,7 +20,7 @@ export function SeriesControls() {
         <label key={metric}>
           <input
             type="checkbox"
-            tabIndex={0}
+            tabIndex={TAB_STOP}
             checked={selected.includes(metric)}
             onChange={(event) => {
               const checked = event.target.checked;
@@ -96,7 +97,7 @@ export function DayTimeline({
         <div key={day.date} role="listitem">
           <button
             type="button"
-            tabIndex={0}
+            tabIndex={TAB_STOP}
             className="timeline-day"
             data-gap={day.observations.length === 0 || undefined}
             onClick={() => onSelect(day.date)}

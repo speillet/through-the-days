@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApi, toCommandError, type JournalApi } from '../../api/client';
 import type { Entry, ReadingReport, ScoreMetric, SearchRequest } from '../../api/types';
 import { Button } from '../../components/Button';
+import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
 import { formatLongDate } from '../../domain/dates';
 import { documentText } from '../../domain/entry';
@@ -102,7 +103,7 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
         <input
           type="search"
           aria-label="Search journal"
-          tabIndex={0}
+          tabIndex={TAB_STOP}
           value={filters.text ?? ''}
           placeholder="Find a word in your writing"
           onChange={(e) => setFilters({ ...filters, text: e.target.value })}
@@ -111,7 +112,7 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
       <label>
         Slot filter
         <select
-          tabIndex={0}
+          tabIndex={TAB_STOP}
           aria-label="Slot filter"
           value={filters.slot ?? ''}
           onChange={(e) => setFilters({ ...filters, slot: (e.target.value as Entry['slot']) || null })}
@@ -124,7 +125,7 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
       <label>
         Status filter
         <select
-          tabIndex={0}
+          tabIndex={TAB_STOP}
           value={filters.complete == null ? '' : String(filters.complete)}
           onChange={(e) =>
             setFilters({ ...filters, complete: e.target.value === '' ? null : e.target.value === 'true' })
@@ -145,7 +146,7 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
                 <input
                   type="date"
                   lang="en-GB"
-                  tabIndex={0}
+                  tabIndex={TAB_STOP}
                   value={filters.from ?? ''}
                   onChange={(e) => setFilters({ ...filters, from: e.target.value || null })}
                 />
@@ -155,7 +156,7 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
                 <input
                   type="date"
                   lang="en-GB"
-                  tabIndex={0}
+                  tabIndex={TAB_STOP}
                   value={filters.to ?? ''}
                   onChange={(e) => setFilters({ ...filters, to: e.target.value || null })}
                 />
@@ -165,7 +166,7 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
           <label>
             Emotion
             <select
-              tabIndex={0}
+              tabIndex={TAB_STOP}
               value={filters.emotion ?? ''}
               onChange={(e) => setFilters({ ...filters, emotion: e.target.value || null })}
             >
@@ -180,7 +181,7 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
           <label>
             Small wins
             <select
-              tabIndex={0}
+              tabIndex={TAB_STOP}
               value={filters.hasWin == null ? '' : String(filters.hasWin)}
               onChange={(e) =>
                 setFilters({ ...filters, hasWin: e.target.value === '' ? null : e.target.value === 'true' })
@@ -199,7 +200,7 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
               <label>
                 Measure
                 <select
-                  tabIndex={0}
+                  tabIndex={TAB_STOP}
                   value={filters.metric ?? ''}
                   onChange={(e) =>
                     setFilters({ ...filters, metric: (e.target.value as ScoreMetric) || null, minimum: null })
@@ -216,7 +217,7 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
               <label>
                 Minimum score
                 <input
-                  tabIndex={0}
+                  tabIndex={TAB_STOP}
                   type="number"
                   min={filters.metric === 'pride' || filters.metric === 'progress' ? 1 : 0}
                   max={10}
@@ -333,7 +334,7 @@ export function EntryPreview({
       <label className="reading-permission">
         <input
           type="checkbox"
-          tabIndex={0}
+          tabIndex={TAB_STOP}
           checked={included}
           aria-busy={busy || undefined}
           aria-disabled={busy || undefined}
