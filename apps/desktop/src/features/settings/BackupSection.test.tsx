@@ -138,6 +138,33 @@ describe('Backups settings', () => {
     });
   });
 
+  it('keeps a changed passphrase until both fields are valid, focusing the one to correct', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE, false);
+    const setBackupPassphrase = vi.spyOn(api, 'setBackupPassphrase');
+    await renderSection(api);
+    await user.click(screen.getByRole('button', { name: 'Change passphrase…' }));
+    const dialog = screen.getByRole('dialog', { name: 'Change the backup passphrase' });
+    const passphraseField = within(dialog).getByLabelText('Backup passphrase');
+    const confirmationField = within(dialog).getByLabelText('Confirm passphrase');
+
+    // Focus moves to the field to correct, so VoiceOver reads its error.
+    await user.type(passphraseField, 'too short');
+    await user.type(confirmationField, 'too short');
+    await user.click(within(dialog).getByRole('button', { name: 'Save passphrase' }));
+    expect(passphraseField).toHaveAccessibleDescription(/Use at least 12 characters\./);
+    expect(passphraseField).toHaveFocus();
+
+    await user.clear(passphraseField);
+    await user.type(passphraseField, NEW_PASSPHRASE);
+    await user.click(within(dialog).getByRole('button', { name: 'Save passphrase' }));
+    expect(confirmationField).toHaveAccessibleDescription(/The two passphrases don’t match\./);
+    expect(confirmationField).toHaveFocus();
+    expect(setBackupPassphrase).not.toHaveBeenCalled();
+  });
+
   it('backs up now and lists the new backup for restore', async () => {
     const user = userEvent.setup();
     const { api } = await renderSection();

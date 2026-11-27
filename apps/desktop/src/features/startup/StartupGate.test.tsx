@@ -166,9 +166,17 @@ describe('startup gate: protected upgrade', () => {
     await user.clear(screen.getByLabelText('Confirm passphrase'));
     await user.type(screen.getByLabelText('Confirm passphrase'), 'a-different-passphrase');
     await user.click(screen.getByRole('button', { name: 'Back up and upgrade' }));
-    expect(screen.getByLabelText('Confirm passphrase')).toHaveAccessibleDescription(
-      /The two passphrases don’t match\./,
-    );
+    // Focus moves to the field to correct, so VoiceOver reads its error.
+    const confirmationField = screen.getByLabelText('Confirm passphrase');
+    expect(confirmationField).toHaveAccessibleDescription(/The two passphrases don’t match\./);
+    expect(confirmationField).toHaveFocus();
+
+    await user.clear(screen.getByLabelText('Backup passphrase'));
+    await user.type(screen.getByLabelText('Backup passphrase'), 'too short');
+    await user.click(screen.getByRole('button', { name: 'Back up and upgrade' }));
+    const passphraseField = screen.getByLabelText('Backup passphrase');
+    expect(passphraseField).toHaveAccessibleDescription(/Use at least 12 characters\./);
+    expect(passphraseField).toHaveFocus();
     expect(migrate).not.toHaveBeenCalled();
   });
 

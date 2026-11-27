@@ -8,7 +8,13 @@ import type { BackupStatus } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { Notice } from '../../components/Notice';
-import { EMPTY_PASSPHRASE, PassphraseFields, PassphraseGuidance, type PassphraseValues } from './PassphraseFields';
+import {
+  EMPTY_PASSPHRASE,
+  focusFirstProblem,
+  PassphraseFields,
+  PassphraseGuidance,
+  type PassphraseValues,
+} from './PassphraseFields';
 import { hasProblems, newPassphraseProblems, type PassphraseProblems } from './status';
 
 /** "set": none yet; "change": replacing one; "due": a backup is waiting for it. */
@@ -38,6 +44,7 @@ function OpenPassphraseDialog({ purpose, remembered = false, onClose, onSaved }:
   const api = useApi();
   const formId = useId();
   const passphraseRef = useRef<HTMLInputElement>(null);
+  const confirmationRef = useRef<HTMLInputElement>(null);
   // Re-entering a remembered passphrase keeps it remembered unless the person unticks the box.
   const [values, setValues] = useState<PassphraseValues>({ ...EMPTY_PASSPHRASE, remember: remembered });
   const [problems, setProblems] = useState<PassphraseProblems>({});
@@ -50,7 +57,10 @@ function OpenPassphraseDialog({ purpose, remembered = false, onClose, onSaved }:
     const found = newPassphraseProblems(values.passphrase, values.confirmation);
     setProblems(found);
     setError(null);
-    if (hasProblems(found)) return;
+    if (hasProblems(found)) {
+      focusFirstProblem(found, passphraseRef, confirmationRef);
+      return;
+    }
     setBusy(true);
     try {
       const status = await api.setBackupPassphrase(values.passphrase, values.remember);
@@ -93,7 +103,13 @@ function OpenPassphraseDialog({ purpose, remembered = false, onClose, onSaved }:
       }
     >
       <form id={formId} className="dialog-form" noValidate onSubmit={(event) => void submit(event)}>
-        <PassphraseFields values={values} onChange={setValues} problems={problems} passphraseRef={passphraseRef} />
+        <PassphraseFields
+          values={values}
+          onChange={setValues}
+          problems={problems}
+          passphraseRef={passphraseRef}
+          confirmationRef={confirmationRef}
+        />
         {error ? <Notice tone="error">{error}</Notice> : null}
       </form>
     </Dialog>
