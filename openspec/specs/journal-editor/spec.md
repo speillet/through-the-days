@@ -45,6 +45,11 @@ The editor SHALL provide standard Command-B, Command-I, and explicit Command-S b
 - **WHEN** the person enters distraction-free writing
 - **THEN** nonessential panels are hidden while writing remains accessible.
 
+#### Scenario: Focus mode keeps the caret
+
+- **WHEN** the person enters focus mode while the caret or a selection is in the middle of the writing
+- **THEN** the writing takes keyboard focus with the caret and selection where they were, scrolled into view in the focus-mode layout, so typing continues at that place.
+
 ### Requirement: User authorship
 
 The system SHALL preserve user-authored text in its chosen language and SHALL change it only through the person's editing actions.

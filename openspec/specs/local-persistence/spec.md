@@ -36,6 +36,11 @@ The system SHALL progressively save from the first interaction, distinguish pend
 - **WHEN** a save fails while the person is writing
 - **THEN** the interface shows an English failure state, retains the current input, and offers retry without reporting Saved.
 
+#### Scenario: Retry from the failure notice
+
+- **WHEN** the person chooses Try again in the save failure notice
+- **THEN** the notice stays, with Try again busy and keeping keyboard focus, until the journal answers; a repeated failure leaves the focus there, and once the entry is saved the notice goes and focus returns to the writing with the caret where it was.
+
 #### Scenario: Partial reflection restart
 
 - **WHEN** a partially answered check-in is acknowledged and the app is closed

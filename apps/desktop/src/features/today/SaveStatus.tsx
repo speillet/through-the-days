@@ -1,6 +1,7 @@
 // The save state beside the journal page, announced politely, and the failure
-// notice that stays visible (also in focus mode and Gentle view) until a save
-// succeeds. A failure keeps the person's input on screen for a retry.
+// notice that stays visible (also in focus mode and Gentle view, and while Try
+// again runs) until a save succeeds. A failure keeps the person's input on screen
+// for a retry.
 
 import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-react';
 import type { CommandError } from '../../api/types';
@@ -29,18 +30,24 @@ export function SaveStatus({ state }: { state: SaveState }) {
 }
 
 export function SaveFailure({
+  id,
   error,
   needsReload,
+  retrying = false,
   onRetry,
   onReload,
 }: {
+  id?: string;
   error: CommandError;
   needsReload: boolean;
+  /** A save requested after the failure is under way: Try again stays, busy, and keeps focus. */
+  retrying?: boolean;
   onRetry(): void;
   onReload(): void;
 }) {
   return (
     <Notice
+      id={id}
       tone="error"
       className="save-failure"
       actions={
@@ -49,7 +56,7 @@ export function SaveFailure({
             Reload saved version
           </Button>
         ) : (
-          <Button variant="secondary" size="small" onClick={onRetry}>
+          <Button variant="secondary" size="small" busy={retrying} onClick={onRetry}>
             {SAVE_STATE_LABELS.retry}
           </Button>
         )

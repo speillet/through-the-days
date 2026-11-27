@@ -1,11 +1,12 @@
 // The journal editor in real engines: Command-B and Command-I mark the saved
-// document, Escape leaves focus mode while the writing has focus, and a slot
-// reopened after switching shows its saved writing and keeps saving on top of it.
+// document, focus mode keeps the caret in place and Escape leaves it while the
+// writing has focus, and a slot reopened after switching shows its saved writing
+// and keeps saving on top of it.
 
 import type { Page } from '@playwright/test';
 import type { Entry } from '../src/api/types';
 import { documentText as plainText } from '../src/domain/entry';
-import { expect, storedJournal, test } from './fixtures';
+import { entry, expect, seedJournal, storedJournal, test } from './fixtures';
 
 function journalPage(page: Page, slot: 'Morning' | 'Evening' = 'Morning') {
   return page.getByRole('textbox', { name: new RegExp(`^${slot} journal, Sunday 22 November 2026`) });
@@ -73,6 +74,34 @@ test('leaves focus mode with Escape while the writing has focus', async ({ page 
   await expect(page.getByRole('tablist', { name: 'Entries for this date' })).toBeVisible();
   await expect(editor).toBeFocused();
   await expect(editor).toHaveText('Fictional focused words.');
+});
+
+test('enters focus mode with the caret where it was in a long entry, scrolled into view', async ({ page }) => {
+  const paragraphs = Array.from({ length: 80 }, (_, index) => `Fictional paragraph ${index + 1}.`);
+  await seedJournal(page, {
+    active: [
+      entry('2026-11-22', 'morning', '', {
+        document: {
+          type: 'doc',
+          content: paragraphs.map((text) => ({ type: 'paragraph', content: [{ type: 'text', text }] })),
+        },
+      }),
+    ],
+  });
+  const editor = journalPage(page);
+  const revised = editor.locator('p').nth(29);
+  // Clicking beside a short line puts the caret after its last word.
+  await revised.click();
+  await expect(editor).toBeFocused();
+
+  // The button sits below the entry, so the person scrolls away from the caret to reach it.
+  await page.getByRole('button', { name: 'Focus mode' }).click();
+  await expect(page.getByRole('button', { name: 'Focus mode' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(editor).toBeFocused();
+  await expect(revised).toBeInViewport();
+  await page.keyboard.type(' Revised.');
+  await expect(revised).toHaveText('Fictional paragraph 30. Revised.');
+  await expect(editor.locator('p').last()).toHaveText('Fictional paragraph 80.');
 });
 
 test('reopens a slot on its saved writing after switching slots, and saves the next edit on top', async ({ page }) => {

@@ -18,7 +18,8 @@ export const PROTECTED_DOCUMENT_MESSAGE =
   "This entry contains content that this version of Through the Days can't edit without changing it, so it is read-only. The saved version stays exactly as it is, and you can still read and copy it.";
 
 export interface JournalEditorHandle {
-  focus(position?: 'start' | 'end'): void;
+  /** Focuses the writing with the caret at its start or end, or where it already is ('keep'). */
+  focus(position?: 'start' | 'end' | 'keep'): void;
   /** Markdown derived from the current document. */
   getMarkdown(): string;
 }
@@ -93,8 +94,11 @@ export function JournalEditor({
         // Place the caret and focus at once. (Tiptap's focus command defers focusing to
         // the next frame outside WebKit, which could pull focus back later.)
         const { state, view } = editor;
-        const selection = position === 'start' ? Selection.atStart(state.doc) : Selection.atEnd(state.doc);
-        view.dispatch(state.tr.setSelection(selection).scrollIntoView());
+        const { tr } = state;
+        if (position !== 'keep') {
+          tr.setSelection(position === 'start' ? Selection.atStart(state.doc) : Selection.atEnd(state.doc));
+        }
+        view.dispatch(tr.scrollIntoView());
         view.focus();
       },
       getMarkdown: () => editor?.getMarkdown() ?? '',
