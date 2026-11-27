@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
 import { App } from '../../App';
 import type { JournalApi } from '../../api/client';
-import type { Entry } from '../../api/types';
-import { createMemoryApi, createMemoryStorage } from '../../api/memory';
+import type { Entry, SearchRequest } from '../../api/types';
+import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES } from '../../api/memory';
 import { newDraft } from '../../domain/entry';
 import { discardAllSavers } from '../../state/autosave';
 import {
@@ -562,4 +562,57 @@ it('replaces the shown entries with the error when a refresh fails', async () =>
   await reads.answer();
   expect(screen.getByRole('alert')).toHaveTextContent('Synthetic refresh failure.');
   expect(screen.queryByText('Synthetic text before a failed refresh.')).not.toBeInTheDocument();
+});
+
+it('ignores a minimum score that is not a whole number from 0 to 10 and keeps every reading view working', async () => {
+  const journal = syntheticJournal();
+  await journal.saveEntry({ ...writing('morning', 'Synthetic bright morning.'), mood: 8 });
+  await journal.saveEntry({ ...writing('evening', 'Synthetic quiet evening.'), mood: 3 });
+  // As in the native app: a decimal minimum cannot be read as a command argument, so the request
+  // fails before reaching the journal, and the journal refuses a minimum outside 0–10.
+  const minimums: unknown[] = [];
+  function native<T>(read: (request: SearchRequest) => Promise<T>) {
+    return (request: SearchRequest) => {
+      minimums.push(request.minimum);
+      const minimum = request.minimum;
+      if (minimum != null && !Number.isInteger(minimum))
+        return Promise.reject('invalid args `request`: invalid type: floating point, expected i32');
+      if (minimum != null && (minimum < 0 || minimum > 10))
+        return Promise.reject({ code: 'score', message: ERROR_MESSAGES.score });
+      return read(request);
+    };
+  }
+  const api: JournalApi = {
+    ...journal,
+    searchEntries: native((request) => journal.searchEntries(request)),
+    readingReport: native((request) => journal.readingReport(request)),
+  };
+  render(<App api={api} initialView="journal" />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByText('More filters', { selector: 'summary' }));
+  await user.selectOptions(screen.getByLabelText('Measure'), 'mood');
+  const minimum = screen.getByLabelText('Minimum score');
+  fireEvent.change(minimum, { target: { value: '7' } });
+  await waitFor(() => expect(screen.queryByText('Synthetic quiet evening.')).not.toBeInTheDocument());
+  // WebKit keeps a typed 7.5 although it breaks the field's step.
+  for (const value of ['7.5', '11', '-1']) {
+    fireEvent.change(minimum, { target: { value } });
+    expect(minimum).toHaveValue(7);
+  }
+  expect(await screen.findByText('Synthetic bright morning.')).toBeInTheDocument();
+  expect(screen.queryByText('Synthetic quiet evening.')).not.toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Trends' }));
+  expect(await screen.findByText('Mean 8/10, n=1')).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(minimums).toContain(7);
+  expect(minimums).not.toContain(7.5);
+  expect(minimums).not.toContain(11);
+  expect(minimums).not.toContain(-1);
+
+  // Clearing the field still removes the minimum.
+  await user.click(screen.getByRole('button', { name: 'My Journal' }));
+  await user.click(await screen.findByText('More filters', { selector: 'summary' }));
+  fireEvent.change(screen.getByLabelText('Minimum score'), { target: { value: '' } });
+  expect(await screen.findByText('Synthetic quiet evening.')).toBeInTheDocument();
 });

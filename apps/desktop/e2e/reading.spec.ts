@@ -153,3 +153,24 @@ test('finds a typed word partly made bold with Command-B by the whole word only'
   await expect(excerpt).toBeVisible();
   expect(await excerpt.textContent()).toBe('Synthetic peaceful afternoon.');
 });
+
+test('keeps a whole minimum score when a decimal is typed despite the field step', async ({ page }) => {
+  await seedJournal(page, {
+    active: [
+      entry('2026-11-22', 'morning', 'Synthetic morning scored seven.', { mood: 7, energy: 5 }),
+      entry('2026-11-22', 'evening', 'Synthetic evening scored three.', { mood: 3, energy: 5 }),
+    ],
+    folderChosen: true,
+  });
+  await openView(page, 'My Journal');
+  await page.getByText('More filters', { exact: true }).click();
+  await page.getByRole('combobox', { name: 'Measure', exact: true }).selectOption('mood');
+  const minimum = page.getByLabel('Minimum score', { exact: true });
+  await minimum.fill('7');
+  await expect(page.getByText('Synthetic evening scored three.', { exact: true })).toHaveCount(0);
+  // The native journal cannot read 7.5, so the filter keeps its whole minimum.
+  await minimum.fill('7.5');
+  await expect(minimum).toHaveValue('7');
+  await expect(page.getByText('Synthetic morning scored seven.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Synthetic evening scored three.', { exact: true })).toHaveCount(0);
+});
