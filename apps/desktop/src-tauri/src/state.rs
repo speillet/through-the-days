@@ -344,10 +344,6 @@ impl Core {
         Ok(self.journal()?.list()?)
     }
 
-    pub fn get_entry(&self, id: &str) -> Result<Entry, CommandError> {
-        Ok(self.journal()?.get(id)?)
-    }
-
     /// Saves the whole aggregate and returns it at its acknowledged revision.
     pub fn save_entry(&self, value: Value) -> Result<Entry, CommandError> {
         let journal = self.journal()?;

@@ -720,13 +720,6 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
       return activeEntries(load().state);
     },
 
-    async getEntry(id) {
-      requireReady();
-      const found = findActive(load().state, id);
-      if (!found) throw failure('notFound');
-      return found.entry;
-    },
-
     async searchEntries(request) { return filterPreviewEntries(activeEntries(load().state), request); },
     async readingReport(request) { return previewReport(activeEntries(load().state), request); },
     async weeklyReview(date) {

@@ -1,7 +1,7 @@
 //! Tauri commands: thin adapters from the renderer's `invoke` calls to [`Core`].
 //!
-//! Names and camelCase arguments follow the command table of the integration contract and
-//! `apps/desktop/src/api/tauri.ts`. Every command except `confirm_exit` and `cancel_exit` runs on
+//! Names and camelCase arguments match the calls in `apps/desktop/src/api/tauri.ts`, which the
+//! tests at the end of this file check. Every command except `confirm_exit` and `cancel_exit` runs on
 //! the blocking thread pool, never on the main thread: journal work can wait for a backup that
 //! holds the journal, scrypt takes about a second, and native dialogs and Keychain prompts block
 //! until they are answered. A rejected command is recorded in diagnostics by name and error code
@@ -208,11 +208,6 @@ pub async fn delete_milestone(
 }
 
 #[tauri::command]
-pub async fn get_entry(app: AppHandle, id: String) -> Result<Entry, CommandError> {
-    with_core(app, "get_entry", move |core| core.get_entry(&id)).await
-}
-
-#[tauri::command]
 pub async fn save_entry(app: AppHandle, entry: Value) -> Result<Entry, CommandError> {
     with_core(app, "save_entry", move |core| core.save_entry(entry)).await
 }
@@ -392,17 +387,15 @@ pub async fn erase_app_data(
 
 /// Called by the renderer once pending saves are flushed after `app://flush-request`.
 #[tauri::command]
-pub fn confirm_exit(app: AppHandle) -> Result<(), CommandError> {
+pub fn confirm_exit(app: AppHandle) {
     exit::confirm_and_exit(&app);
-    Ok(())
 }
 
 /// Called by the renderer when a save still failed after `app://flush-request`: the app stays
 /// open with the unsaved writing, and a later quit asks again.
 #[tauri::command]
-pub fn cancel_exit(app: AppHandle) -> Result<(), CommandError> {
+pub fn cancel_exit(app: AppHandle) {
     exit::cancel(&app);
-    Ok(())
 }
 
 /// The renderer and the shell are built separately, so a renamed command or argument would only

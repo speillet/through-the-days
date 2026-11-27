@@ -37,7 +37,6 @@ describe('native journal commands', () => {
       ],
       ['entriesOn', () => api.entriesOn('2026-11-22'), 'entries_on', { date: '2026-11-22' }],
       ['listEntries', () => api.listEntries(), 'list_entries', {}],
-      ['getEntry', () => api.getEntry(entry.id), 'get_entry', { id: entry.id }],
       ['saveEntry', () => api.saveEntry(entry), 'save_entry', { entry }],
       ['trashEntry', () => api.trashEntry(entry.id, 3), 'trash_entry', { id: entry.id, revision: 3 }],
       ['listTrash', () => api.listTrash(), 'list_trash', {}],
@@ -158,14 +157,14 @@ describe('native journal commands', () => {
   it('passes native command errors through and hides other failures', async () => {
     mockIPC((command) => {
       if (command === 'save_entry') throw { code: 'conflict', message: 'This entry has changed.' };
-      throw 'invalid args `id` for command `get_entry`';
+      throw 'invalid args `id` for command `restore_entry`';
     });
     const api = createTauriApi();
     await expect(api.saveEntry(newDraft('2026-11-22', 'evening', 'Europe/Paris'))).rejects.toEqual({
       code: 'conflict',
       message: 'This entry has changed.',
     });
-    await expect(api.getEntry('x')).rejects.toEqual({
+    await expect(api.restoreEntry('x')).rejects.toEqual({
       code: 'unknown',
       message: 'Something went wrong. Please try again.',
     });

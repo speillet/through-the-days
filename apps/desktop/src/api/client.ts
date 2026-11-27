@@ -1,5 +1,5 @@
 // The renderer's only door to the journal. One method per native command
-// (see the command table in the integration contract); implementations live in
+// (see src-tauri/src/commands.rs); implementations live in
 // tauri.ts (native app) and memory.ts (browser preview and tests).
 
 import { createContext, createElement, useContext, useMemo, type ReactNode } from 'react';
@@ -51,7 +51,6 @@ export interface JournalApi {
   listMilestones(): Promise<Milestone[]>;
   saveMilestone(milestone: Milestone): Promise<Milestone>;
   deleteMilestone(id: string, revision: number): Promise<void>;
-  getEntry(id: string): Promise<Entry>;
   /** Saves the whole aggregate; resolves with the acknowledged revision. */
   saveEntry(entry: Entry): Promise<Entry>;
   trashEntry(id: string, revision: number): Promise<void>;

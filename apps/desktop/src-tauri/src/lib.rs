@@ -47,7 +47,6 @@ pub fn run() {
             commands::list_milestones,
             commands::save_milestone,
             commands::delete_milestone,
-            commands::get_entry,
             commands::save_entry,
             commands::trash_entry,
             commands::list_trash,

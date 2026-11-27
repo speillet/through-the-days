@@ -68,7 +68,6 @@ export function createTauriApi(): JournalApi {
     deleteMilestone: async (id, revision) => {
       await call<null>('delete_milestone', { id, revision });
     },
-    getEntry: (id) => call<Entry>('get_entry', { id }),
     saveEntry: (entry) => call<Entry>('save_entry', { entry }, ENTRY_NOT_SENT),
     trashEntry: async (id, revision) => {
       await call<null>('trash_entry', { id, revision });
