@@ -27,6 +27,11 @@ The timeline SHALL offer 7/14/30-day ranges ending at the viewed journal date, d
 - **WHEN** the person types a Trends ending date after 31 December 9999, such as a year with a stray fifth digit
 - **THEN** the timeline keeps its previous ending date and range, and every view remains usable.
 
+#### Scenario: Ending on today past midnight
+
+- **WHEN** Calendar's Today, Weekly Review's This week or End today on a preset range in The Path So Far last set the reading date, and the clock then passes midnight while the app stays open
+- **THEN** Trends ends on the new date, as when no date was chosen.
+
 ### Requirement: Explicit observations and missing data
 
 Progress views SHALL include nullable perceived progress when selected, preserve Morning/Evening observations, label any explicitly selected aggregation, show sample sizes and coverage, and treat missing values as gaps rather than zero.

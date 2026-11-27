@@ -32,6 +32,16 @@ Weekly Review SHALL be user-initiated, use Monday–Sunday ISO weeks in the conf
 - **WHEN** no week is chosen and the clock passes midnight while the person writes the shown week's notes, or before those notes are saved
 - **THEN** a new day in the same week keeps the review in place, and a new week waits until the notes are saved and no longer being edited, so they keep their text, focus and week.
 
+#### Scenario: This week followed into a new week
+
+- **WHEN** the person activates This week and the clock later passes into the next week while the app stays open
+- **THEN** the review follows today into the new week, as when no week was chosen.
+
+#### Scenario: This week while earlier notes are saving
+
+- **WHEN** the review keeps an earlier week after midnight because its notes are still being saved, and the person activates This week
+- **THEN** the review shows the current week, and those notes are still saved to their own week.
+
 #### Scenario: Week that ends in year 10000
 
 - **WHEN** the person reviews the week of Monday 27 December 9999, which ends on Sunday 2 January 10000

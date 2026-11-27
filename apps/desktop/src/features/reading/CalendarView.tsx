@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useApi } from '../../api/client';
 import { Button } from '../../components/Button';
 import { CalendarGrid } from '../../components/CalendarGrid';
@@ -15,6 +15,8 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
   const { date, setDate } = useReading();
   const filters = useReadingSelection();
   const selected = date ?? today;
+  // Today shows today's month again, even when today is already the selected date.
+  const [reveal, setReveal] = useState(0);
   const { visibility, preferences } = usePreferences();
   const key = JSON.stringify(filters);
   const read = useCallback(() => api.searchEntries(JSON.parse(key)), [api, key]);
@@ -28,7 +30,15 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
           <h1 className="view-title">{journal ? 'My Journal' : 'Calendar'}</h1>
           <p className="view-subtitle">Return to a day, in your own words.</p>
         </div>
-        <Button onClick={() => setDate(today)}>Today</Button>
+        <Button
+          onClick={() => {
+            // No chosen date follows today, so the calendar moves on after midnight.
+            setDate(null);
+            setReveal((count) => count + 1);
+          }}
+        >
+          Today
+        </Button>
       </header>
       <Filters />
       {error ? (
@@ -36,7 +46,7 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
           {error}
         </Notice>
       ) : null}
-      {loading ? (
+      {loading && journal ? (
         <p role="status">Opening saved entries…</p>
       ) : journal ? (
         <>
@@ -55,11 +65,14 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
           )}
         </>
       ) : (
+        // The grid stays while new filters load, so it keeps its browsed month and focus; it
+        // shows no markers until their entries arrive.
         <div className="calendar-reading">
           <section className="calendar-reading__month" aria-label="Journal month">
             <CalendarGrid
               value={selected}
               today={today}
+              reveal={reveal}
               onSelect={setDate}
               className="calendar--journal"
               dayMarkerLabel={(day) =>
@@ -97,7 +110,9 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
           </section>
           <section className="calendar-reading__preview" aria-label="Selected date">
             <h2>{formatLongDate(selected)}</h2>
-            {selectedEntries.length ? (
+            {loading ? (
+              <p role="status">Opening saved entries…</p>
+            ) : selectedEntries.length ? (
               selectedEntries.map((entry) => <EntryPreview key={entry.id} entry={entry} />)
             ) : (
               <p>No saved entry on this date.</p>
