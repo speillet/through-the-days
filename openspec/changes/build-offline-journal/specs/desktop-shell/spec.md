@@ -48,7 +48,7 @@ The application SHALL support system-matched light/dark appearance, a manual ove
 
 ### Requirement: Stored display preferences
 
-The application SHALL save each display-preference change over the journal's stored display preferences, never over defaults shown in their place. While the stored preferences cannot be read, the application SHALL show the defaults, save no change unless the preferences can be read again, and replace them only when the person explicitly resets them. No display-preference change SHALL be made while a restore or an erase replaces the journal.
+The application SHALL save each display-preference change over the journal's stored display preferences, never over defaults shown in their place. While the stored preferences cannot be read, the application SHALL show the defaults, save no change unless the preferences can be read again, replace them only when the person explicitly resets them, and keep backing up. No display-preference change SHALL be made while a restore or an erase replaces the journal.
 
 #### Scenario: Stored preferences cannot be read
 
@@ -69,6 +69,11 @@ The application SHALL save each display-preference change over the journal's sto
 
 - **WHEN** the person presses ⌘+, ⌘− or ⌘0 while a dialog is open, such as the restore or erase confirmation while it replaces the journal
 - **THEN** the text size stays as it is and nothing is saved, so a restored journal keeps the display preferences of its backup and an erased journal starts with the defaults.
+
+#### Scenario: Backups while preferences cannot be read
+
+- **WHEN** the journal's stored display preferences cannot be read and a daily backup, Back up now, the safety backup before a restore or the backup before an upgrade runs
+- **THEN** the backup is made with today's date in the default time zone shown in Settings, it keeps the stored preferences exactly as they are, and restoring it brings them back unchanged, so the app again shows the defaults and offers Reset display settings.
 
 ### Requirement: Independent locale and time zone
 

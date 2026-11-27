@@ -108,6 +108,43 @@ fn unknown_preference_fields_and_themes_are_rejected() {
     );
 }
 
+/// D-016: stored preferences that break the rules for saving them, as restored from a newer
+/// version's backup, cannot be read, so the app shows the defaults. They stay stored as they are.
+#[test]
+fn stored_preferences_that_break_the_saving_rules_cannot_be_read() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.sqlite");
+    drop(Journal::open(&path).unwrap());
+    for (stored, error) in [
+        (r#"{"timeZone":"Mars/Olympus"}"#, Error::Date),
+        (r#"{"theme":"sepia"}"#, Error::Document),
+        (r#"{"textScale":120}"#, Error::Document),
+        (r#"{"timelineDays":21}"#, Error::Document),
+    ] {
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute(
+                "INSERT INTO preferences(key,value) VALUES('display',?1)
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                [stored],
+            )
+            .unwrap();
+        assert_eq!(
+            Journal::open(&path).unwrap().preferences(),
+            Err(error),
+            "{stored}"
+        );
+        let kept: String = connection
+            .query_row(
+                "SELECT value FROM preferences WHERE key='display'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(kept, stored);
+    }
+}
+
 /// Text size: one of the offered sizes, stored with the other display preferences.
 #[test]
 fn text_size_is_one_of_the_offered_sizes() {

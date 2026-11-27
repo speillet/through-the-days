@@ -1109,6 +1109,108 @@ fn back_up_now_and_a_new_passphrase_try_again_during_the_pause() {
     assert_eq!(list_backups(&drive).unwrap().len(), 2);
 }
 
+/// The stored display preferences, exactly as the journal at `path` holds them.
+fn stored_display(path: &Path) -> Option<String> {
+    use rusqlite::OptionalExtension;
+    rusqlite::Connection::open(path)
+        .unwrap()
+        .query_row(
+            "SELECT value FROM preferences WHERE key='display'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .unwrap()
+}
+
+/// D-016; desktop-shell — Backups while preferences cannot be read: display preferences that
+/// this version cannot read never stop a backup. Today's date and the daily backup follow the
+/// default time zone that the interface shows, and every backup, including the safety backup
+/// before a restore, keeps the stored preferences exactly as they are.
+#[test]
+fn backups_go_on_while_the_display_preferences_cannot_be_read() {
+    const UNREADABLE: &str = r#"{"unknownField":true}"#;
+    let fixture = Fixture::new();
+    let app = ready_with_backups(&fixture);
+    let kept = app
+        .lock()
+        .save_entry(draft("2026-11-22", Slot::Morning, "Synthetic entry."))
+        .unwrap();
+    execute(
+        &fixture.paths().journal,
+        &format!("INSERT INTO preferences(key,value) VALUES('display','{UNREADABLE}')"),
+    );
+    assert_eq!(
+        app.lock().preferences().unwrap_err(),
+        CommandError::from(Error::Document)
+    );
+    // 23:30 UTC is already 23 November in Europe/Paris, the default time zone.
+    let late = Utc.with_ymd_and_hms(2026, 11, 22, 23, 30, 0).unwrap();
+    let daily = app.lock().run_daily_backup(late).unwrap();
+    assert_eq!(daily.state, BackupState::UpToDate);
+    assert_eq!(daily.last_error, None);
+    assert_eq!(daily.last_success_date.as_deref(), Some("2026-11-23"));
+    assert_eq!(app.lock().today(late).unwrap(), "2026-11-23");
+    let explicit = app.lock().backup_now(late).unwrap();
+    assert_eq!(explicit.state, BackupState::UpToDate);
+    let backups = app.lock().list_backups().unwrap();
+    assert_eq!(backups.len(), 2);
+
+    let outcome = app
+        .lock()
+        .restore_backup(
+            RestoreSource::Registered {
+                name: backups[1].name.clone(),
+            },
+            PASSPHRASE,
+            false,
+            late,
+        )
+        .unwrap();
+    assert!(outcome.safety_backup);
+    assert_eq!(app.lock().list_backups().unwrap().len(), 3);
+    assert_eq!(app.lock().list_entries().unwrap(), vec![kept]);
+    assert_eq!(
+        stored_display(&fixture.paths().journal).as_deref(),
+        Some(UNREADABLE)
+    );
+}
+
+/// local-data-protection — Backup attempt fails: a journal that cannot be backed up, here
+/// because its stored display preferences are on a damaged page, is reported as a failed backup
+/// with its cause, instead of a backup that stays due without a word.
+#[test]
+fn a_journal_that_cannot_be_backed_up_reports_the_failure_in_the_backup_status() {
+    let fixture = Fixture::new();
+    let app = fixture.launch();
+    app.choose_backup_folder(fixture.folder(), noon()).unwrap();
+    fill(&app);
+    app.lock()
+        .set_preferences(json!({"theme": "dark"}))
+        .unwrap();
+    drop(app);
+    let (offset, length) = root_page(&fixture.paths().journal, "preferences");
+    damage(&fixture.paths().journal, offset, length);
+
+    let app = fixture.launch();
+    assert_eq!(app.startup_status().state, StartupState::Ready);
+    assert_eq!(
+        app.lock().preferences().unwrap_err(),
+        CommandError::from(Error::Damaged)
+    );
+    app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
+        .unwrap();
+    let failed = app.lock().run_daily_backup(noon()).unwrap();
+    assert_eq!(failed.state, BackupState::Failed);
+    assert_eq!(failed.last_error, Some(CommandError::from(Error::Damaged)));
+    assert_eq!(
+        app.lock().backup_now(noon()).unwrap_err(),
+        CommandError::from(Error::Damaged)
+    );
+    assert_eq!(app.lock().backup_status(noon()).state, BackupState::Failed);
+    assert!(list_backups(&fixture.folder()).unwrap().is_empty());
+}
+
 /// local-data-protection — Interrupted backup write: a folder that cannot receive backups is
 /// refused when it is chosen, and the check leaves nothing in a folder that can.
 #[test]

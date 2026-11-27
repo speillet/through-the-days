@@ -80,6 +80,11 @@ The system SHALL provide encrypted local backups and a tested restore path befor
 - **WHEN** the folder's list of backups records a backup made before 1970 or after the year 9999
 - **THEN** that backup is neither listed nor offered for restore, pruning forgets it without deleting its file and still keeps the 30 latest backups, and the backup settings remain usable.
 
+#### Scenario: Display preferences this version cannot read
+
+- **WHEN** the journal's stored display preferences cannot be read, for example because a newer version saved them, and the app backs up the journal, including the safety backup before a restore and the backup before an upgrade
+- **THEN** the backup succeeds and keeps those preferences exactly as stored, and restoring it brings them back unchanged.
+
 ### Requirement: Safe restore
 
 The system SHALL validate a backup before making it active and SHALL preserve the current journal when the backup cannot be reached, decrypted or validated, or when the safety backup of a readable current journal fails. When a backup folder and the session passphrase are available and the current journal holds entries, the system SHALL publish a safety backup of it before replacing it, and SHALL skip that safety backup only if the journal cannot be read and the person explicitly confirms it.
@@ -180,6 +185,11 @@ The system SHALL perform a daily encrypted local backup while active and catch u
 
 - **WHEN** a due backup needs a passphrase that is not available
 - **THEN** the app requests it and reports backup as pending while keeping journal writing usable.
+
+#### Scenario: Backup attempt fails
+
+- **WHEN** a due backup fails, for example because part of the journal cannot be read
+- **THEN** the backup status reports the failure and its cause instead of staying due, and journal writing remains available.
 
 ### Requirement: Recoverable pre-migration backup
 

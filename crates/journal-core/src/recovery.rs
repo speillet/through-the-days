@@ -2,7 +2,7 @@
 //! `docs/backup-format.md`.
 
 use crate::{
-    Entry, Error, Journal, Preferences,
+    Entry, Error, Journal,
     fsutil::{TEMPORARY_PREFIX, backup_folder_error, sync_directory},
     registry::{self, Registered},
     schema::{self, SCHEMA_VERSION},
@@ -472,7 +472,10 @@ fn copy_entries(staged: &Connection, canonical: &Connection) -> Result<(), Error
     Ok(())
 }
 
-/// Stored display preferences must meet the rules that saving them enforces.
+/// Stored preferences are copied exactly as they are, without being read (D-016): display
+/// preferences that this version cannot read, such as a newer version's, never stop a backup,
+/// and a restore brings them back unchanged. Reading them reports them as unreadable, so the
+/// app shows the defaults and offers to reset them.
 fn copy_preferences(staged: &Connection, canonical: &Connection) -> Result<(), Error> {
     let mut select = staged.prepare("SELECT key,value FROM preferences")?;
     let mut insert = canonical.prepare("INSERT INTO preferences(key,value) VALUES(?1,?2)")?;
@@ -481,9 +484,6 @@ fn copy_preferences(staged: &Connection, canonical: &Connection) -> Result<(), E
     })?;
     for row in rows {
         let (key, value) = row?;
-        if key == "display" {
-            serde_json::from_str::<Preferences>(&value)?.validate()?;
-        }
         insert.execute(params![key, value])?;
     }
     Ok(())
