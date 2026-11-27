@@ -1,9 +1,9 @@
 // Today's journal date in the configured time zone. The journal is authoritative;
-// the value refreshes every minute, when the window regains focus, when the page is
-// shown again and after the time zone changes, so an app left open overnight moves
-// on to the new date. A window can stay focused while the Mac sleeps: waking then
-// sends no focus event, and the minute timer can take up to a minute to run again.
-// Entries that are already open keep their own chosen date.
+// the value refreshes at midnight in that time zone, every minute, when the window
+// regains focus, when the page is shown again and after the time zone changes, so an
+// app left open overnight moves on to the new date as it begins. A window can stay
+// focused while the Mac sleeps: waking then sends no focus event, and a timer due
+// during sleep can run late. Entries that are already open keep their own chosen date.
 
 import {
   createContext,
@@ -16,10 +16,13 @@ import {
   type ReactNode,
 } from 'react';
 import { useApi } from '../api/client';
-import { todayIn } from '../domain/dates';
+import { msUntilMidnight, todayIn } from '../domain/dates';
 import { usePreferences } from './preferences';
 
 export const TODAY_REFRESH_MS = 60_000;
+
+/** The wait for midnight is worked out again at least this often (see the effect below). */
+const MIDNIGHT_PLAN_MS = 60 * 60_000;
 
 export interface TodayContextValue {
   /** YYYY-MM-DD */
@@ -34,6 +37,14 @@ function localToday(timeZone: string): string {
     return todayIn(timeZone);
   } catch {
     return todayIn('UTC');
+  }
+}
+
+function untilMidnight(timeZone: string): number {
+  try {
+    return msUntilMidnight(timeZone);
+  } catch {
+    return msUntilMidnight('UTC');
   }
 }
 
@@ -84,6 +95,23 @@ export function TodayProvider({
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [refresh, intervalMs]);
+
+  // The date changes at midnight in the journal time zone, so it is read again then,
+  // not up to a minute later. The wait is worked out again within the hour before
+  // midnight, as a daylight-saving change earlier that day shortens or lengthens it.
+  useEffect(() => {
+    let timer: number | undefined;
+    const plan = () => {
+      const wait = untilMidnight(timeZone);
+      const next = () => {
+        if (wait <= MIDNIGHT_PLAN_MS) void refresh();
+        plan();
+      };
+      timer = window.setTimeout(next, Math.min(wait, MIDNIGHT_PLAN_MS));
+    };
+    plan();
+    return () => window.clearTimeout(timer);
+  }, [refresh, timeZone]);
 
   const value = useMemo(() => (today === null ? null : { today, refresh }), [today, refresh]);
   if (!value) return <>{fallback}</>;

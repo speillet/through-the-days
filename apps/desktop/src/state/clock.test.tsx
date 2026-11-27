@@ -40,6 +40,16 @@ function setup(start: Date) {
   };
 }
 
+/**
+ * Lets the journal answer while timeouts are simulated, without moving the simulated
+ * clock. (Testing Library's find queries wait on a timeout, which would never run.)
+ */
+async function settle() {
+  for (let turn = 0; turn < 5; turn += 1) {
+    await act(() => vi.advanceTimersByTimeAsync(0));
+  }
+}
+
 describe('TodayProvider', () => {
   it('shows today in the journal time zone', async () => {
     setup(new Date('2026-11-22T22:30:00Z')); // 23:30 in Paris
@@ -94,6 +104,42 @@ describe('TodayProvider', () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
     expect(screen.getByText('Today is 2026-11-23')).toBeInTheDocument();
+  });
+
+  it('moves to the next date at midnight in the journal time zone, without waiting for the minute timer', async () => {
+    // The Mac's clock and the journal's agree; only timeouts and the clock are simulated.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.setSystemTime(new Date('2026-11-22T22:59:50Z')); // 23:59:50 in Paris
+    const clock = setup(new Date('2026-11-22T22:59:50Z'));
+    await settle();
+    expect(screen.getByText('Today is 2026-11-22')).toBeInTheDocument();
+    clock.setNow(new Date('2026-11-22T23:00:00Z'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9_999);
+    });
+    expect(screen.getByText('Today is 2026-11-22')).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByText('Today is 2026-11-23')).toBeInTheDocument();
+  });
+
+  it('still moves on at midnight on the day the clocks go forward', async () => {
+    // Paris springs forward on Sunday 29 March 2026, so that day lasts 23 hours.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.setSystemTime(new Date('2026-03-28T23:00:05Z')); // 00:00:05 on Sunday in Paris
+    const clock = setup(new Date('2026-03-28T23:00:05Z'));
+    await settle();
+    expect(screen.getByText('Today is 2026-03-29')).toBeInTheDocument();
+    clock.setNow(new Date('2026-03-29T22:00:00Z')); // Midnight on Monday in Paris
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(22 * 3_600_000 + 59 * 60_000 + 54_999);
+    });
+    expect(screen.getByText('Today is 2026-03-29')).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByText('Today is 2026-03-30')).toBeInTheDocument();
   });
 
   it('refreshes when the window regains focus', async () => {
