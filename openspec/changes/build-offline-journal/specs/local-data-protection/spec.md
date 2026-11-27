@@ -32,6 +32,16 @@ The system SHALL retain deleted entries in local trash for 30 days, permit resto
 - **WHEN** the person explicitly confirms permanent deletion of a trashed entry
 - **THEN** the entry is removed from the application's retained journal records and the app explains that earlier backups may still contain it.
 
+#### Scenario: Permanent deletion during a pending restore
+
+- **WHEN** the person has asked to restore a trashed entry and that restore is still waiting, for example behind a backup
+- **THEN** permanent deletion of that entry is unavailable until the restore finishes, so an entry the restore brings back is neither removed nor reported as permanently deleted.
+
+#### Scenario: Entry already out of the trash
+
+- **WHEN** a restore or a confirmed permanent deletion reaches an entry that was restored, permanently deleted or purged after the trash was listed
+- **THEN** the app says that the entry is no longer in the trash, never reports a permanent deletion that did not happen, reloads the trash, closes any confirmation for an entry no longer listed, and leaves a restored entry in the journal.
+
 #### Scenario: Deleted text leaves the live journal files
 
 - **WHEN** a confirmed permanent deletion or an expiry purge removes a trashed entry

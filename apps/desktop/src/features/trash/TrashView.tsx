@@ -1,6 +1,8 @@
 // Trash (D-003): deleted entries stay restorable for 30 days. Restoring never
 // overwrites an entry already in the same date and slot, and permanent deletion
-// says plainly that earlier encrypted backups may still contain the entry.
+// says plainly that earlier encrypted backups may still contain the entry. An
+// entry being restored can't be deleted permanently, and an action that finds
+// its entry already gone from the trash says so instead of reporting success.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toCommandError, useApi } from '../../api/client';
@@ -79,7 +81,12 @@ export function TrashView() {
       // The routine purges again later and at the next launch.
     }
     try {
-      setItems(await api.listTrash());
+      const listed = await api.listTrash();
+      setItems(listed);
+      // A confirmation never outlives its entry in the list.
+      setConfirming((current) =>
+        current && listed.some((item) => item.entry.id === current.entry.id) ? current : null,
+      );
       setLoadError(null);
     } catch (caught) {
       setLoadError(toCommandError(caught).message);
@@ -104,6 +111,18 @@ export function TrashView() {
   function remove(id: string) {
     const index = items?.findIndex((item) => item.entry.id === id) ?? 0;
     setItems((current) => current?.filter((item) => item.entry.id !== id) ?? current);
+    setConfirming((current) => (current?.entry.id === id ? null : current));
+    setFocusIndex(Math.max(0, index));
+  }
+
+  /**
+   * The entry was restored, deleted or expired before this action reached it: say so rather
+   * than report what did not happen, and show the trash as it now is.
+   */
+  async function noLongerInTrash(id: string) {
+    const index = items?.findIndex((item) => item.entry.id === id) ?? 0;
+    setFeedback({ tone: 'error', text: 'That entry is no longer in the trash.' });
+    await load();
     setFocusIndex(Math.max(0, index));
   }
 
@@ -130,8 +149,7 @@ export function TrashView() {
       if (error.code === 'occupied') {
         setItemError(item.entry.id, conflictMessage(item.entry));
       } else if (error.code === 'notFound') {
-        setFeedback({ tone: 'error', text: 'That entry is no longer in the trash.' });
-        await load();
+        await noLongerInTrash(item.entry.id);
       } else {
         setItemError(item.entry.id, error.message);
       }
@@ -146,7 +164,10 @@ export function TrashView() {
     } catch (caught) {
       const error = toCommandError(caught);
       if (error.code !== 'notFound') throw error;
-      // Already gone: there is nothing left to delete.
+      // Nothing was deleted: a restore may have brought the entry back to the journal first.
+      setConfirming(null);
+      await noLongerInTrash(item.entry.id);
+      return;
     }
     setConfirming(null);
     remove(item.entry.id);
@@ -213,7 +234,7 @@ export function TrashView() {
                   <Button data-trash-restore="" busy={busyId === entry.id} onClick={() => void restore(item)}>
                     Restore <VisuallyHidden>{described}</VisuallyHidden>
                   </Button>
-                  <Button variant="quiet" onClick={() => setConfirming(item)}>
+                  <Button variant="quiet" disabled={busyId === entry.id} onClick={() => setConfirming(item)}>
                     Delete permanently <VisuallyHidden>{described}</VisuallyHidden>
                   </Button>
                 </div>

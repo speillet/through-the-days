@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { JournalApi } from '../../api/client';
@@ -29,6 +29,36 @@ async function saveEntry(api: JournalApi, date: string, slot: Slot, text: string
 
 async function trash(api: JournalApi, entry: Entry) {
   await api.trashEntry(entry.id, entry.revision);
+}
+
+/**
+ * A journal kept busy, for example by a backup: restores and permanent deletions wait, then run
+ * one at a time in the order they were asked for, as the native app's journal runs them.
+ */
+function busyJournal(journal: JournalApi) {
+  let release!: () => void;
+  let queue: Promise<unknown> = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  function queued<T>(write: () => Promise<T>): Promise<T> {
+    const result = queue.then(write);
+    queue = result.catch(() => undefined);
+    return result;
+  }
+  const api: JournalApi = {
+    ...journal,
+    restoreEntry: (id) => queued(() => journal.restoreEntry(id)),
+    deleteEntryPermanently: (id) => queued(() => journal.deleteEntryPermanently(id)),
+  };
+  return {
+    api,
+    /** Ends the busy period and lets every waiting write run. */
+    release: () =>
+      act(async () => {
+        release();
+        await queue;
+      }),
+  };
 }
 
 async function renderTrash(api: JournalApi) {
@@ -142,6 +172,80 @@ describe('Trash', () => {
     expect(screen.getByText('The trash is empty.')).toBeInTheDocument();
     await expect(api.listTrash()).resolves.toEqual([]);
     await expect(api.restoreEntry(saved.id)).rejects.toMatchObject({ code: 'notFound' });
+  });
+
+  it('offers no permanent deletion of an entry while it is being restored', async () => {
+    const user = userEvent.setup();
+    const { api: memory } = journal();
+    const saved = await saveEntry(memory, '2026-11-18', 'morning', 'Fictional entry restored during a backup.');
+    await trash(memory, saved);
+    const busy = busyJournal(memory);
+    await renderTrash(busy.api);
+
+    // The journal is busy, so the restore waits; the person then changes their mind.
+    await user.click(await screen.findByRole('button', { name: /^Restore the Morning entry/ }));
+    const deleteButton = screen.getByRole('button', { name: /^Delete permanently the Morning entry/ });
+    expect(deleteButton).toBeDisabled();
+    await user.click(deleteButton);
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+
+    await busy.release();
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'The Morning entry from Wednesday 18 November 2026 is back in your journal.',
+    );
+    expect(screen.queryByText(/deleted permanently/)).not.toBeInTheDocument();
+    expect(screen.getByText('The trash is empty.')).toBeInTheDocument();
+    await expect(memory.entriesOn('2026-11-18')).resolves.toEqual([{ ...saved, revision: saved.revision + 1 }]);
+  });
+
+  it('says an entry that left the trash before its deletion is no longer there, and reloads the list', async () => {
+    const user = userEvent.setup();
+    const { api, clock } = journal();
+    const restored = await saveEntry(api, '2026-11-14', 'morning', 'Fictional entry restored elsewhere.');
+    await trash(api, restored);
+    clock.now = new Date(TEST_NOW.getTime() + 60_000);
+    await trash(api, await saveEntry(api, '2026-11-15', 'evening', 'Fictional entry that stays in the trash.'));
+    await renderTrash(api);
+
+    await user.click(
+      await screen.findByRole('button', { name: /^Delete permanently the Morning entry from Saturday 14/ }),
+    );
+    // Before the deletion runs, the entry is restored and another one is deleted.
+    await api.restoreEntry(restored.id);
+    clock.now = new Date(TEST_NOW.getTime() + 120_000);
+    await trash(api, await saveEntry(api, '2026-11-13', 'evening', 'Fictional entry deleted meanwhile.'));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete permanently' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('That entry is no longer in the trash.');
+    expect(screen.queryByText(/deleted permanently/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 2, name: /Friday 13 November 2026/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: /Sunday 15 November 2026/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: /Saturday 14 November 2026/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Restore the Evening entry from Sunday 15/ })).toHaveFocus();
+    await expect(api.entriesOn('2026-11-14')).resolves.toEqual([{ ...restored, revision: restored.revision + 1 }]);
+  });
+
+  it('closes a confirmation whose entry leaves the list', async () => {
+    const user = userEvent.setup();
+    const { api: memory, clock } = journal();
+    await trash(memory, await saveEntry(memory, '2026-11-10', 'morning', 'Fictional entry about to expire.'));
+    await trash(memory, await saveEntry(memory, '2026-11-11', 'evening', 'Fictional entry also about to expire.'));
+    clock.now = new Date(TEST_NOW.getTime() + 30 * DAY_MS - 60_000);
+    const busy = busyJournal(memory);
+    await renderTrash(busy.api);
+
+    await user.click(await screen.findByRole('button', { name: /^Restore the Morning entry from Tuesday 10/ }));
+    await user.click(screen.getByRole('button', { name: /^Delete permanently the Evening entry from Wednesday 11/ }));
+    expect(screen.getByRole('alertdialog')).toHaveAccessibleDescription(/The Evening entry from Wednesday 11/);
+    // Both entries expire while the restore waits, so the reload after it no longer lists either.
+    clock.now = new Date(TEST_NOW.getTime() + 30 * DAY_MS);
+    await busy.release();
+
+    expect(await screen.findByText('The trash is empty.')).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('That entry is no longer in the trash.');
+    expect(screen.getByRole('heading', { level: 1, name: 'Trash' })).toHaveFocus();
   });
 
   it('no longer offers an entry once its 30 days have passed', async () => {
