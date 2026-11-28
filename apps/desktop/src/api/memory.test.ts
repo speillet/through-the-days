@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { newDraft } from '../domain/entry';
 import { DEFAULT_PREFERENCES } from '../domain/preferences';
 import { APP_ROOT } from '../guards/sources';
+import { createTestClock } from '../test/render';
 import type { MemoryApiOptions } from './memory';
 import {
   createMemoryApi,
@@ -18,18 +19,9 @@ const DAY_MS = 86_400_000;
 
 function setup(options: MemoryApiOptions = {}) {
   const storage = createMemoryStorage();
-  let now = new Date('2026-11-22T09:00:00Z');
-  const clock = {
-    set(next: Date) {
-      now = next;
-    },
-    advanceDays(days: number) {
-      now = new Date(now.getTime() + days * DAY_MS);
-    },
-    unix: () => Math.floor(now.getTime() / 1000),
-  };
-  const api = createMemoryApi({ storage, now: () => now, ...options });
-  const restart = (extra: MemoryApiOptions = {}) => createMemoryApi({ storage, now: () => now, ...extra });
+  const clock = createTestClock();
+  const api = createMemoryApi({ storage, now: clock.now, ...options });
+  const restart = (extra: MemoryApiOptions = {}) => createMemoryApi({ storage, now: clock.now, ...extra });
   return { api, storage, clock, restart };
 }
 

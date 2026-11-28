@@ -10,9 +10,9 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { App } from '../App';
-import { createMemoryApi, createMemoryStorage, type MemoryApiOptions } from '../api/memory';
+import type { MemoryApiOptions } from '../api/memory';
 import { newDraft } from '../domain/entry';
-import { TEST_NOW } from '../test/render';
+import { createTestApi } from '../test/render';
 
 const CONTROLS = 'button, a[href], input[type="checkbox"], select, summary';
 const ROVING = '[role="tablist"], [role="toolbar"], [role="grid"]';
@@ -43,7 +43,7 @@ function tabStopProblems(where: string): string[] {
 }
 
 async function openApp(options: MemoryApiOptions = {}) {
-  const api = createMemoryApi({ storage: createMemoryStorage(), now: () => TEST_NOW, ...options });
+  const api = createTestApi(options);
   render(<App api={api} />);
   return api;
 }
@@ -89,9 +89,7 @@ describe('explicit tab stops', () => {
   it('keeps every control of the startup screens in the Tab order', async () => {
     const problems: string[] = [];
     for (const state of ['needsMigration', 'unsupported', 'failed'] as const) {
-      const { unmount } = render(
-        <App api={createMemoryApi({ storage: createMemoryStorage(), now: () => TEST_NOW, startup: { state } })} />,
-      );
+      const { unmount } = render(<App api={createTestApi({ startup: { state } })} />);
       await screen.findByRole('heading', { level: 1 });
       problems.push(...tabStopProblems(`Startup: ${state}`));
       unmount();

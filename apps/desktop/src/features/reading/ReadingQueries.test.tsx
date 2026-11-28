@@ -4,9 +4,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { App } from '../../App';
 import type { JournalApi } from '../../api/client';
 import type { Entry, SearchRequest } from '../../api/types';
-import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES } from '../../api/memory';
+import { ERROR_MESSAGES } from '../../api/memory';
 import { newDraft } from '../../domain/entry';
 import { discardAllSavers } from '../../state/autosave';
+import { createTestApi, createTestClock } from '../../test/render';
 import {
   createJournal,
   journalEditor,
@@ -20,10 +21,6 @@ import {
 afterEach(() => {
   discardAllSavers();
 });
-
-function syntheticJournal() {
-  return createMemoryApi({ storage: createMemoryStorage(), now: () => new Date('2026-11-22T12:00:00Z') });
-}
 
 function writing(slot: Entry['slot'], text: string): Entry {
   return {
@@ -74,10 +71,7 @@ async function opened(reads: ReturnType<typeof heldReads>) {
 }
 
 it('does not restore an obsolete search response after the selection has changed', async () => {
-  const journal = createMemoryApi({
-    storage: createMemoryStorage(),
-    now: () => new Date('2026-11-22T12:00:00Z'),
-  });
+  const journal = createTestApi();
   const saved: Entry[] = [];
   for (const [slot, text] of [
     ['morning', 'Synthetic obsolete result.'],
@@ -109,10 +103,7 @@ it('does not restore an obsolete search response after the selection has changed
 });
 
 it('saves newer authored notes when a summary finishes after another edit', async () => {
-  const journal = createMemoryApi({
-    storage: createMemoryStorage(),
-    now: () => new Date('2026-11-22T12:00:00Z'),
-  });
+  const journal = createTestApi();
   await journal.saveWeeklyNotes('2026-11-22', 'Synthetic initial notes.', 0);
   let finishSummary!: () => void;
   const pending = new Promise<void>((resolve) => {
@@ -148,8 +139,8 @@ it('saves newer authored notes when a summary finishes after another edit', asyn
 
 it('keeps the week, focus and text of notes written while the clock passes into the next week', async () => {
   // 23:58 in Paris on Saturday 28 November 2026.
-  let now = new Date('2026-11-28T22:58:00Z');
-  const api = createMemoryApi({ storage: createMemoryStorage(), now: () => now });
+  const clock = createTestClock(new Date('2026-11-28T22:58:00Z'));
+  const api = createTestApi({ now: clock.now });
   // Only the clock's minute refresh is simulated; saves and typing keep real timers.
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   try {
@@ -159,7 +150,7 @@ it('keeps the week, focus and text of notes written while the clock passes into 
     expect(await screen.findByRole('heading', { name: week })).toBeInTheDocument();
     const notes = screen.getByRole('textbox', { name: 'Your notes' });
     const passMinute = async (next: Date) => {
-      now = next;
+      clock.set(next);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(60_000);
       });
@@ -192,8 +183,8 @@ it('keeps the week, focus and text of notes written while the clock passes into 
 
 it('keeps the shown week while notes the person has left are still saving or failed to save', async () => {
   // 23:58 in Paris on Sunday 29 November 2026.
-  let now = new Date('2026-11-29T22:58:00Z');
-  const journal = createMemoryApi({ storage: createMemoryStorage(), now: () => now });
+  const clock = createTestClock(new Date('2026-11-29T22:58:00Z'));
+  const journal = createTestApi({ now: clock.now });
   // Notes saves wait until the test releases them, then fail while `failing` is set.
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
@@ -224,7 +215,7 @@ it('keeps the shown week while notes the person has left are still saving or fai
     await user.click(screen.getByRole('button', { name: 'Save notes' }));
     expect(saves).toBe(1);
     expect(notes).not.toHaveFocus();
-    now = new Date('2026-11-29T23:00:30Z'); // 00:00 on Monday 30 November.
+    clock.set(new Date('2026-11-29T23:00:30Z')); // 00:00 on Monday 30 November.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
@@ -256,8 +247,8 @@ it('keeps the shown week while notes the person has left are still saving or fai
 
 it('shows the new week with This week while the notes of the week kept on screen are still saving', async () => {
   // 23:58 in Paris on Sunday 29 November 2026.
-  let now = new Date('2026-11-29T22:58:00Z');
-  const journal = createMemoryApi({ storage: createMemoryStorage(), now: () => now });
+  const clock = createTestClock(new Date('2026-11-29T22:58:00Z'));
+  const journal = createTestApi({ now: clock.now });
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -276,7 +267,7 @@ it('shows the new week with This week while the notes of the week kept on screen
   const text = 'Synthetic notes still saving after midnight.';
   await user.type(screen.getByRole('textbox', { name: 'Your notes' }), text);
   await user.click(screen.getByRole('button', { name: 'Save notes' }));
-  now = new Date('2026-11-29T23:00:30Z'); // 00:00 on Monday 30 November.
+  clock.set(new Date('2026-11-29T23:00:30Z')); // 00:00 on Monday 30 November.
   await act(async () => {
     window.dispatchEvent(new Event('focus'));
   });
@@ -293,10 +284,7 @@ it('shows the new week with This week while the notes of the week kept on screen
 });
 
 it('reports a weekly source load error and retries without claiming the week is empty', async () => {
-  const api = createMemoryApi({
-    storage: createMemoryStorage(),
-    now: () => new Date('2026-11-22T12:00:00Z'),
-  });
+  const api = createTestApi();
   await api.saveEntry({
     ...newDraft('2026-11-22', 'morning', 'Europe/Paris'),
     document: {
@@ -315,10 +303,7 @@ it('reports a weekly source load error and retries without claiming the week is 
 });
 
 it('keeps saving authored notes when summary generation fails during another edit', async () => {
-  const journal = createMemoryApi({
-    storage: createMemoryStorage(),
-    now: () => new Date('2026-11-22T12:00:00Z'),
-  });
+  const journal = createTestApi();
   await journal.saveWeeklyNotes('2026-11-22', 'Synthetic initial notes.', 0);
   let failSummary!: () => void;
   const pending = new Promise<void>((resolve) => {
@@ -371,7 +356,7 @@ it('keeps the Today timeline in place while an autosave refreshes it', async () 
 });
 
 it('keeps the browsed Calendar month and focus while a window activation refreshes it', async () => {
-  const reads = heldReads(syntheticJournal());
+  const reads = heldReads(createTestApi());
   render(<App api={reads.api} initialView="calendar" />);
   await opened(reads);
   const next = screen.getByRole('button', { name: 'Next month' });
@@ -386,7 +371,7 @@ it('keeps the browsed Calendar month and focus while a window activation refresh
 });
 
 it('keeps the browsed Calendar month while a new search or filter loads', async () => {
-  const journal = syntheticJournal();
+  const journal = createTestApi();
   await journal.saveEntry(writing('morning', 'Synthetic walk by the river.'));
   const reads = heldReads(journal);
   render(<App api={reads.api} initialView="calendar" />);
@@ -413,7 +398,7 @@ it('keeps the browsed Calendar month while a new search or filter loads', async 
 });
 
 it('keeps the weekly notes caret and the summary button focused through refreshes', async () => {
-  const reads = heldReads(syntheticJournal());
+  const reads = heldReads(createTestApi());
   render(<App api={reads.api} initialView="weekly" />);
   await opened(reads);
   const user = userEvent.setup();
@@ -439,7 +424,7 @@ it('keeps the weekly notes caret and the summary button focused through refreshe
 });
 
 it('keeps Book View focus and text selection while a window activation refreshes it', async () => {
-  const journal = syntheticJournal();
+  const journal = createTestApi();
   await journal.saveEntry(writing('morning', 'Synthetic passage to select.'));
   const reads = heldReads(journal);
   render(<App api={reads.api} initialView="book" />);
@@ -457,7 +442,7 @@ it('keeps Book View focus and text selection while a window activation refreshes
 });
 
 it('keeps an insights checkbox focused and ignores it until its saved change is shown', async () => {
-  const journal = syntheticJournal();
+  const journal = createTestApi();
   const saved = await journal.saveEntry(writing('morning', 'Synthetic source to keep in view.'));
   const save = vi.spyOn(journal, 'saveEntry');
   const reads = heldReads(journal);
@@ -491,7 +476,7 @@ it('keeps an insights checkbox focused and ignores it until its saved change is 
 });
 
 it('shows a failed insights change and accepts the next one', async () => {
-  const journal = syntheticJournal();
+  const journal = createTestApi();
   const saved = await journal.saveEntry(writing('morning', 'Synthetic source whose change fails once.'));
   // Installed before heldReads copies the journal's methods, so the interface saves through it.
   const save = vi.spyOn(journal, 'saveEntry').mockRejectedValueOnce({
@@ -529,7 +514,7 @@ it('shows a failed insights change and accepts the next one', async () => {
 });
 
 it('keeps The Path So Far sources in place when a milestone is saved', async () => {
-  const journal = syntheticJournal();
+  const journal = createTestApi();
   await journal.saveEntry(writing('morning', 'Synthetic path source.'));
   const reads = heldReads(journal);
   render(<App api={reads.api} initialView="path" />);
@@ -547,7 +532,7 @@ it('keeps The Path So Far sources in place when a milestone is saved', async () 
 });
 
 it('replaces the shown entries with the error when a refresh fails', async () => {
-  const journal = syntheticJournal();
+  const journal = createTestApi();
   await journal.saveEntry(writing('morning', 'Synthetic text before a failed refresh.'));
   const reads = heldReads(journal);
   render(<App api={reads.api} initialView="journal" />);
@@ -565,7 +550,7 @@ it('replaces the shown entries with the error when a refresh fails', async () =>
 });
 
 it('ignores a minimum score that is not a whole number from 0 to 10 and keeps every reading view working', async () => {
-  const journal = syntheticJournal();
+  const journal = createTestApi();
   await journal.saveEntry({ ...writing('morning', 'Synthetic bright morning.'), mood: 8 });
   await journal.saveEntry({ ...writing('evening', 'Synthetic quiet evening.'), mood: 3 });
   // As in the native app: a decimal minimum cannot be read as a command argument, so the request

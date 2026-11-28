@@ -1,10 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiProvider } from '../api/client';
-import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES } from '../api/memory';
+import { ApiProvider, type JournalApi } from '../api/client';
+import { ERROR_MESSAGES } from '../api/memory';
 import type { CommandError, Entry } from '../api/types';
 import { newDraft } from '../domain/entry';
+import { createTestApi } from '../test/render';
 import {
   AUTOSAVE_DELAY_MS,
   discardAllSavers,
@@ -140,7 +141,7 @@ describe('entry autosave', () => {
   });
 
   it('keeps saving later edits after a flush that found nothing to save', async () => {
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     const saver = new EntrySaver({ api, initial: null, create: draftFactory() });
     saver.update((entry) => ({ ...entry, mood: 6 }));
     await expect(saver.flush()).resolves.toBe(true);
@@ -204,7 +205,7 @@ describe('entry autosave', () => {
   });
 
   it('rolls back a refused completion and keeps the draft', async () => {
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     const saver = new EntrySaver({ api, initial: null, create: draftFactory() });
     saver.update((entry) => ({ ...entry, mood: 0, energy: 10 }));
     const refused = await saver.markComplete();
@@ -222,7 +223,7 @@ describe('entry autosave', () => {
   });
 
   it('asks for a reload, keeping the draft, when completion is refused because the entry changed elsewhere', async () => {
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     const stored = await api.saveEntry({ ...text(newDraft(DATE, 'morning', 'Europe/Paris'), 'Synthetic: done.'), mood: 4, energy: 6 });
     await api.saveEntry({ ...stored, mood: 7 });
     const saver = new EntrySaver({ api, initial: stored, create: draftFactory() });
@@ -240,7 +241,7 @@ describe('entry autosave', () => {
   });
 
   it('asks for a reload when a move is refused because the entry was removed elsewhere', async () => {
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     const stored = await api.saveEntry({ ...newDraft(DATE, 'morning', 'Europe/Paris'), mood: 2 });
     await api.trashEntry(stored.id, stored.revision);
     const saver = new EntrySaver({ api, initial: stored, create: draftFactory() });
@@ -253,7 +254,7 @@ describe('entry autosave', () => {
   });
 
   it('refuses a move onto an occupied slot and leaves both entries untouched', async () => {
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     const evening = await api.saveEntry({ ...newDraft(DATE, 'evening', 'Europe/Paris'), mood: 7 });
     const morning = await api.saveEntry({ ...newDraft(DATE, 'morning', 'Europe/Paris'), mood: 2 });
     const saver = new EntrySaver({ api, initial: morning, create: draftFactory() });
@@ -266,7 +267,7 @@ describe('entry autosave', () => {
   });
 
   it('saves pending input before moving an entry to Trash', async () => {
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     const saver = new EntrySaver({ api, initial: null, create: draftFactory() });
     saver.update((entry) => text(entry, 'Synthetic: to be trashed'));
     await expect(saver.trash()).resolves.toBeNull();
@@ -395,7 +396,7 @@ describe('journal replacement', () => {
     await settle();
     expect(findSaver(DATE, 'morning')).toBe(saver);
 
-    const journal = createMemoryApi({ storage: createMemoryStorage() });
+    const journal = createTestApi();
     const { result } = renderHook(() => useStartup(), {
       wrapper: ({ children }: { children?: ReactNode }) =>
         createElement(ApiProvider, { api: journal }, createElement(StartupProvider, null, children)),
@@ -409,13 +410,13 @@ describe('journal replacement', () => {
 });
 
 describe('useEntryAutosave', () => {
-  function wrapper(api: ReturnType<typeof createMemoryApi>) {
+  function wrapper(api: JournalApi) {
     return ({ children }: { children?: ReactNode }) => createElement(ApiProvider, { api }, children);
   }
 
   it('flushes when the view unmounts and resumes a failed saver for the same date and slot', async () => {
     vi.useRealTimers();
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     let failing = true;
     const flaky = {
       ...api,

@@ -1,12 +1,12 @@
 import { act, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiProvider } from '../api/client';
-import { createMemoryApi, createMemoryStorage } from '../api/memory';
+import { createTestApi } from '../test/render';
 import { NavigationProvider, useNavigation, type NavigationContextValue } from './navigation';
 import { StartupProvider, useStartup, type StartupContextValue } from './startup';
 
 describe('StartupProvider', () => {
-  function renderStartup(api = createMemoryApi({ storage: createMemoryStorage() })) {
+  function renderStartup(api = createTestApi()) {
     const current: { value: StartupContextValue | null } = { value: null };
     function Probe() {
       current.value = useStartup();
@@ -30,22 +30,20 @@ describe('StartupProvider', () => {
   }
 
   it('reads the startup status once mounted', async () => {
-    renderStartup(createMemoryApi({ storage: createMemoryStorage(), startup: { state: 'needsMigration' } }));
+    renderStartup(createTestApi({ startup: { state: 'needsMigration' } }));
     expect(screen.getByText('State: opening')).toBeInTheDocument();
     expect(await screen.findByText('State: needsMigration')).toBeInTheDocument();
   });
 
   it('reports when the status cannot be read', async () => {
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     vi.spyOn(api, 'startupStatus').mockRejectedValue('native failure');
     renderStartup(api);
     expect(await screen.findByText('State: error unknown')).toBeInTheDocument();
   });
 
   it('applies a returned status and reopens the workspace with a notice', async () => {
-    const current = renderStartup(
-      createMemoryApi({ storage: createMemoryStorage(), startup: { state: 'needsMigration' } }),
-    );
+    const current = renderStartup(createTestApi({ startup: { state: 'needsMigration' } }));
     await screen.findByText('State: needsMigration');
     act(() =>
       current.value?.setStatus(
