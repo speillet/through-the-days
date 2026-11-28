@@ -6,7 +6,15 @@
 // before any of those quits.
 
 import type { JournalApi } from '../api/client';
-import { flushAll, hasPending } from './flush';
+import { flushAll, hasPending, openPendingInput } from './flush';
+
+/** Shown with the unsaved writing when closing the window is refused for it. */
+export const UNSAVED_WRITING_KEEPS_WINDOW =
+  'Some writing hasn’t been saved yet, so the window stays open. Once it is saved, you can close it.';
+
+/** Shown with the unsaved writing when quitting is refused for it. */
+export const UNSAVED_WRITING_KEEPS_APP =
+  'Some writing hasn’t been saved yet, so the app stays open. Once it is saved, you can quit.';
 
 export interface CloseRequest {
   preventDefault(): void;
@@ -45,8 +53,10 @@ export function installBackgroundFlush(page: PageEvents = { window, document }):
 
 /**
  * Close request: when input is pending, keep the window open, flush, then close.
- * If a save still fails, keep the window and its unsaved writing open for retry.
- * Quit request (app://flush-request): confirm only after every save succeeds.
+ * If a save still fails, keep the window open and show the unsaved writing for a
+ * retry: Today on its entry, or Weekly Review on its week (openPendingInput).
+ * Quit request (app://flush-request): confirm only after every save succeeds;
+ * otherwise cancel the quit and show the unsaved writing the same way.
  * Losing focus or being hidden: flush (see installBackgroundFlush).
  */
 export function installExitFlush(
@@ -64,7 +74,10 @@ export function installExitFlush(
       }
       event.preventDefault();
       await flushAll();
-      if (hasPending()) return;
+      if (hasPending()) {
+        openPendingInput(UNSAVED_WRITING_KEEPS_WINDOW);
+        return;
+      }
       await appWindow.destroy();
     })
     .then(
@@ -80,6 +93,7 @@ export function installExitFlush(
   const stopFlushListener = api.onFlushRequest(async () => {
     await flushAll();
     if (hasPending()) {
+      openPendingInput(UNSAVED_WRITING_KEEPS_APP);
       await api.cancelExit?.();
       return;
     }

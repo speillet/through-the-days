@@ -20,12 +20,13 @@ import { BookView } from './features/reading/BookView';
 import { TrendsView } from './features/reading/TrendsView';
 import { WeeklyView } from './features/reading/WeeklyView';
 import { PathView } from './features/reading/PathView';
-import { ReadingProvider } from './features/reading/state';
+import { ReadingProvider, useReading } from './features/reading/state';
 import './features/reading/reading.css';
 import { TrashView } from './features/trash/TrashView';
 import { BackupProvider } from './state/backup';
 import { TodayProvider } from './state/clock';
 import { installExitFlush } from './state/exit';
+import { setPendingInputOpener } from './state/flush';
 import { FocusModeProvider, useFocusMode } from './state/focus';
 import { NavigationProvider, useNavigation, type View } from './state/navigation';
 import { PreferencesProvider } from './state/preferences';
@@ -71,11 +72,28 @@ function Workspace() {
 }
 
 function Shell() {
-  const { view, target, requestId } = useNavigation();
+  const { view, target, requestId, navigate } = useNavigation();
   const { focusMode, setFocusMode } = useFocusMode();
-  const { notice, noticeTone, dismissNotice } = useStartup();
+  const { notice, noticeTone, showNotice, dismissNotice } = useStartup();
+  const { setDate: setReadingDate } = useReading();
   const mainRef = useRef<HTMLElement>(null);
   useTextSizeShortcuts();
+
+  // Input whose save still fails is shown, with why, when a close, quit, restore or
+  // erasure is refused for it: Today on its date and slot, or Weekly Review on its week.
+  useEffect(
+    () =>
+      setPendingInputOpener((input, reason) => {
+        if (reason) showNotice(reason, 'warning');
+        if (input.kind === 'entry') {
+          navigate('today', { date: input.date, slot: input.slot });
+        } else {
+          setReadingDate(input.week);
+          navigate('weekly');
+        }
+      }),
+    [navigate, setReadingDate, showNotice],
+  );
 
   // Focus mode belongs to writing; leaving Today brings the navigation back.
   useEffect(() => {

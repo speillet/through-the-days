@@ -245,7 +245,7 @@ it('keeps the shown week while notes the person has left are still saving or fai
   }
 });
 
-it('shows the new week with This week while the notes of the week kept on screen are still saving', async () => {
+it('shows the new week with This week once the notes of the week kept on screen are saved', async () => {
   // 23:58 in Paris on Sunday 29 November 2026.
   const clock = createTestClock(new Date('2026-11-29T22:58:00Z'));
   const journal = createTestApi({ now: clock.now });
@@ -274,12 +274,14 @@ it('shows the new week with This week while the notes of the week kept on screen
   expect(screen.getByRole('heading', { name: week })).toBeInTheDocument();
 
   await user.click(screen.getByRole('button', { name: 'This week' }));
+  // The notes are still being saved: the review waits for them, then shows the new week.
+  expect(screen.getByRole('heading', { name: week })).toBeInTheDocument();
+  await act(async () => release());
   expect(
     await screen.findByRole('heading', { name: 'Monday 30 November 2026 to Sunday 6 December 2026' }),
   ).toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: 'Your notes' })).toHaveValue('');
-  await act(async () => release());
-  await waitFor(async () => expect((await journal.weeklyReview('2026-11-29')).notes).toBe(text));
+  expect((await journal.weeklyReview('2026-11-29')).notes).toBe(text);
   expect((await journal.weeklyReview('2026-11-30')).revision).toBe(0);
 });
 

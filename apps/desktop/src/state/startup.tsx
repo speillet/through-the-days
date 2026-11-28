@@ -29,6 +29,8 @@ export interface StartupContextValue {
   /** Notice to show once the workspace reopens. */
   notice: string | null;
   noticeTone: NoticeTone;
+  /** Shows an English notice in the status area of the open workspace, replacing any other. */
+  showNotice(notice: string, tone?: NoticeTone): void;
   dismissNotice(): void;
 }
 
@@ -70,6 +72,11 @@ export function StartupProvider({ children }: { children?: ReactNode }) {
     [reloadJournal],
   );
 
+  const showNotice = useCallback((message: string, tone: NoticeTone = 'success') => {
+    setNotice(message);
+    setNoticeTone(tone);
+  }, []);
+
   const dismissNotice = useCallback(() => setNotice(null), []);
 
   useEffect(() => {
@@ -77,8 +84,19 @@ export function StartupProvider({ children }: { children?: ReactNode }) {
   }, [refresh]);
 
   const value = useMemo(
-    () => ({ status, error, refresh, setStatus, reloadJournal, journalKey, notice, noticeTone, dismissNotice }),
-    [status, error, refresh, setStatus, reloadJournal, journalKey, notice, noticeTone, dismissNotice],
+    () => ({
+      status,
+      error,
+      refresh,
+      setStatus,
+      reloadJournal,
+      journalKey,
+      notice,
+      noticeTone,
+      showNotice,
+      dismissNotice,
+    }),
+    [status, error, refresh, setStatus, reloadJournal, journalKey, notice, noticeTone, showNotice, dismissNotice],
   );
   return <StartupContext.Provider value={value}>{children}</StartupContext.Provider>;
 }

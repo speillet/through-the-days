@@ -2,14 +2,15 @@
 // copy, sends at most one save at a time, and reports Saved only once the journal
 // has acknowledged every local edit. A failed save keeps all local input for a
 // retry. Savers outlive the view that showed them while they still hold unsaved
-// input, so leaving Today, closing the window or quitting still waits for them
-// (state/flush.ts), and returning to the same date and slot picks them up again.
+// input, so closing the window or quitting still waits for them (state/flush.ts)
+// and, when their save still fails, opens their date and slot in Today; returning
+// to the same date and slot picks them up again.
 // Every save sends well-formed text: a lone UTF-16 surrogate becomes U+FFFD.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { toCommandError, useApi, type JournalApi } from '../api/client';
 import type { CommandError, Entry, Slot } from '../api/types';
-import { registerFlusher } from './flush';
+import { registerFlusher, type PendingInput } from './flush';
 
 /** Quiet period after the last edit before an automatic save. */
 export const AUTOSAVE_DELAY_MS = 700;
@@ -259,6 +260,12 @@ export class EntrySaver {
     return this.inFlight !== null || this.isDirty();
   }
 
+  /** The date and slot of the input that waits for acknowledgment, or null while none does. */
+  pendingInput(): PendingInput | null {
+    if (!this.hasPending() || !this.entry) return null;
+    return { kind: 'entry', date: this.entry.date, slot: this.entry.slot };
+  }
+
   /** Lets a saver that no view shows finish (or fail) its save. */
   settleIfDetached(): Promise<unknown> {
     return this.attachments === 0 ? this.flush() : Promise.resolve();
@@ -405,7 +412,11 @@ export class EntrySaver {
   private track(): void {
     if (this.discarded) return;
     live.add(this);
-    this.unregisterFlusher ??= registerFlusher({ flush: () => this.flush(), hasPending: () => this.hasPending() });
+    this.unregisterFlusher ??= registerFlusher({
+      flush: () => this.flush(),
+      hasPending: () => this.hasPending(),
+      pendingInput: () => this.pendingInput(),
+    });
   }
 
   private untrack(): void {

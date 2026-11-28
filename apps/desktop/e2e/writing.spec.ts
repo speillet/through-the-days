@@ -5,6 +5,7 @@
 import type { Page } from '@playwright/test';
 import type { Entry } from '../src/api/types';
 import { documentText as plainText } from '../src/domain/entry';
+import { MEMORY_STORAGE_KEY } from '../src/api/memory-key';
 import { expect, openView, seedJournal, storedJournal, tabTo, test } from './fixtures';
 
 const TODAY = '2026-11-22';
@@ -200,4 +201,36 @@ test('carries score and emotion meaning in words, not colour alone', async ({ pa
   await anxious.focus();
   await page.keyboard.press('Space');
   await expect(page.getByText('Chosen:')).toContainText('Anxious');
+});
+
+test('keeps an entry that can no longer be saved open, with its reload offer, when another view is chosen', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('tab', { name: /^Evening/ }).click();
+  const evening = journalPage(page, 'Evening');
+  await evening.click();
+  await page.keyboard.type('Fictional evening words.');
+  await expect(saveStatus(page)).toHaveText('Saved', { timeout: 10_000 });
+
+  // The saved entry changes elsewhere: its stored revision moves on, so the next save conflicts.
+  await page.evaluate((key) => {
+    const stored = JSON.parse(window.localStorage.getItem(key) ?? '{}');
+    for (const item of stored.journal.entries) {
+      if (item.entry.slot === 'evening') item.entry.revision += 1;
+    }
+    window.localStorage.setItem(key, JSON.stringify(stored));
+  }, MEMORY_STORAGE_KEY);
+  await page.keyboard.type(' More.');
+  const failure = page.getByRole('alert');
+  await expect(failure.getByRole('button', { name: 'Reload saved version' })).toBeVisible({ timeout: 10_000 });
+
+  await openView(page, 'Settings');
+  await expect(page.getByText(/These changes can't be saved, so this entry stays open\./)).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toHaveCount(0);
+  await expect(evening).toHaveText('Fictional evening words. More.');
+  await expect(failure.getByRole('button', { name: 'Reload saved version' })).toBeVisible();
+
+  await failure.getByRole('button', { name: 'Reload saved version' }).click();
+  await expect(journalPage(page, 'Evening')).toHaveText('Fictional evening words.');
+  await openView(page, 'Settings');
+  await expect(page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible();
 });

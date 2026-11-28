@@ -4,13 +4,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES, MEMORY_STORAGE_KEY } from '../../api/memory';
 import type { BackupStatus, RestoreOutcome } from '../../api/types';
 import { newDraft } from '../../domain/entry';
-import { registerFlusher } from '../../state/flush';
+import { registerFlusher, setPendingInputOpener, type PendingInput } from '../../state/flush';
 import { renderWithProviders, TEST_NOW } from '../../test/render';
 import {
   RestoreDialog,
   restoredNotice,
   restoreFailureMessage,
   UNSAVED_WRITING_NOT_RESTORED,
+  UNSAVED_WRITING_SHOWN_NOT_RESTORED,
   type RestoreTarget,
 } from './RestoreDialog';
 
@@ -43,11 +44,12 @@ async function journal({ damaged = false } = {}) {
 
 function renderDialog(api: ReturnType<typeof createMemoryApi>, target: RestoreTarget, status: BackupStatus) {
   const onRestored = vi.fn<(outcome: RestoreOutcome) => void>();
-  renderWithProviders(<RestoreDialog target={target} status={status} onClose={() => {}} onRestored={onRestored} />, {
+  const onClose = vi.fn();
+  renderWithProviders(<RestoreDialog target={target} status={status} onClose={onClose} onRestored={onRestored} />, {
     api,
     initialView: 'settings',
   });
-  return { onRestored };
+  return { onRestored, onClose };
 }
 
 describe('restore dialog', () => {
@@ -85,6 +87,32 @@ describe('restore dialog', () => {
     await user.type(within(dialog).getByLabelText('Passphrase for this backup'), PASSPHRASE);
     await user.click(within(dialog).getByRole('button', { name: 'Replace journal and restore' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(UNSAVED_WRITING_NOT_RESTORED);
+    expect(restore).not.toHaveBeenCalled();
+    expect(onRestored).not.toHaveBeenCalled();
+  });
+
+  it('opens the writing whose save still fails instead of restoring, and says why', async () => {
+    const user = userEvent.setup();
+    const { api, backup, status } = await journal();
+    const restore = vi.spyOn(api, 'restoreBackup');
+    // An Evening entry whose save failed after its view had gone.
+    const input: PendingInput = { kind: 'entry', date: '2026-11-22', slot: 'evening' };
+    const flush = vi.fn(async () => {});
+    cleanups.push(registerFlusher({ flush, hasPending: () => true, pendingInput: () => input }));
+    const open = vi.fn<(input: PendingInput, notice?: string) => void>();
+    cleanups.push(setPendingInputOpener(open));
+    const { onRestored, onClose } = renderDialog(
+      api,
+      { source: { kind: 'registered', name: backup.name }, label: 'Backup' },
+      status,
+    );
+    const dialog = await screen.findByRole('alertdialog', { name: 'Restore this backup?' });
+    await user.type(within(dialog).getByLabelText('Passphrase for this backup'), PASSPHRASE);
+    await user.click(within(dialog).getByRole('button', { name: 'Replace journal and restore' }));
+    await vi.waitFor(() => expect(open).toHaveBeenCalledWith(input, UNSAVED_WRITING_SHOWN_NOT_RESTORED));
+    expect(flush).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
     expect(restore).not.toHaveBeenCalled();
     expect(onRestored).not.toHaveBeenCalled();
   });

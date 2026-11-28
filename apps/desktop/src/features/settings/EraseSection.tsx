@@ -11,7 +11,7 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { Notice, type NoticeTone } from '../../components/Notice';
 import { TextField } from '../../components/TextField';
-import { flushAll, hasPending } from '../../state/flush';
+import { flushAll, hasPending, openPendingInput } from '../../state/flush';
 import { useNavigation } from '../../state/navigation';
 import { useStartup } from '../../state/startup';
 import { KEYCHAIN_ACCESS_HINT } from '../backup/status';
@@ -22,6 +22,11 @@ export const ERASE_CONFIRMATION = 'ERASE';
 export const ERASED_NOTICE =
   'All app data on this Mac was erased. Backup files in your backup folder were not deleted.';
 
+/** Shown with the unsaved writing, which the refused erasure opens. */
+export const UNSAVED_WRITING_SHOWN_NOT_ERASED =
+  'Some writing hasn’t been saved yet, so nothing was erased. Once it is saved, you can try again.';
+
+/** Shown in the dialog when the unsaved writing cannot be opened. */
 export const UNSAVED_WRITING_NOT_ERASED =
   'Some writing hasn’t been saved yet, so nothing was erased. Wait until it shows Saved, then try again.';
 
@@ -121,11 +126,13 @@ function OpenEraseDialog({ onClose, onErased }: Omit<EraseDialogProps, 'open'>) 
     }
     setFieldError(null);
     setBusy(true);
-    // A save still in flight must not land in the fresh journal.
+    // A save still in flight must not land in the fresh journal. Writing that still
+    // cannot be saved is shown instead, with its failure, rather than waited for.
     await flushAll();
     if (hasPending()) {
-      setError(UNSAVED_WRITING_NOT_ERASED);
       setBusy(false);
+      if (openPendingInput(UNSAVED_WRITING_SHOWN_NOT_ERASED)) onClose();
+      else setError(UNSAVED_WRITING_NOT_ERASED);
       return;
     }
     try {

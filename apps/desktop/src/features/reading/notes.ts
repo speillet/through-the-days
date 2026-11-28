@@ -4,6 +4,7 @@
 // elsewhere wait until the person keeps their text or loads the saved text.
 import type { WeeklyReview } from '../../api/types';
 import { toCommandError, type JournalApi } from '../../api/client';
+import type { PendingInput } from '../../state/flush';
 
 /** Stored notes that differ from both the local text and the text it was last saved as. */
 interface NotesConflict {
@@ -184,8 +185,17 @@ export class WeeklyNotesStore {
       draft.value = stored.notes;
       adopt(draft, stored.notes, stored.revision);
     });
-  hasPending = () =>
-    [...this.drafts.values()].some((draft) => draft.saving || unsaved(draft) || draft.conflict !== null);
+  /** Notes that wait for acknowledgment, or for the person's choice after a conflict. */
+  isPending = (date: string) => {
+    const draft = this.drafts.get(date);
+    return draft !== undefined && (draft.saving || unsaved(draft) || draft.conflict !== null);
+  };
+  hasPending = () => [...this.drafts.keys()].some(this.isPending);
+  /** The week whose notes wait, for a refused close, quit, restore or erasure to open; null while none does. */
+  pendingInput = (): PendingInput | null => {
+    const week = [...this.drafts.keys()].find(this.isPending);
+    return week === undefined ? null : { kind: 'weeklyNotes', week };
+  };
   flush = async () => {
     await Promise.all([...this.drafts.keys()].map((date) => this.flushWeek(date)));
   };

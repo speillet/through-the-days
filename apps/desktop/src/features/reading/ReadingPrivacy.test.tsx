@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { App } from '../../App';
 import type { JournalApi } from '../../api/client';
 import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES } from '../../api/memory';
@@ -185,10 +185,14 @@ const WAITING_WRITING = 'Synthetic saved words. Synthetic words written on a ful
 const APP_WAIT = { timeout: SAVE_TIMEOUT_MS };
 
 /**
- * Writing added to today's saved Morning entry fails to save, as on a full disk, and the person
- * opens Calendar, whose preview still shows the saved version. Saves keep failing until `free()`.
+ * Writing added to today's saved Morning entry fails to save, as on a full disk, then Today
+ * itself fails while it is shown, and the person opens Calendar, whose preview still shows the
+ * saved version. (Chosen while the entry is shown, another view waits for it instead.) Saves
+ * keep failing until `free()`.
  */
 async function writingWaitingInCalendar() {
+  // React also reports the view failure on the console; these tests read the screen.
+  vi.spyOn(console, 'error').mockImplementation(() => {});
   const journal = createMemoryApi({
     storage: createMemoryStorage(),
     now: () => new Date('2026-11-22T12:00:00Z'),
@@ -201,12 +205,17 @@ async function writingWaitingInCalendar() {
     },
   });
   const disk = { full: false, refusals: 0 };
+  const timeline = { failing: false };
   const api: JournalApi = {
     ...journal,
     saveEntry(entry) {
       if (!disk.full) return journal.saveEntry(entry);
       disk.refusals += 1;
       return Promise.reject({ code: 'storage', message: ERROR_MESSAGES.storage });
+    },
+    readingReport(request) {
+      if (timeline.failing) throw new Error('Synthetic view failure');
+      return journal.readingReport(request);
     },
   };
   render(<App api={api} />);
@@ -217,14 +226,20 @@ async function writingWaitingInCalendar() {
   disk.full = true;
   await typeInEditor(user, ' Synthetic words written on a full disk.');
   expect(await screen.findByText("Couldn't save", {}, APP_WAIT)).toBeInTheDocument();
+  // Today fails while refreshing its timeline; its entry, still unsaved, is tried once more.
+  timeline.failing = true;
+  act(() => {
+    window.dispatchEvent(new Event('focus'));
+  });
+  expect(await screen.findByText("This view couldn't be shown.", {}, APP_WAIT)).toBeInTheDocument();
+  timeline.failing = false;
+  await waitFor(() => expect(disk.refusals).toBe(2), APP_WAIT);
   await user.click(screen.getByRole('button', { name: 'Calendar' }));
   const preview = await screen.findByRole(
     'region',
     { name: 'Morning entry from 22 November 2026' },
     APP_WAIT,
   );
-  // Leaving Today tried once more; the writing still waits for its retry.
-  await waitFor(() => expect(disk.refusals).toBe(2), APP_WAIT);
   return {
     journal,
     saved,

@@ -381,3 +381,44 @@ it('follows today past midnight after End today on a preset range in The Path So
   await user.click(screen.getByRole('button', { name: 'Trends' }));
   expect(await screen.findByLabelText('Ending on')).toHaveValue('2026-11-30');
 });
+
+it('keeps Weekly Review on the week whose notes cannot be saved, for Previous, Next, This week and the rail', async () => {
+  const journal = createTestApi();
+  const control = { failing: false, refused: 0 };
+  const api = {
+    ...journal,
+    saveWeeklyNotes(date: string, notes: string, revision: number) {
+      if (!control.failing) return journal.saveWeeklyNotes(date, notes, revision);
+      control.refused += 1;
+      return Promise.reject({ code: 'storage', message: 'Synthetic notes save failure.' });
+    },
+  };
+  render(<App api={api} initialView="weekly" />);
+  const user = userEvent.setup();
+  const earlierWeek = 'Monday 9 November 2026 to Sunday 15 November 2026';
+  await user.click(await screen.findByRole('button', { name: 'Previous week' }));
+  expect(await screen.findByRole('heading', { name: earlierWeek })).toBeInTheDocument();
+  control.failing = true;
+  await user.type(screen.getByRole('textbox', { name: 'Your notes' }), 'Synthetic notes that cannot be saved.');
+  await user.click(screen.getByRole('button', { name: 'Save notes' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Synthetic notes save failure.');
+
+  for (const name of ['Previous week', 'Next week', 'This week', 'Today', 'Calendar']) {
+    const refused = control.refused;
+    await user.click(screen.getByRole('button', { name }));
+    await waitFor(() => expect(control.refused).toBeGreaterThan(refused));
+    await act(async () => {});
+    expect(screen.getByRole('heading', { name: earlierWeek })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Your notes' })).toHaveValue('Synthetic notes that cannot be saved.');
+    expect(screen.getByText(/These notes have changes that are not saved yet, so this week stays open/)).toBeInTheDocument();
+  }
+
+  control.failing = false;
+  await user.click(screen.getByRole('button', { name: 'Retry saving notes' }));
+  expect(await screen.findByText('Saved')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'This week' }));
+  expect(
+    await screen.findByRole('heading', { name: 'Monday 16 November 2026 to Sunday 22 November 2026' }),
+  ).toBeInTheDocument();
+  expect((await journal.weeklyReview('2026-11-09')).notes).toBe('Synthetic notes that cannot be saved.');
+});

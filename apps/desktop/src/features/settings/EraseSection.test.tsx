@@ -4,11 +4,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_MESSAGES } from '../../api/memory';
 import { newDraft } from '../../domain/entry';
 import { DEFAULT_PREFERENCES } from '../../domain/preferences';
-import { registerFlusher } from '../../state/flush';
+import { registerFlusher, setPendingInputOpener, type PendingInput } from '../../state/flush';
 import { useNavigation, type NavigationContextValue } from '../../state/navigation';
 import { useStartup, type StartupContextValue } from '../../state/startup';
 import { createTestApi, renderWithProviders } from '../../test/render';
-import { ERASED_NOTICE, EraseSection, UNSAVED_WRITING_NOT_ERASED } from './EraseSection';
+import {
+  ERASED_NOTICE,
+  EraseSection,
+  UNSAVED_WRITING_NOT_ERASED,
+  UNSAVED_WRITING_SHOWN_NOT_ERASED,
+} from './EraseSection';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -98,6 +103,25 @@ describe('Erase app data', () => {
     cleanups.push(registerFlusher({ flush: async () => {}, hasPending: () => true }));
     const dialog = await confirmErase(user);
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(UNSAVED_WRITING_NOT_ERASED);
+    expect(erase).not.toHaveBeenCalled();
+    expect(probes.startup?.journalKey).toBe(0);
+  });
+
+  it('opens the writing whose save still fails instead of erasing, and says why', async () => {
+    const user = userEvent.setup();
+    const api = createTestApi();
+    const erase = vi.spyOn(api, 'eraseAppData');
+    const { probes } = await renderErase(api);
+    // Weekly notes whose save failed after Weekly Review had gone.
+    const input: PendingInput = { kind: 'weeklyNotes', week: '2026-11-16' };
+    const flush = vi.fn(async () => {});
+    cleanups.push(registerFlusher({ flush, hasPending: () => true, pendingInput: () => input }));
+    const open = vi.fn<(input: PendingInput, notice?: string) => void>();
+    cleanups.push(setPendingInputOpener(open));
+    await confirmErase(user);
+    await vi.waitFor(() => expect(open).toHaveBeenCalledWith(input, UNSAVED_WRITING_SHOWN_NOT_ERASED));
+    expect(flush).toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(erase).not.toHaveBeenCalled();
     expect(probes.startup?.journalKey).toBe(0);
   });
