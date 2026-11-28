@@ -417,8 +417,8 @@ mod tests {
     }
 
     /// local-data-protection — Safe restore / Backup replaced before it is copied: a named pipe
-    /// in a backup's place, which nothing writes to, is refused at once, instead of keeping the
-    /// restore waiting while it holds the journal.
+    /// in a backup's place, which nothing writes to, is refused at once, whether the backup was
+    /// listed or picked, instead of keeping the restore waiting while it holds the journal.
     #[test]
     fn the_private_copy_refuses_a_named_pipe_without_waiting_for_a_writer() {
         let backups = tempfile::tempdir().unwrap();
@@ -429,12 +429,18 @@ mod tests {
             .status()
             .unwrap();
         assert!(made.success());
-        let (sender, receiver) = mpsc::channel();
-        let folder = data.path().to_path_buf();
-        thread::spawn(move || {
-            let _ = sender.send(StagedCopy::of(&pipe, true, &folder).is_err());
-        });
-        assert_eq!(receiver.recv_timeout(Duration::from_secs(5)), Ok(true));
+        for follow_links in [false, true] {
+            let (sender, receiver) = mpsc::channel();
+            let (pipe, folder) = (pipe.clone(), data.path().to_path_buf());
+            thread::spawn(move || {
+                let _ = sender.send(StagedCopy::of(&pipe, follow_links, &folder).is_err());
+            });
+            assert_eq!(
+                receiver.recv_timeout(Duration::from_secs(5)),
+                Ok(true),
+                "follow_links: {follow_links}"
+            );
+        }
         assert!(names_in(data.path()).is_empty());
     }
 
