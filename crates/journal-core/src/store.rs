@@ -5,9 +5,9 @@ use crate::{
     schema::{self, Stored},
 };
 use rusqlite::{
-    Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior, params,
+    Connection, OpenFlags, OptionalExtension, Params, Transaction, TransactionBehavior, params,
 };
-use serde::Serialize;
+use serde::{Serialize, de::DeserializeOwned};
 use std::{ffi::OsString, fs, io, path::Path, time::Duration};
 
 /// Trashed entries stay restorable for 30 days of 24 hours from their deletion.
@@ -99,27 +99,23 @@ impl Journal {
     pub fn save(&self, mut entry: Entry) -> Result<Entry, Error> {
         entry.validate()?;
         let transaction = self.write_transaction()?;
-        let trashed: bool = transaction.query_row(
-            "SELECT EXISTS(SELECT 1 FROM journal_entries WHERE id=?1 AND trashed_at IS NOT NULL)",
-            [&entry.id],
-            |row| row.get(0),
-        )?;
-        if trashed {
-            return Err(Error::NotFound);
-        }
-        let existing: Option<String> = transaction
+        let stored: Option<(bool, String)> = transaction
             .query_row(
-                "SELECT payload FROM journal_entries WHERE id=?1",
+                "SELECT trashed_at IS NOT NULL,payload FROM journal_entries WHERE id=?1",
                 [&entry.id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
-        let existing: Option<Entry> = existing
-            .map(|payload| serde_json::from_str(&payload))
-            .transpose()?;
-        if existing.as_ref().map_or(0, |stored| stored.revision) != entry.revision {
-            return Err(Error::Conflict);
-        }
+        // One read tells a trashed entry, which a save never brings back, from a stored one.
+        let existing: Option<Entry> = match stored {
+            Some((true, _)) => return Err(Error::NotFound),
+            Some((false, payload)) => Some(serde_json::from_str(&payload)?),
+            None => None,
+        };
+        let revision = next_revision(
+            existing.as_ref().map_or(0, |stored| stored.revision),
+            entry.revision,
+        )?;
         if entry.complete && !entry.can_complete() {
             if existing.as_ref().is_some_and(|stored| stored.complete) {
                 entry.complete = false;
@@ -136,7 +132,7 @@ impl Journal {
         if occupied {
             return Err(Error::Occupied);
         }
-        entry.revision = entry.revision.checked_add(1).ok_or(Error::Conflict)?;
+        entry.revision = revision;
         transaction.execute(
             "INSERT INTO journal_entries(id,entry_date,slot,revision,payload) VALUES(?1,?2,?3,?4,?5)
              ON CONFLICT(id) DO UPDATE SET entry_date=excluded.entry_date,slot=excluded.slot,
@@ -155,21 +151,18 @@ impl Journal {
 
     /// Returns an active entry.
     pub fn get(&self, id: &str) -> Result<Entry, Error> {
-        let payload: String = self
-            .connection
-            .query_row(
-                "SELECT payload FROM journal_entries WHERE id=?1 AND trashed_at IS NULL",
-                [id],
-                |row| row.get(0),
-            )
-            .optional()?
-            .ok_or(Error::NotFound)?;
-        Ok(serde_json::from_str(&payload)?)
+        payload(
+            &self.connection,
+            "SELECT payload FROM journal_entries WHERE id=?1 AND trashed_at IS NULL",
+            [id],
+        )?
+        .ok_or(Error::NotFound)
     }
 
     /// Returns active entries, newest journal date first and Morning before Evening on a date.
     pub fn list(&self) -> Result<Vec<Entry>, Error> {
-        self.entries(
+        payloads(
+            &self.connection,
             "SELECT payload FROM journal_entries WHERE trashed_at IS NULL
              ORDER BY entry_date DESC, CASE slot WHEN 'morning' THEN 0 ELSE 1 END",
             [],
@@ -179,7 +172,8 @@ impl Journal {
     /// Returns the active entries of one journal date, Morning before Evening.
     pub fn entries_on(&self, date: &str) -> Result<Vec<Entry>, Error> {
         parse_date(date)?;
-        self.entries(
+        payloads(
+            &self.connection,
             "SELECT payload FROM journal_entries WHERE entry_date=?1 AND trashed_at IS NULL
              ORDER BY CASE slot WHEN 'morning' THEN 0 ELSE 1 END",
             [date],
@@ -234,16 +228,13 @@ impl Journal {
     /// restorable and reports [`Error::NotFound`], even before a purge removes it.
     pub fn restore(&self, id: &str, now: i64) -> Result<Entry, Error> {
         let transaction = self.write_transaction()?;
-        let payload: String = transaction
-            .query_row(
-                "SELECT payload FROM journal_entries
-                 WHERE id=?1 AND trashed_at IS NOT NULL AND trashed_at>?2",
-                params![id, now.saturating_sub(TRASH_RETENTION_SECONDS)],
-                |row| row.get(0),
-            )
-            .optional()?
-            .ok_or(Error::NotFound)?;
-        let mut entry: Entry = serde_json::from_str(&payload)?;
+        let mut entry: Entry = payload(
+            &transaction,
+            "SELECT payload FROM journal_entries
+             WHERE id=?1 AND trashed_at IS NOT NULL AND trashed_at>?2",
+            params![id, now.saturating_sub(TRASH_RETENTION_SECONDS)],
+        )?
+        .ok_or(Error::NotFound)?;
         let occupied: bool = transaction.query_row(
             "SELECT EXISTS(SELECT 1 FROM journal_entries
              WHERE entry_date=?1 AND slot=?2 AND trashed_at IS NULL)",
@@ -304,14 +295,6 @@ impl Journal {
             .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
     }
 
-    fn entries(&self, sql: &str, parameters: impl rusqlite::Params) -> Result<Vec<Entry>, Error> {
-        let mut query = self.connection.prepare(sql)?;
-        query
-            .query_map(parameters, |row| row.get::<_, String>(0))?
-            .map(|payload| Ok(serde_json::from_str(&payload?)?))
-            .collect()
-    }
-
     /// Starts a transaction that reads before it writes, holding the write lock from the start.
     ///
     /// While another connection writes, SQLite fails at once rather than turn a read transaction
@@ -323,6 +306,42 @@ impl Journal {
             TransactionBehavior::Immediate,
         )?)
     }
+}
+
+/// The stored JSON record that `sql` selects in its first column, if a row matches.
+pub(crate) fn payload<T: DeserializeOwned>(
+    connection: &Connection,
+    sql: &str,
+    parameters: impl Params,
+) -> Result<Option<T>, Error> {
+    let payload: Option<String> = connection
+        .query_row(sql, parameters, |row| row.get(0))
+        .optional()?;
+    Ok(payload
+        .map(|payload| serde_json::from_str(&payload))
+        .transpose()?)
+}
+
+/// Every stored JSON record that `sql` selects in its first column, in the query's order.
+pub(crate) fn payloads<T: DeserializeOwned>(
+    connection: &Connection,
+    sql: &str,
+    parameters: impl Params,
+) -> Result<Vec<T>, Error> {
+    let mut query = connection.prepare(sql)?;
+    query
+        .query_map(parameters, |row| row.get::<_, String>(0))?
+        .map(|payload| Ok(serde_json::from_str(&payload?)?))
+        .collect()
+}
+
+/// The revision a save stores: one more than `stored`, provided the caller still holds it as
+/// `expected`. A stale or exhausted revision is [`Error::Conflict`].
+pub(crate) fn next_revision(stored: u32, expected: u32) -> Result<u32, Error> {
+    if stored != expected {
+        return Err(Error::Conflict);
+    }
+    stored.checked_add(1).ok_or(Error::Conflict)
 }
 
 /// Removes the journal database at `path` with its `-wal`, `-shm` and `-journal` companions.

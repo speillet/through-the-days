@@ -1,8 +1,12 @@
 //! Authored weekly notes and private milestones are journal data; local summaries are disposable.
 
-use crate::{Error, Journal, ReadingReport, SearchRequest, model::parse_date};
+use crate::{
+    Error, Journal, ReadingReport, SearchRequest,
+    model::parse_date,
+    store::{next_revision, payload, payloads},
+};
 use chrono::{Datelike, Days, NaiveDate};
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -103,26 +107,35 @@ fn review_of(
     }
 }
 
+/// Stores the review of the week starting `start`, replacing any earlier one.
+fn store_review(connection: &Connection, start: &str, review: &StoredReview) -> Result<(), Error> {
+    connection.execute(
+        "INSERT INTO weekly_reviews(week_start,payload) VALUES(?1,?2)
+         ON CONFLICT(week_start) DO UPDATE SET payload=excluded.payload",
+        params![start, serde_json::to_string(review)?],
+    )?;
+    Ok(())
+}
+
+/// `one` when `count` is 1, otherwise `many`.
+fn plural<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
+    if count == 1 { one } else { many }
+}
+
 impl Journal {
     fn stored_review(&self, start: &str) -> Result<StoredReview, Error> {
-        let payload: Option<String> = self
-            .connection
-            .query_row(
-                "SELECT payload FROM weekly_reviews WHERE week_start=?1",
-                [start],
-                |r| r.get(0),
-            )
-            .optional()?;
-        match payload {
-            Some(p) => Ok(serde_json::from_str(&p)?),
-            None => Ok(StoredReview {
-                week_start: start.into(),
-                notes: String::new(),
-                revision: 0,
-                summary: None,
-                fingerprint: None,
-            }),
-        }
+        let stored = payload(
+            &self.connection,
+            "SELECT payload FROM weekly_reviews WHERE week_start=?1",
+            [start],
+        )?;
+        Ok(stored.unwrap_or_else(|| StoredReview {
+            week_start: start.into(),
+            notes: String::new(),
+            revision: 0,
+            summary: None,
+            fingerprint: None,
+        }))
     }
 
     /// The reading report of the week from `start` to `end` and the fingerprint of the entries
@@ -160,12 +173,9 @@ impl Journal {
         let start = week.0.to_string();
         let transaction = self.write_transaction()?;
         let mut stored = self.stored_review(&start)?;
-        if stored.revision != revision {
-            return Err(Error::Conflict);
-        }
+        stored.revision = next_revision(stored.revision, revision)?;
         stored.notes = notes.into();
-        stored.revision = stored.revision.checked_add(1).ok_or(Error::Conflict)?;
-        transaction.execute("INSERT INTO weekly_reviews(week_start,payload) VALUES(?1,?2) ON CONFLICT(week_start) DO UPDATE SET payload=excluded.payload",params![start,serde_json::to_string(&stored)?])?;
+        store_review(&transaction, &start, &stored)?;
         // Read the week before the commit: if the reply fails, the save is rolled back and the
         // caller's revision stays current for a retry.
         let (report, fingerprint) = self.week_report(week)?;
@@ -189,28 +199,16 @@ impl Journal {
         stored.summary = Some(format!(
             "{} recorded {} out of 7, with {} saved {}, {} approved small {} and {} reported {}. Saved drafts are included. Missing scores are left out; this is a description of recorded information, not a judgement of the week.",
             report.recorded_days,
-            if report.recorded_days == 1 {
-                "day"
-            } else {
-                "days"
-            },
+            plural(report.recorded_days, "day", "days"),
             report.entries,
-            if report.entries == 1 {
-                "entry"
-            } else {
-                "entries"
-            },
+            plural(report.entries, "entry", "entries"),
             report.wins,
-            if report.wins == 1 { "win" } else { "wins" },
+            plural(report.wins, "win", "wins"),
             report.actions,
-            if report.actions == 1 {
-                "action"
-            } else {
-                "actions"
-            },
+            plural(report.actions, "action", "actions"),
         ));
         stored.fingerprint = Some(fingerprint.clone());
-        transaction.execute("INSERT INTO weekly_reviews(week_start,payload) VALUES(?1,?2) ON CONFLICT(week_start) DO UPDATE SET payload=excluded.payload",params![start,serde_json::to_string(&stored)?])?;
+        store_review(&transaction, &start, &stored)?;
         let review = review_of(week, stored, report, &fingerprint);
         transaction.commit()?;
         Ok(review)
@@ -222,30 +220,22 @@ impl Journal {
     }
 
     pub fn milestones(&self) -> Result<Vec<Milestone>, Error> {
-        let mut query = self.connection.prepare(
+        payloads(
+            &self.connection,
             "SELECT payload FROM timeline_milestones ORDER BY json_extract(payload,'$.date'),id",
-        )?;
-        query
-            .query_map([], |r| r.get::<_, String>(0))?
-            .map(|row| Ok(serde_json::from_str(&row?)?))
-            .collect()
+            [],
+        )
     }
 
     pub fn save_milestone(&self, mut milestone: Milestone) -> Result<Milestone, Error> {
         milestone.validate()?;
         let transaction = self.write_transaction()?;
-        let stored: Option<String> = transaction
-            .query_row(
-                "SELECT payload FROM timeline_milestones WHERE id=?1",
-                [&milestone.id],
-                |r| r.get(0),
-            )
-            .optional()?;
-        let previous: Option<Milestone> = stored.map(|s| serde_json::from_str(&s)).transpose()?;
-        if previous.map_or(0, |m| m.revision) != milestone.revision {
-            return Err(Error::Conflict);
-        }
-        milestone.revision = milestone.revision.checked_add(1).ok_or(Error::Conflict)?;
+        let previous: Option<Milestone> = payload(
+            &transaction,
+            "SELECT payload FROM timeline_milestones WHERE id=?1",
+            [&milestone.id],
+        )?;
+        milestone.revision = next_revision(previous.map_or(0, |m| m.revision), milestone.revision)?;
         transaction.execute("INSERT INTO timeline_milestones(id,payload) VALUES(?1,?2) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",params![milestone.id,serde_json::to_string(&milestone)?])?;
         transaction.commit()?;
         Ok(milestone)

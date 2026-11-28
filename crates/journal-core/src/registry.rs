@@ -224,16 +224,7 @@ pub(crate) fn file_digest(path: &Path) -> Result<String, Error> {
         .map_err(|error| backup_folder_error(&error))?
         .ok_or(Error::Backup)?;
     let mut digest = Sha256::new();
-    let mut buffer = vec![0_u8; 64 * 1024];
-    loop {
-        let length = source
-            .read(&mut buffer)
-            .map_err(|error| backup_folder_error(&error))?;
-        if length == 0 {
-            break;
-        }
-        digest.update(&buffer[..length]);
-    }
+    io::copy(&mut source, &mut digest).map_err(|error| backup_folder_error(&error))?;
     Ok(format!("{:x}", digest.finalize()))
 }
 
