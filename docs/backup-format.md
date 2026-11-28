@@ -23,7 +23,7 @@ A backup holds the whole journal database at one consistent moment:
 - the trash: entries deleted less than 30 days earlier, with their deletion time;
 - authored weekly notes and private timeline milestones, with their identities and revisions;
 - optional local weekly summaries and their source fingerprints, subject to freshness checks after restore;
-- the display preferences stored in the journal.
+- the display preferences stored in the journal, exactly as stored, including preferences that this version cannot read (D-016).
 
 A backup does not contain the backup plan (chosen folder, last successful backup, Keychain choice), the passphrase or anything else from Keychain.
 
@@ -126,8 +126,9 @@ A backup is validated when it is created and again before it is restored:
 - a supported schema version; an older one is upgraded first (see [Schema versions](#schema-versions));
 - every entry passes the validation used when saving it (date, slot, score ranges, emotion identifiers, actions, small wins and document structure), its columns match its content, its revision is at least 1, and a completed entry still meets the completion rule. The document may contain only the editor's node and mark types (links are not among them), no empty text nodes, and at most 32 levels of nesting, counting the document itself as the first;
 - at most one active entry for each date and slot;
-- weekly-review keys that match valid Monday week starts and positive stored revisions, and valid milestone IDs/dates that match their keys and revisions;
-- stored display preferences that can be read and that meet the rules for saving them: a known time zone, the theme `system`, `light` or `dark`, and a text size of 100, 115, 130 or 150 per cent.
+- weekly-review keys that match valid Monday week starts and positive stored revisions, and valid milestone IDs/dates that match their keys and revisions.
+
+Stored display preferences are not validated: a backup and a restore copy them exactly as stored (D-016). Preferences that this version cannot read, such as a newer version's, or that break the rules for saving them (a known time zone, the theme `system`, `light` or `dark`, and a text size of 100, 115, 130 or 150 per cent) therefore never stop a backup, a safety backup, a pre-migration backup or a restore. Until they are replaced, the journal reports them as unreadable, and the desktop app shows the defaults and offers Reset display settings.
 
 The staged copy lives in memory with SQLite's defensive settings `trusted_schema=OFF` and `cell_size_check=ON`, and its temporary storage in memory.
 
@@ -213,9 +214,9 @@ Choosing another folder leaves earlier backups where they are. Listing and pruni
 
 ## Daily schedule and catch-up
 
-A daily backup is due when no backup has succeeded on the current journal date in the configured time zone. The desktop app checks whether a backup is due while it is open, and at launch, which catches up after days when it was closed. A catch-up backup records the current state; it never reconstructs the missed days.
+A daily backup is due when no backup has succeeded on the current journal date in the configured time zone, or in the default time zone while the stored display preferences cannot be read. The desktop app checks whether a backup is due while it is open, and at launch, which catches up after days when it was closed. A catch-up backup records the current state; it never reconstructs the missed days.
 
-When a backup is due but no folder is chosen or the passphrase is unavailable, the check reports which one is needed instead of failing. The desktop app shows backup as pending and writing continues. The date and time of the last success are recorded in the backup plan only after a backup was published and registered.
+When a backup is due but no folder is chosen or the passphrase is unavailable, the check reports which one is needed instead of failing. The desktop app shows backup as pending and writing continues. The date and time of the last success are recorded in the backup plan only after a backup was published and registered. In the desktop app, a failed attempt, whatever its cause, is reported in the backup status with its explanation.
 
 ## Pre-migration backups
 
@@ -298,7 +299,8 @@ The `journal-core` tests exercise this contract with real temporary SQLite datab
 |---|---|
 | Encrypted format and prefix, owner-only permissions, no plaintext beside the backup, clean restore including trash, wrong passphrase, truncation | `recovery.rs`: `encrypted_snapshot_restores_on_a_clean_store_and_rejects_bad_credentials` |
 | Populated journal unchanged by wrong passphrase, truncated, corrupted, empty, foreign and missing files | `recovery.rs`: `failed_restores_leave_a_populated_live_journal_untouched` |
-| Format version, schema version, integrity, schema objects, entry and document validation (links, empty text, nesting), and preference validation (time zone, theme, text size) before restore | `recovery.rs`: `restore_validates_format_schema_and_content_before_replacing_the_journal` |
+| Format version, schema version, integrity, schema objects, and entry and document validation (links, empty text, nesting) before restore; display preferences that cannot be read restored as stored | `recovery.rs`: `restore_validates_format_schema_and_content_before_replacing_the_journal` |
+| Display preferences that cannot be read kept by backups, pre-migration backups and restores, and reported as unreadable | `recovery.rs`: `backups_keep_display_preferences_that_cannot_be_read_and_restores_bring_them_back`; `preferences.rs`: `stored_preferences_that_break_the_saving_rules_cannot_be_read` |
 | A restore installs this build's schema; rows breaking its constraints are refused | `recovery.rs`: `restore_installs_this_builds_schema_whatever_definitions_the_backup_stored` |
 | Excessive scrypt work factor refused before key derivation | `recovery.rs`: `a_backup_demanding_excessive_key_derivation_work_is_refused_at_once` |
 | Restoring a version-1 pre-migration backup into a current journal | `recovery.rs`: `pre_migration_backup_of_an_older_schema_restores_into_a_current_journal` |

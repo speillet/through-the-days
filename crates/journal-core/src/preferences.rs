@@ -72,8 +72,9 @@ impl Preferences {
     /// The rules every stored preference meets: a known time zone ([`Error::Date`]), and a
     /// supported theme and text size ([`Error::Document`]).
     ///
-    /// Saving and restoring apply the same rules, so a restored journal never holds preferences
-    /// that would break today's date or the interface.
+    /// Saving and reading apply the same rules. A backup and a restore copy stored preferences
+    /// unchanged (D-016), so preferences that break these rules, such as a newer version's, are
+    /// reported as unreadable rather than breaking today's date or the interface.
     pub(crate) fn validate(&self) -> Result<(), Error> {
         self.journal_date(Utc::now())?;
         if !matches!(self.theme.as_str(), "system" | "light" | "dark")
@@ -94,6 +95,10 @@ impl Preferences {
 }
 
 impl Journal {
+    /// The stored display preferences, or the defaults when none are stored.
+    ///
+    /// Stored preferences that this version cannot read, or that break the rules for saving
+    /// them, are an error and stay stored as they are until they are replaced.
     pub fn preferences(&self) -> Result<Preferences, Error> {
         let stored: Option<String> = self
             .connection
@@ -104,7 +109,11 @@ impl Journal {
             )
             .optional()?;
         match stored {
-            Some(value) => Ok(serde_json::from_str(&value)?),
+            Some(value) => {
+                let preferences: Preferences = serde_json::from_str(&value)?;
+                preferences.validate()?;
+                Ok(preferences)
+            }
             None => Ok(Preferences::default()),
         }
     }

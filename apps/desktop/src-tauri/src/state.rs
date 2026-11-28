@@ -319,9 +319,14 @@ impl Core {
         self.startup.clone()
     }
 
-    /// The current civil date in the journal's time zone.
+    /// The current civil date in the journal's time zone. While the stored display preferences
+    /// cannot be read, it follows the default time zone, as the interface does (D-016).
     pub fn today(&self, now: DateTime<Utc>) -> Result<String, CommandError> {
-        Ok(self.journal()?.preferences()?.journal_date(now)?)
+        Ok(self
+            .journal()?
+            .preferences()
+            .unwrap_or_default()
+            .journal_date(now)?)
     }
 
     pub fn preferences(&self) -> Result<Preferences, CommandError> {

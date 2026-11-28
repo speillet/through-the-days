@@ -34,6 +34,30 @@ fn backup_folder(directory: &Path) -> PathBuf {
     folder
 }
 
+/// Stores `value` as the display preferences of the journal at `path`, unchecked.
+fn store_display(path: &Path, value: &str) {
+    rusqlite::Connection::open(path)
+        .unwrap()
+        .execute(
+            "INSERT INTO preferences(key,value) VALUES('display',?1)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [value],
+        )
+        .unwrap();
+}
+
+/// The display preferences of the journal at `path`, exactly as stored.
+fn stored_display(path: &Path) -> String {
+    rusqlite::Connection::open(path)
+        .unwrap()
+        .query_row(
+            "SELECT value FROM preferences WHERE key='display'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
 /// local-data-protection — Encrypted local backups before real use / Backup created;
 /// Safe restore / Wrong credential or corrupt backup, Clean restore;
 /// Portable backup recovery / New Mac restoration.
@@ -241,6 +265,45 @@ fn pre_migration_backup_of_an_older_schema_restores_into_a_current_journal() {
         Journal::open(&fresh_path).unwrap().list().unwrap(),
         vec![restored]
     );
+}
+
+/// D-016; local-data-protection — Display preferences this version cannot read: a backup keeps
+/// them exactly as stored, and restoring it brings them back unchanged, in place of readable
+/// ones. The pre-migration backup of an older journal keeps them too, so the upgrade proceeds.
+#[test]
+fn backups_keep_display_preferences_that_cannot_be_read_and_restores_bring_them_back() {
+    const UNREADABLE: &str = r#"{"theme":"sepia","unknownField":true}"#;
+    let directory = tempfile::tempdir().unwrap();
+    let folder = backup_folder(directory.path());
+    let path = directory.path().join("journal.sqlite");
+    let journal = Journal::open(&path).unwrap();
+    let entry = journal
+        .save(Entry::draft("2026-11-22", Slot::Morning))
+        .unwrap();
+    store_display(&path, UNREADABLE);
+    assert_eq!(journal.preferences(), Err(Error::Document));
+    let backup = journal.backup_to(&folder, PASSPHRASE, NOW).unwrap();
+
+    let other_path = directory.path().join("other.sqlite");
+    let mut other = Journal::open(&other_path).unwrap();
+    other
+        .set_preferences(&Preferences {
+            theme: "dark".into(),
+            ..Preferences::default()
+        })
+        .unwrap();
+    other.restore_from(&backup.path, PASSPHRASE).unwrap();
+    assert_eq!(stored_display(&other_path), UNREADABLE);
+    assert_eq!(other.preferences(), Err(Error::Document));
+    assert_eq!(other.list().unwrap(), vec![entry]);
+
+    let previous = directory.path().join("previous.sqlite");
+    previous_journal(&previous);
+    store_display(&previous, UNREADABLE);
+    let migrated = Journal::migrate_with_backup(&previous, &folder, PASSPHRASE, NOW + 1).unwrap();
+    assert_eq!(migrated.preferences(), Err(Error::Document));
+    assert_eq!(stored_display(&previous), UNREADABLE);
+    assert_eq!(list_backups(&folder).unwrap().len(), 2);
 }
 
 /// local-data-protection — Interrupted backup write (leftovers of an interrupted attempt are
@@ -565,7 +628,8 @@ fn restore_validates_format_schema_and_content_before_replacing_the_journal() {
         path
     };
 
-    let mut live = Journal::open(&directory.path().join("live.sqlite")).unwrap();
+    let live_path = directory.path().join("live.sqlite");
+    let mut live = Journal::open(&live_path).unwrap();
     let current = live
         .save(Entry::draft("2026-11-22", Slot::Evening))
         .unwrap();
@@ -603,34 +667,6 @@ fn restore_validates_format_schema_and_content_before_replacing_the_journal() {
             &variant(
                 "trigger.sqlite",
                 "CREATE TRIGGER synthetic AFTER INSERT ON preferences BEGIN DELETE FROM journal_entries; END;",
-            ),
-        ),
-        crafted(
-            "invalid-preferences.age",
-            &variant(
-                "preferences.sqlite",
-                "INSERT INTO preferences VALUES('display','{\"unknownField\":true}');",
-            ),
-        ),
-        crafted(
-            "unknown-time-zone.age",
-            &variant(
-                "zone.sqlite",
-                "INSERT INTO preferences VALUES('display','{\"timeZone\":\"Mars/Olympus\"}');",
-            ),
-        ),
-        crafted(
-            "unknown-theme.age",
-            &variant(
-                "theme.sqlite",
-                "INSERT INTO preferences VALUES('display','{\"theme\":\"neon\"}');",
-            ),
-        ),
-        crafted(
-            "unsupported-text-size.age",
-            &variant(
-                "text-size.sqlite",
-                "INSERT INTO preferences VALUES('display','{\"textScale\":120}');",
             ),
         ),
         crafted(
@@ -672,6 +708,25 @@ fn restore_validates_format_schema_and_content_before_replacing_the_journal() {
     live.restore_from(&crafted("valid.age", &backup_plaintext(&image)), PASSPHRASE)
         .unwrap();
     assert_eq!(live.list().unwrap(), vec![entry.clone()]);
+    // Display preferences that cannot be read are restored exactly as stored (D-016).
+    for (name, stored) in [
+        ("unknown-field", r#"{"unknownField":true}"#),
+        ("unknown-time-zone", r#"{"timeZone":"Mars/Olympus"}"#),
+        ("unknown-theme", r#"{"theme":"neon"}"#),
+        ("unsupported-text-size", r#"{"textScale":120}"#),
+    ] {
+        let backup = crafted(
+            &format!("{name}.age"),
+            &variant(
+                &format!("{name}.sqlite"),
+                &format!("INSERT INTO preferences VALUES('display','{stored}');"),
+            ),
+        );
+        live.restore_from(&backup, PASSPHRASE).unwrap();
+        assert_eq!(stored_display(&live_path), stored, "{name}");
+        assert!(live.preferences().is_err(), "{name}");
+        assert_eq!(live.list().unwrap(), vec![entry.clone()], "{name}");
+    }
     let preferences = crafted(
         "valid-preferences.age",
         &variant(

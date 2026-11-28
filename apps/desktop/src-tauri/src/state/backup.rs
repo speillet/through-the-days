@@ -273,7 +273,12 @@ impl Core {
             .passphrase
             .as_deref()
             .ok_or_else(CommandError::needs_passphrase)?;
-        let date = journal.preferences()?.journal_date(now)?;
+        // Display preferences that cannot be read never stop a backup (D-016): the journal date
+        // follows the defaults that the interface shows meanwhile.
+        let date = journal
+            .preferences()
+            .unwrap_or_default()
+            .journal_date(now)?;
         match journal.backup_to(folder, passphrase, now.timestamp()) {
             Ok(saved) => {
                 self.record_success(date, saved.created_at, saved.retention_warning);
@@ -288,7 +293,8 @@ impl Core {
     }
 
     /// Runs the daily backup when none succeeded today (D-007). A missing folder or passphrase
-    /// and a failed attempt are reported in the status, not as errors.
+    /// and a failed attempt are reported in the status, not as errors. While the stored display
+    /// preferences cannot be read, today's date follows the defaults (D-016).
     ///
     /// After a failed attempt, the next automatic attempts wait [`AUTOMATIC_RETRY_DELAY`]
     /// unless the folder or the passphrase changes, so a folder that keeps failing does not cost
@@ -296,7 +302,7 @@ impl Core {
     /// `failed` with the last error meanwhile.
     pub fn run_daily_backup(&mut self, now: DateTime<Utc>) -> Result<BackupStatus, CommandError> {
         let journal = self.journal()?;
-        let preferences = journal.preferences()?;
+        let preferences = journal.preferences().unwrap_or_default();
         if self.automatic_retry_paused(now) {
             return Ok(self.backup_status(now));
         }
@@ -417,7 +423,8 @@ impl Core {
         let _ = self.persist_plan();
     }
 
-    /// Today's journal date, from the stored preferences when the journal is open.
+    /// Today's journal date, from the stored preferences when the journal is open and they can
+    /// be read, otherwise from the defaults.
     fn journal_today(&self, now: DateTime<Utc>) -> Option<String> {
         self.journal
             .as_ref()
