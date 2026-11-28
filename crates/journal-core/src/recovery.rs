@@ -85,14 +85,10 @@ impl Journal {
     /// write the validated copy into the live journal, such as a full disk, is reported like any
     /// other failed write ([`Error::Storage`], or [`Error::Damaged`] when the file cannot be read).
     pub fn restore_from(&mut self, path: &Path, passphrase: &str) -> Result<(), Error> {
-        let restored = {
-            let plaintext = decrypt(path, passphrase).map_err(|_| Error::Restore)?;
-            staged_journal(&plaintext).map_err(|_| Error::Restore)?
-        };
+        let restored = load_backup(path, passphrase)?;
         // The backup API commits the whole copy in one destination transaction or rolls it back.
         Backup::new(&restored, &mut self.connection)
-            .and_then(|backup| backup.run_to_completion(256, Duration::ZERO, None))
-            .map_err(Error::from)?;
+            .and_then(|backup| backup.run_to_completion(256, Duration::ZERO, None))?;
         configure(&self.connection)
     }
 }
@@ -103,10 +99,14 @@ impl Journal {
 /// A caller that publishes a safety backup before restoring checks first, so a wrong
 /// passphrase or a damaged file never publishes a backup that prunes an older one.
 pub fn verify_backup(path: &Path, passphrase: &str) -> Result<(), Error> {
-    let plaintext = decrypt(path, passphrase).map_err(|_| Error::Restore)?;
-    staged_journal(&plaintext)
-        .map(drop)
-        .map_err(|_| Error::Restore)
+    load_backup(path, passphrase).map(drop)
+}
+
+/// Decrypts the backup at `path` and loads it as a validated in-memory journal
+/// ([`staged_journal`]). Any failure is [`Error::Restore`].
+fn load_backup(path: &Path, passphrase: &str) -> Result<Connection, Error> {
+    let plaintext = decrypt(path, passphrase)?;
+    staged_journal(&plaintext).map_err(|_| Error::Restore)
 }
 
 /// Checks that `folder` can receive backups, without writing a backup.
@@ -123,23 +123,21 @@ fn probe_backup_folder_with(
     rename: impl FnOnce(NamedTempFile, &Path) -> Result<(), PersistError>,
 ) -> Result<(), Error> {
     check_folder(folder)?;
-    let probe = || -> Result<(), Error> {
+    let probe = || -> Option<()> {
         let mut temporary = tempfile::Builder::new()
             .prefix(PROBE_PREFIX)
             .tempfile_in(folder)
-            .map_err(|error| backup_folder_error(&error))?;
+            .ok()?;
         temporary
             .write_all(b"Through the Days checks that this folder can hold backups.\n")
             .and_then(|()| temporary.as_file().sync_all())
-            .map_err(|error| backup_folder_error(&error))?;
+            .ok()?;
         let published = folder.join(format!("{PROBE_PREFIX}{}", uuid::Uuid::new_v4()));
-        publish_no_clobber(temporary, &published, rename)?;
+        publish_no_clobber(temporary, &published, rename).ok()?;
         let removed = fs::remove_file(&published);
-        sync_directory(folder)
-            .and(removed)
-            .map_err(|error| backup_folder_error(&error))
+        sync_directory(folder).and(removed).ok()
     };
-    probe().map_err(|_| Error::BackupFolder)
+    probe().ok_or(Error::BackupFolder)
 }
 
 /// Encrypts a consistent snapshot of `source` into `folder` and reports success only after the
@@ -267,7 +265,7 @@ fn snapshot(source: &Connection) -> Result<Connection, Error> {
 fn backup_plaintext(source: &Connection) -> Result<Zeroizing<Vec<u8>>, Error> {
     let snapshot = snapshot(source)?;
     let image = snapshot.serialize("main")?;
-    if image.len() < 100 || !image.starts_with(SQLITE_HEADER) {
+    if !is_sqlite_image(&image) {
         return Err(Error::BackupValidation);
     }
     let mut plaintext = Zeroizing::new(Vec::with_capacity(MAGIC.len() + 1 + image.len()));
@@ -276,6 +274,12 @@ fn backup_plaintext(source: &Connection) -> Result<Zeroizing<Vec<u8>>, Error> {
     plaintext.extend_from_slice(&image);
     normalise_file_format(&mut plaintext[MAGIC.len() + 1..]);
     Ok(plaintext)
+}
+
+/// Whether `image` starts with a complete SQLite database header, the 100 bytes that
+/// [`normalise_file_format`] edits.
+fn is_sqlite_image(image: &[u8]) -> bool {
+    image.len() >= 100 && image.starts_with(SQLITE_HEADER)
 }
 
 /// Marks the image as a rollback-journal database so it can be deserialised.
@@ -309,6 +313,7 @@ fn verify(path: &Path, passphrase: &str, expected: &[u8]) -> Result<(), Error> {
     staged_journal(&decrypted).map(drop)
 }
 
+/// Reads and decrypts the backup at `path`. Any failure is [`Error::Restore`].
 fn decrypt(path: &Path, passphrase: &str) -> Result<Zeroizing<Vec<u8>>, Error> {
     let file = File::open(path).map_err(|_| Error::Restore)?;
     let length = file.metadata().map_err(|_| Error::Restore)?.len();
@@ -350,7 +355,7 @@ fn staged_copy(plaintext: &[u8]) -> Result<Connection, Error> {
         Some((&FORMAT_VERSION, image)) => image,
         _ => return Err(Error::Restore),
     };
-    if image.len() < 100 || !image.starts_with(SQLITE_HEADER) {
+    if !is_sqlite_image(image) {
         return Err(Error::Restore);
     }
     let mut bytes = Zeroizing::new(image.to_vec());
@@ -364,9 +369,7 @@ fn staged_copy(plaintext: &[u8]) -> Result<Connection, Error> {
     check_structure(&staged)?;
     let version = schema::user_version(&staged)?;
     if version != SCHEMA_VERSION {
-        if !schema::is_upgradable(version) {
-            return Err(Error::Restore);
-        }
+        // `upgrade` refuses a version this build cannot upgrade, such as a newer one.
         let transaction = staged.transaction()?;
         schema::upgrade(&transaction, version)?;
         transaction.commit()?;
@@ -423,9 +426,6 @@ fn check_structure(connection: &Connection) -> Result<(), Error> {
 /// per date and slot, valid slots, revisions and JSON) then apply to the copy, whatever
 /// definitions the backup stored.
 fn canonical_copy(staged: &Connection) -> Result<Connection, Error> {
-    if schema::user_version(staged)? != SCHEMA_VERSION {
-        return Err(Error::Restore);
-    }
     let mut canonical = memory_connection()?;
     let transaction = canonical.transaction()?;
     schema::create_current(&transaction)?;

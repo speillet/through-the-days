@@ -1,6 +1,6 @@
 //! Versioned journal schema: read-only detection, creation and the shared upgrade steps.
 
-use crate::{Error, error::is_damage};
+use crate::Error;
 use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
 use std::{fs, io, path::Path};
 
@@ -93,7 +93,7 @@ pub(crate) fn inspect(path: &Path) -> Result<Stored, Error> {
         Err(_) => return Err(Error::Storage),
     }
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-    let connection = Connection::open_with_flags(path, flags).map_err(open_error)?;
+    let connection = Connection::open_with_flags(path, flags)?;
     classify(&connection)
 }
 
@@ -144,19 +144,14 @@ pub(crate) fn upgrade(connection: &Connection, from: u32) -> Result<(), Error> {
 
 /// Reads `PRAGMA user_version`, rejecting values that no journal uses.
 pub(crate) fn user_version(connection: &Connection) -> Result<u32, Error> {
-    let version: i64 = connection
-        .pragma_query_value(None, "user_version", |row| row.get(0))
-        .map_err(open_error)?;
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     u32::try_from(version).map_err(|_| Error::Unsupported)
 }
 
 fn classify(connection: &Connection) -> Result<Stored, Error> {
     let version = user_version(connection)?;
-    let count = |sql: &str| -> Result<i64, Error> {
-        connection
-            .query_row(sql, [], |row| row.get(0))
-            .map_err(open_error)
-    };
+    let count =
+        |sql: &str| -> Result<i64, Error> { Ok(connection.query_row(sql, [], |row| row.get(0))?) };
     if version == 0 && count("SELECT count(*) FROM sqlite_master")? == 0 {
         return Ok(Stored::Nothing);
     }
@@ -172,16 +167,4 @@ fn classify(connection: &Connection) -> Result<Stored, Error> {
                     "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('weekly_reviews','timeline_milestones')",
                 )? == 2),
     })
-}
-
-/// A header or schema that SQLite cannot read is a damaged journal; other failures are storage.
-///
-/// A readable database that is newer or not a journal is classified by [`Stored::refusal`]
-/// instead, as [`Error::Unsupported`].
-fn open_error(error: rusqlite::Error) -> Error {
-    if is_damage(&error) {
-        Error::Damaged
-    } else {
-        Error::Storage
-    }
 }

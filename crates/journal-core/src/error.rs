@@ -100,7 +100,7 @@ impl Error {
 ///
 /// `SQLITE_CORRUPT` and `SQLITE_NOTADB` report a damaged page, schema or header; a failed or short
 /// read means part of the file could not be read back.
-pub(crate) fn is_damage(error: &rusqlite::Error) -> bool {
+fn is_damage(error: &rusqlite::Error) -> bool {
     error.sqlite_error().is_some_and(|failure| {
         matches!(
             failure.code,
