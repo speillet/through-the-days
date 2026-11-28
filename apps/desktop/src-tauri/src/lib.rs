@@ -19,6 +19,8 @@ mod single_instance;
 #[cfg(debug_assertions)]
 mod smoke;
 mod state;
+#[cfg(test)]
+mod testing;
 
 use std::{error::Error, sync::mpsc, thread};
 use tauri::{App, Manager};

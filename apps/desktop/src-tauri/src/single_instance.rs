@@ -87,7 +87,9 @@ mod tests {
 )]
 mod second_launch {
     use super::guarded;
-    use crate::{keychain::fake::FakeKeychain, paths::DataPaths, state::AppState};
+    use crate::{
+        keychain::fake::FakeKeychain, paths::DataPaths, state::AppState, testing::names_in,
+    };
     use std::{
         env, fs,
         path::{Path, PathBuf},
@@ -211,15 +213,5 @@ mod second_launch {
 
     fn stdout(output: &Output) -> String {
         String::from_utf8_lossy(&output.stdout).into_owned()
-    }
-
-    /// Names of the entries in `folder`, sorted.
-    fn names_in(folder: &Path) -> Vec<String> {
-        let mut names: Vec<_> = fs::read_dir(folder)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-            .collect();
-        names.sort();
-        names
     }
 }

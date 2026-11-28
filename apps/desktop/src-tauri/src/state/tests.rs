@@ -18,6 +18,7 @@ use crate::{
     error::CommandError,
     keychain::fake::FakeKeychain,
     paths::{self, DataPaths},
+    testing::names_in,
 };
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use journal_core::{
@@ -67,6 +68,17 @@ impl Fixture {
             keychain,
             ..Self::new()
         }
+    }
+
+    /// Backups go to the fixture's folder, with [`PASSPHRASE`] remembered in Keychain.
+    fn remembering() -> Self {
+        let fixture = Self::with_keychain(FakeKeychain::holding(PASSPHRASE));
+        fixture.store_plan(&BackupPlan {
+            folder: Some(fixture.folder()),
+            remember: true,
+            ..BackupPlan::default()
+        });
+        fixture
     }
 
     /// A nested data folder, so launch must create it.
@@ -291,21 +303,43 @@ fn fill(app: &AppState) {
     }
 }
 
-fn names_in(folder: &Path) -> Vec<String> {
-    let mut names: Vec<_> = fs::read_dir(folder)
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-        .collect();
-    names.sort();
-    names
-}
-
 fn ready_with_backups(fixture: &Fixture) -> AppState {
     let app = fixture.launch();
     app.choose_backup_folder(fixture.folder(), noon()).unwrap();
     app.set_backup_passphrase(secret(PASSPHRASE), false, noon())
         .unwrap();
     app
+}
+
+/// A journal with one synthetic Evening entry, backed up once: its fixture, which holds the
+/// backup folder, the entry and the backup file.
+fn backed_up_evening() -> (Fixture, Entry, PathBuf) {
+    let original = Fixture::new();
+    let app = ready_with_backups(&original);
+    let kept = app
+        .lock()
+        .save_entry(draft(
+            "2026-11-21",
+            Slot::Evening,
+            "Synthetic evening to recover.",
+        ))
+        .unwrap();
+    app.lock().backup_now(noon()).unwrap();
+    let backup = original
+        .folder()
+        .join(app.lock().list_backups().unwrap().remove(0).name);
+    (original, kept, backup)
+}
+
+/// Launches `fixture` on another thread, as the app's setup does, so the test can act while the
+/// launch waits, for example for a Keychain prompt.
+fn launch_in_background(fixture: &Fixture) -> (Arc<AppState>, thread::JoinHandle<()>) {
+    let app = Arc::new(fixture.state());
+    let launching = {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.launch(noon()))
+    };
+    (app, launching)
 }
 
 /// Registers `count` newer stand-in files, so the folder's retention window is full (D-009).
@@ -609,12 +643,7 @@ fn an_older_journal_waits_for_its_protected_upgrade_without_being_changed() {
 
 #[test]
 fn an_older_journal_upgrades_at_launch_when_its_backup_can_be_made() {
-    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
-    fixture.store_plan(&BackupPlan {
-        folder: Some(fixture.folder()),
-        remember: true,
-        ..BackupPlan::default()
-    });
+    let fixture = Fixture::remembering();
     let id = previous_journal(&fixture.paths().journal);
     let app = fixture.launch();
     assert_eq!(app.startup_status().state, StartupState::Ready);
@@ -737,21 +766,7 @@ fn an_upgrade_goes_on_when_the_backup_settings_cannot_be_saved() {
 /// file then replaces it from the upgrade screen; the older journal is kept aside, never deleted.
 #[test]
 fn an_older_journal_that_cannot_be_backed_up_is_kept_aside_and_replaced_from_a_backup_file() {
-    let original = Fixture::new();
-    let app = ready_with_backups(&original);
-    let kept = app
-        .lock()
-        .save_entry(draft(
-            "2026-11-21",
-            Slot::Evening,
-            "Synthetic evening to recover.",
-        ))
-        .unwrap();
-    app.lock().backup_now(noon()).unwrap();
-    let backup = original
-        .folder()
-        .join(app.lock().list_backups().unwrap().remove(0).name);
-    drop(app);
+    let (_original, kept, backup) = backed_up_evening();
 
     for (create, cause) in [
         (
@@ -1236,12 +1251,7 @@ fn the_passphrase_is_remembered_only_when_asked() {
 /// the session, and its reply says what Keychain did not do, so the due backup can run.
 #[test]
 fn a_keychain_failure_keeps_the_session_passphrase_and_writing_available() {
-    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
-    fixture.store_plan(&BackupPlan {
-        folder: Some(fixture.folder()),
-        remember: true,
-        ..BackupPlan::default()
-    });
+    let fixture = Fixture::remembering();
     fixture.keychain.contents().failing = true;
     let app = fixture.launch();
     assert_eq!(app.startup_status().state, StartupState::Ready);
@@ -1312,18 +1322,9 @@ fn a_remembered_passphrase_that_is_gone_is_no_longer_reported_as_remembered() {
 /// the app: the journal opens and saves without waiting for it.
 #[test]
 fn a_keychain_prompt_at_launch_never_keeps_the_journal_from_opening_or_saving() {
-    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
-    fixture.store_plan(&BackupPlan {
-        folder: Some(fixture.folder()),
-        remember: true,
-        ..BackupPlan::default()
-    });
+    let fixture = Fixture::remembering();
     fixture.keychain.show_prompt();
-    let app = Arc::new(fixture.state());
-    let launching = {
-        let app = Arc::clone(&app);
-        thread::spawn(move || app.launch(noon()))
-    };
+    let (app, launching) = launch_in_background(&fixture);
     fixture.keychain.wait_for_prompt();
 
     assert_eq!(app.startup_status().state, StartupState::Ready);
@@ -1368,18 +1369,9 @@ fn a_keychain_prompt_while_remembering_the_passphrase_never_blocks_saving() {
 #[test]
 fn a_keychain_prompt_at_launch_never_holds_up_a_new_passphrase() {
     const NEW: &str = "synthetic passphrase typed during the prompt";
-    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
-    fixture.store_plan(&BackupPlan {
-        folder: Some(fixture.folder()),
-        remember: true,
-        ..BackupPlan::default()
-    });
+    let fixture = Fixture::remembering();
     fixture.keychain.show_read_prompt();
-    let app = Arc::new(fixture.state());
-    let launching = {
-        let app = Arc::clone(&app);
-        thread::spawn(move || app.launch(noon()))
-    };
+    let (app, launching) = launch_in_background(&fixture);
     fixture.keychain.wait_for_prompt();
     let status = app.lock().backup_status(noon());
     assert_eq!(status.state, BackupState::NeedsPassphrase);
@@ -1432,18 +1424,9 @@ fn a_keychain_prompt_at_launch_never_holds_up_a_new_passphrase() {
 /// even when Keychain cannot remove the item, and the late answer never brings it back.
 #[test]
 fn a_keychain_prompt_at_launch_never_holds_up_forgetting_the_passphrase() {
-    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
-    fixture.store_plan(&BackupPlan {
-        folder: Some(fixture.folder()),
-        remember: true,
-        ..BackupPlan::default()
-    });
+    let fixture = Fixture::remembering();
     fixture.keychain.show_read_prompt();
-    let app = Arc::new(fixture.state());
-    let launching = {
-        let app = Arc::clone(&app);
-        thread::spawn(move || app.launch(noon()))
-    };
+    let (app, launching) = launch_in_background(&fixture);
     fixture.keychain.wait_for_prompt();
 
     fixture.keychain.contents().failing = true;
@@ -1475,20 +1458,11 @@ fn a_keychain_prompt_at_launch_never_holds_up_forgetting_the_passphrase() {
 /// its upgrade while Keychain is still being read, and the journal is unchanged until then.
 #[test]
 fn an_older_journal_waits_for_the_remembered_passphrase_before_its_status_is_reported() {
-    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
-    fixture.store_plan(&BackupPlan {
-        folder: Some(fixture.folder()),
-        remember: true,
-        ..BackupPlan::default()
-    });
+    let fixture = Fixture::remembering();
     previous_journal(&fixture.paths().journal);
     let original = fixture.journal_bytes();
     fixture.keychain.show_prompt();
-    let app = Arc::new(fixture.state());
-    let launching = {
-        let app = Arc::clone(&app);
-        thread::spawn(move || app.launch(noon()))
-    };
+    let (app, launching) = launch_in_background(&fixture);
     fixture.keychain.wait_for_prompt();
     let (reported, startup) = mpsc::channel();
     let asking = {
@@ -1517,22 +1491,13 @@ fn an_older_journal_waits_for_the_remembered_passphrase_before_its_status_is_rep
 #[test]
 fn a_late_keychain_read_at_launch_never_upgrades_with_a_replaced_passphrase() {
     const NEW: &str = "synthetic passphrase typed for the upgrade";
-    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
-    fixture.store_plan(&BackupPlan {
-        folder: Some(fixture.folder()),
-        remember: true,
-        ..BackupPlan::default()
-    });
+    let fixture = Fixture::remembering();
     let journal = fixture.paths().journal;
     previous_journal(&journal);
     // The first start fails, as when the file cannot be opened for a while.
     fs::set_permissions(&journal, fs::Permissions::from_mode(0o000)).unwrap();
     fixture.keychain.show_read_prompt();
-    let app = Arc::new(fixture.state());
-    let launching = {
-        let app = Arc::clone(&app);
-        thread::spawn(move || app.launch(noon()))
-    };
+    let (app, launching) = launch_in_background(&fixture);
     fixture.keychain.wait_for_prompt();
     assert_eq!(app.startup_status().state, StartupState::Failed);
     fs::set_permissions(&journal, fs::Permissions::from_mode(0o600)).unwrap();
@@ -2092,21 +2057,7 @@ fn a_damaged_journal_is_replaced_once_the_person_confirms_a_restore_without_a_sa
 /// replaces it from the startup screen, and the unreadable file is kept aside, never deleted.
 #[test]
 fn a_journal_that_cannot_be_opened_is_kept_aside_and_replaced_from_a_backup_file() {
-    let original = Fixture::new();
-    let app = ready_with_backups(&original);
-    let kept = app
-        .lock()
-        .save_entry(draft(
-            "2026-11-21",
-            Slot::Evening,
-            "Synthetic evening to recover.",
-        ))
-        .unwrap();
-    app.lock().backup_now(noon()).unwrap();
-    let backup = original
-        .folder()
-        .join(app.lock().list_backups().unwrap().remove(0).name);
-    drop(app);
+    let (original, kept, backup) = backed_up_evening();
 
     for (create, state) in [
         (damaged_header as fn(&Path), StartupState::Failed),
@@ -2118,7 +2069,7 @@ fn a_journal_that_cannot_be_opened_is_kept_aside_and_replaced_from_a_backup_file
         fs::create_dir_all(&data_dir).unwrap();
         create(&fixture.paths().journal);
         let log = data_dir.join("journal.sqlite-wal");
-        fs::write(&log, b"synthetic write-ahead log of the unreadable journal").unwrap();
+        fs::write(&log, UNREADABLE_LOG).unwrap();
         let unreadable = fixture.journal_bytes();
         let app = fixture.launch();
         assert_eq!(app.startup_status().state, state);
@@ -2158,7 +2109,7 @@ fn a_journal_that_cannot_be_opened_is_kept_aside_and_replaced_from_a_backup_file
         assert_eq!(fs::read(data_dir.join(&name)).unwrap(), unreadable);
         assert_eq!(
             fs::read(data_dir.join(format!("{name}-wal"))).unwrap(),
-            b"synthetic write-ahead log of the unreadable journal"
+            UNREADABLE_LOG
         );
         let startup = app.startup_status();
         assert_eq!(
@@ -2244,21 +2195,7 @@ fn reopened_after_interruption(
 /// settles an interrupted restore leaves files that the following launch settles the same way.
 #[test]
 fn a_restore_from_the_startup_screen_that_stops_at_any_moment_never_opens_an_empty_journal() {
-    let original = Fixture::new();
-    let app = ready_with_backups(&original);
-    let kept = app
-        .lock()
-        .save_entry(draft(
-            "2026-11-21",
-            Slot::Evening,
-            "Synthetic evening to recover.",
-        ))
-        .unwrap();
-    app.lock().backup_now(noon()).unwrap();
-    let backup = original
-        .folder()
-        .join(app.lock().list_backups().unwrap().remove(0).name);
-    drop(app);
+    let (_original, kept, backup) = backed_up_evening();
 
     for (create, state) in [
         (damaged_header as fn(&Path), StartupState::Failed),
