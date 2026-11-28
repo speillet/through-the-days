@@ -25,7 +25,7 @@ const EXCERPT_LENGTH = 240;
 /** Only the report authority decides which owned sources are eligible for an insight selection. */
 export function insightSources(entries: readonly Entry[], report: ReadingReport | null): Entry[] {
   const includedIds = new Set(report?.days.flatMap((day) => day.observations.map((entry) => entry.id)));
-  return entries.filter((entry) => entry.includeInInsights !== false && includedIds.has(entry.id));
+  return entries.filter((entry) => entry.includeInInsights && includedIds.has(entry.id));
 }
 function scoreLabel(metric: ScoreMetric, value: number) {
   return `${METRIC_LABELS[metric]} ${value}/10${(metric === 'mood' || metric === 'energy') && value === 5 ? ' (neutral)' : ''}`;
@@ -283,7 +283,7 @@ export function EntryPreview({
   );
   const current = change?.revision === entry.revision ? change : null;
   const busy = current !== null && current.error === null;
-  const included = busy ? current.include : entry.includeInInsights !== false;
+  const included = busy ? current.include : entry.includeInInsights;
   const slot = SLOT_LABELS[entry.slot];
   async function toggleInsights(include: boolean) {
     const { revision } = entry;

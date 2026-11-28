@@ -63,7 +63,7 @@ export interface Entry {
   /** IANA time zone configured when the entry was created (context only). */
   createdTimeZone: string;
   /** Older journals default to true; exclusion affects insights, never original reading. */
-  includeInInsights?: boolean;
+  includeInInsights: boolean;
 }
 
 export interface Preferences {
@@ -79,8 +79,8 @@ export interface Preferences {
   showWordCount: boolean;
   /** Text size for the whole interface and the journal page; layout spacing is unchanged. */
   textScale: TextScale;
-  timelineDays?: 7 | 14 | 30;
-  timelineMetrics?: ScoreMetric[];
+  timelineDays: 7 | 14 | 30;
+  timelineMetrics: ScoreMetric[];
 }
 
 export interface TrashItem {

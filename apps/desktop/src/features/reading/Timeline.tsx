@@ -13,7 +13,7 @@ import { useReadingQuery } from './state';
 
 export function SeriesControls() {
   const { preferences, update, visibility } = usePreferences();
-  const selected = preferences.timelineMetrics ?? [...SCORE_METRICS];
+  const selected = preferences.timelineMetrics;
   if (!visibility.scores) return null;
   return (
     <fieldset className="series-controls">
@@ -27,7 +27,7 @@ export function SeriesControls() {
             onChange={(event) => {
               const checked = event.target.checked;
               void update((current) => {
-                const metrics = current.timelineMetrics ?? [...SCORE_METRICS];
+                const metrics = current.timelineMetrics;
                 return {
                   timelineMetrics: checked
                     ? [...new Set([...metrics, metric])]
@@ -65,7 +65,7 @@ export function Coverage({ report }: { report: ReadingReport }) {
         Missing scores are not zero.
       </p>
       <dl className="reading-measures">
-        {(preferences.timelineMetrics ?? SCORE_METRICS).map((metric) => (
+        {preferences.timelineMetrics.map((metric) => (
           <div key={metric}>
             <dt>{METRIC_LABELS[metric]}</dt>
             <dd>
@@ -97,7 +97,7 @@ export function DayTimeline({
   onSelect: (date: string) => void;
 }) {
   const { preferences, visibility } = usePreferences();
-  const metrics = visibility.scores ? (preferences.timelineMetrics ?? [...SCORE_METRICS]) : [];
+  const metrics = visibility.scores ? preferences.timelineMetrics : [];
   return (
     <div className="day-timeline" role="list" aria-label="Recorded days and gaps">
       {report.days.map((day) => (
@@ -164,7 +164,7 @@ export function RangeButtons({ range, size }: { range: number } & Pick<Component
 export function MiniTimeline({ date, onSelect }: { date: string; onSelect: (date: string) => void }) {
   const api = useApi();
   const { preferences } = usePreferences();
-  const range = preferences.timelineDays ?? 14;
+  const range = preferences.timelineDays;
   const from = addDays(date, 1 - range);
   const { data, error } = useReadingQuery(
     useCallback(() => api.readingReport({ from, to: date }), [api, from, date]),

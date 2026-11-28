@@ -4,7 +4,9 @@
 
 import AxeBuilder from '@axe-core/playwright';
 import { test as base, expect, type Locator, type Page } from '@playwright/test';
+import { MEMORY_STORAGE_KEY } from '../src/api/memory-key';
 import type { Entry, Preferences, Slot } from '../src/api/types';
+import { DEFAULT_PREFERENCES } from '../src/domain/preferences';
 
 /** Sunday 22 November 2026, 10:00 in Paris. Time then runs normally. */
 export const TEST_NOW = new Date('2026-11-22T09:00:00Z');
@@ -42,22 +44,6 @@ export { expect };
 // ---------------------------------------------------------------------------
 // The browser preview keeps its synthetic journal in Web Storage (src/api/memory.ts).
 
-const STORAGE_KEY = 'ttd-preview-v1';
-
-export const DEFAULT_PREFERENCES: Preferences = {
-  timeZone: 'Europe/Paris',
-  theme: 'system',
-  gentle: false,
-  showDurations: true,
-  showToolbar: true,
-  showScores: true,
-  sidebarOpen: true,
-  reduceMotion: false,
-  defaultDepth: 'daily',
-  showWordCount: false,
-  textScale: 100,
-};
-
 export function documentOf(text: string): Entry['document'] {
   return { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] };
 }
@@ -83,6 +69,7 @@ export function entry(date: string, slot: Slot, text: string, changes: Partial<E
     actions: [],
     wins: [],
     createdTimeZone: 'Europe/Paris',
+    includeInInsights: true,
     ...changes,
   };
 }
@@ -117,7 +104,10 @@ export async function seedJournal(page: Page, seed: Seed): Promise<void> {
     },
     folder: [],
   };
-  await page.evaluate(([key, value]) => window.localStorage.setItem(key, value), [STORAGE_KEY, JSON.stringify(state)]);
+  await page.evaluate(
+    ([key, value]) => window.localStorage.setItem(key, value),
+    [MEMORY_STORAGE_KEY, JSON.stringify(state)],
+  );
   await page.reload();
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
 }
@@ -129,7 +119,7 @@ interface StoredJournal {
 
 /** Reads the preview journal back, to check what was persisted. */
 export async function storedJournal(page: Page): Promise<StoredJournal> {
-  const raw = await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY);
+  const raw = await page.evaluate((key) => window.localStorage.getItem(key), MEMORY_STORAGE_KEY);
   if (!raw) throw new Error('The preview journal has not been saved yet.');
   return JSON.parse(raw) as StoredJournal;
 }

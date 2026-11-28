@@ -38,8 +38,9 @@ import type {
   StartupStatus,
   TrashItem,
 } from './types';
+import { MEMORY_STORAGE_KEY } from './memory-key';
 
-export const MEMORY_STORAGE_KEY = 'ttd-preview-v1';
+export { MEMORY_STORAGE_KEY };
 const SYNTHETIC_BACKUP_FOLDER = 'Synthetic backups';
 const SYNTHETIC_BACKUP_PATH = '~/Documents/Synthetic backups';
 const TRASH_RETENTION_SECONDS = 30 * 86_400;
@@ -238,9 +239,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readJournal(value: unknown): JournalSnapshot | undefined {
   if (!isRecord(value) || !Array.isArray(value.entries) || !isRecord(value.preferences)) return undefined;
-  // Preferences stored by an earlier version take the defaults of newer fields.
+  // Preferences and entries stored by an earlier version take the defaults of newer fields.
   return {
-    entries: value.entries as StoredEntry[],
+    entries: value.entries.map(withEntryDefaults),
     preferences: { ...DEFAULT_PREFERENCES, ...value.preferences } as Preferences,
     weeklyReviews: (value.weeklyReviews ?? {}) as JournalSnapshot['weeklyReviews'],
     milestones: (value.milestones ?? []) as JournalSnapshot['milestones'],
@@ -269,6 +270,12 @@ function readPlan(value: unknown): BackupPlan | undefined {
 
 function isStoredEntry(item: unknown): item is StoredEntry {
   return isRecord(item) && isRecord(item.entry) && (item.trashedAt === null || typeof item.trashedAt === 'number');
+}
+
+/** Like journal-core, an entry saved before the insights choice existed is included in insights. */
+function withEntryDefaults(item: unknown): StoredEntry {
+  if (!isStoredEntry(item) || item.entry.includeInInsights !== undefined) return item as StoredEntry;
+  return { ...item, entry: { ...item.entry, includeInInsights: true } };
 }
 
 /** The journal's entries, or the damaged error when part of the stored journal can't be read. */
@@ -464,7 +471,7 @@ function normalisePreferences(input: unknown): Preferences {
   if (!DEPTH_OPTIONS.some((option) => option.id === preferences.defaultDepth)) throw failure('document');
   if (!isTextScale(preferences.textScale)) throw failure('document');
   if (
-    !TIMELINE_RANGES.includes(preferences.timelineDays ?? 14) ||
+    !TIMELINE_RANGES.includes(preferences.timelineDays) ||
     !Array.isArray(preferences.timelineMetrics) ||
     preferences.timelineMetrics.some((metric) => !SCORE_METRICS.includes(metric))
   ) {
