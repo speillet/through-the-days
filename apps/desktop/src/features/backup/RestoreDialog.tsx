@@ -15,7 +15,7 @@ import { Dialog } from '../../components/Dialog';
 import { Notice } from '../../components/Notice';
 import { TextField } from '../../components/TextField';
 import { pluralise } from '../../domain/copy';
-import { flushAll, hasPending } from '../../state/flush';
+import { flushAll, hasPending, openPendingInput } from '../../state/flush';
 
 export interface RestoreTarget {
   source: RestoreSource;
@@ -35,6 +35,11 @@ interface RestoreDialogProps {
 
 const JOURNAL_UNCHANGED = 'Your current journal is unchanged.';
 
+/** Shown with the unsaved writing, which the refused restore opens. */
+export const UNSAVED_WRITING_SHOWN_NOT_RESTORED =
+  'Some writing hasn’t been saved yet, so the backup was not restored. Once it is saved, you can try again.';
+
+/** Shown in the dialog when the unsaved writing cannot be opened, for example from the startup screen. */
 export const UNSAVED_WRITING_NOT_RESTORED =
   'Some writing hasn’t been saved yet, so the backup was not restored. Wait until it shows Saved, then try again.';
 
@@ -92,11 +97,13 @@ function OpenRestoreDialog({
     setBusy(true);
     try {
       // Pending edits are saved first, so they are part of the safety backup; a save
-      // still waiting could otherwise land in the restored journal.
+      // still waiting could otherwise land in the restored journal. Writing that still
+      // cannot be saved is shown instead, with its failure, rather than waited for.
       await flushAll();
       if (hasPending()) {
-        setError(UNSAVED_WRITING_NOT_RESTORED);
         setBusy(false);
+        if (openPendingInput(UNSAVED_WRITING_SHOWN_NOT_RESTORED)) onClose();
+        else setError(UNSAVED_WRITING_NOT_RESTORED);
         return;
       }
       const outcome = await api.restoreBackup(target.source, passphrase, withoutSafetyBackup);

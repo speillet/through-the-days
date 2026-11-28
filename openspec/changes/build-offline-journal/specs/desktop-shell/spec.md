@@ -25,7 +25,7 @@ The application SHALL launch as a macOS desktop application and provide a collap
 #### Scenario: View failure
 
 - **WHEN** the current view fails while it is shown
-- **THEN** only that view is replaced by an English message offering Try again; navigation, the status area and the protection of unsaved input on close and quit remain, and Try again or choosing a view shows it again.
+- **THEN** only that view is replaced by an English message offering Try again; navigation, the status area and the protection of unsaved input on close and quit remain, a refused close or quit shows the input the failed view left unsaved, and Try again or choosing a view shows it again.
 
 ### Requirement: Appearance and navigation
 

@@ -51,9 +51,19 @@ The system SHALL progressively save from the first interaction, distinguish pend
 - **WHEN** a supported app-quit request is waiting for a save or cannot obtain a renderer flush acknowledgement
 - **THEN** the app remains open with unacknowledged input available for retry; a timeout or event failure does not authorise exit.
 
+#### Scenario: Leaving an entry whose save failed
+
+- **WHEN** the person chooses another view, Today again, or another date or slot while the open entry's save has failed or is still running
+- **THEN** the view changes only once the entry is acknowledged; a failed save keeps the entry open with its failure notice and an English notice that it stays open until it is saved, and a save that can never succeed keeps it open with the offer to reload the saved version.
+
+#### Scenario: Refused close, quit, restore or erasure opens the unsaved input
+
+- **WHEN** closing the window, quitting, restoring a backup or erasing app data is refused because input still cannot be saved after a flush, for example an entry left behind by a view that failed
+- **THEN** the app shows that input with its failure, Today on its date and slot or Weekly Review on its week, with an English notice saying why the action did not proceed, rather than asking to wait for Saved.
+
 #### Scenario: Insights choice during a failed save
 
-- **WHEN** an entry's save has failed and, before its retry, the person changes that entry's Include in insights and timelines choice in a reading view
+- **WHEN** an entry's save has failed and, before its retry, the person changes that entry's Include in insights and timelines choice in a reading view, reached after Today failed while showing the entry
 - **THEN** the choice is saved together with the unsaved input, or withdrawn if that save fails too, so the retry needs no reload that would discard the input.
 
 ### Requirement: Safe migrations

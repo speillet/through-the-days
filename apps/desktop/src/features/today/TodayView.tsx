@@ -3,8 +3,8 @@
 // date, moves on to the new today after midnight as soon as no entry is open (an
 // entry that is open keeps its date). Otherwise it changes only through the
 // person's navigation. Pending input is saved before moving to another date or
-// slot, each slot opens on its saved version, and a failed save keeps the entry
-// open instead of losing it.
+// slot, or to another view; each slot opens on its saved version, and a failed save
+// keeps the entry open, with its failure, instead of losing it.
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { toCommandError, useApi } from '../../api/client';
@@ -14,7 +14,7 @@ import { Notice } from '../../components/Notice';
 import { findSaver, settleDetachedSavers } from '../../state/autosave';
 import { useToday } from '../../state/clock';
 import { useFocusMode } from '../../state/focus';
-import { useNavigation } from '../../state/navigation';
+import { useLeaveGuard, useNavigation } from '../../state/navigation';
 import { DateHeader } from './DateHeader';
 import { EntryWorkspace, type EntryWorkspaceHandle, type FlushOutcome } from './EntryWorkspace';
 import { slotTabId, SlotTabs } from './SlotTabs';
@@ -153,15 +153,24 @@ export function TodayView({ autosaveDelayMs, initialDate, initialSlot }: TodayVi
   const statusFor = (item: Slot): EntryStatus | null =>
     current ? (liveStatuses[item] ?? entryStatus(current.entries.find((entry) => entry.slot === item))) : null;
 
-  /** Saves the open entry, then opens the date and slot; false when the entry has to stay open. */
-  async function go(nextDate: string, nextSlot: Slot): Promise<boolean> {
-    if (nextDate === date && nextSlot === slot) return true;
+  /** Saves the open entry; false, with the reason shown, when it has to stay open. */
+  async function settle(): Promise<boolean> {
     const outcome = (await workspaceRef.current?.flush()) ?? 'saved';
     if (outcome !== 'saved') {
       setBlocked(outcome);
       return false;
     }
     setBlocked(null);
+    return true;
+  }
+
+  // Another view, or Today again, waits for the open entry the same way as another date or slot.
+  useLeaveGuard(settle);
+
+  /** Saves the open entry, then opens the date and slot; false when the entry has to stay open. */
+  async function go(nextDate: string, nextSlot: Slot): Promise<boolean> {
+    if (nextDate === date && nextSlot === slot) return true;
+    if (!(await settle())) return false;
     setNotice(null);
     setDate(nextDate);
     setSlot(nextSlot);

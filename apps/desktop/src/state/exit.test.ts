@@ -1,14 +1,24 @@
 import { fireEvent } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CloseRequest, ClosableWindow } from './exit';
-import { installBackgroundFlush, installExitFlush } from './exit';
-import { registerFlusher } from './flush';
+import { installBackgroundFlush, installExitFlush, UNSAVED_WRITING_KEEPS_APP, UNSAVED_WRITING_KEEPS_WINDOW } from './exit';
+import { registerFlusher, setPendingInputOpener, type PendingInput } from './flush';
 
 const cleanups: Array<() => void> = [];
 
 afterEach(() => {
   while (cleanups.length) cleanups.pop()?.();
 });
+
+/** An Evening entry whose save failed after its view had gone, and the workspace that can open it. */
+function strandedEvening() {
+  const input: PendingInput = { kind: 'entry', date: '2026-11-22', slot: 'evening' };
+  const flush = vi.fn(async () => {});
+  cleanups.push(registerFlusher({ flush, hasPending: () => true, pendingInput: () => input }));
+  const open = vi.fn<(input: PendingInput, notice?: string) => void>();
+  cleanups.push(setPendingInputOpener(open));
+  return { input, flush, open };
+}
 
 function fakeWindow() {
   let handler: ((event: CloseRequest) => void | Promise<void>) | null = null;
@@ -35,6 +45,7 @@ function fakeWindow() {
 function fakeApi() {
   let onRequest: (() => void | Promise<void>) | null = null;
   const confirmExit = vi.fn(async () => {});
+  const cancelExit = vi.fn(async () => {});
   return {
     api: {
       onFlushRequest: (callback: () => void | Promise<void>) => {
@@ -44,8 +55,10 @@ function fakeApi() {
         };
       },
       confirmExit,
+      cancelExit,
     },
     confirmExit,
+    cancelExit,
     requestQuit: () => onRequest?.(),
     isListening: () => onRequest !== null,
   };
@@ -95,6 +108,43 @@ describe('exit flushing', () => {
     cleanups.push(registerFlusher({ flush: async () => {}, hasPending: () => true }));
     await native.requestQuit();
     expect(native.confirmExit).not.toHaveBeenCalled();
+  });
+
+  it('opens the writing whose save still fails when a close is refused for it, and says why', async () => {
+    const { win } = install();
+    await vi.waitFor(() => expect(win.isListening()).toBe(true));
+    const { input, flush, open } = strandedEvening();
+    expect(await win.requestClose()).toBe(true);
+    expect(flush).toHaveBeenCalled();
+    expect(win.destroy).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledWith(input, UNSAVED_WRITING_KEEPS_WINDOW);
+  });
+
+  it('opens the writing whose save still fails when a quit is refused for it, and says why', async () => {
+    const { native } = install();
+    const { input, flush, open } = strandedEvening();
+    await native.requestQuit();
+    expect(flush).toHaveBeenCalled();
+    expect(native.confirmExit).not.toHaveBeenCalled();
+    expect(native.cancelExit).toHaveBeenCalled();
+    expect(open).toHaveBeenCalledWith(input, UNSAVED_WRITING_KEEPS_APP);
+  });
+
+  it('refuses a close and a quit as before while no workspace can open the writing', async () => {
+    const { win, native } = install();
+    await vi.waitFor(() => expect(win.isListening()).toBe(true));
+    cleanups.push(
+      registerFlusher({
+        flush: async () => {},
+        hasPending: () => true,
+        pendingInput: () => ({ kind: 'entry', date: '2026-11-22', slot: 'evening' }),
+      }),
+    );
+    expect(await win.requestClose()).toBe(true);
+    expect(win.destroy).not.toHaveBeenCalled();
+    await native.requestQuit();
+    expect(native.confirmExit).not.toHaveBeenCalled();
+    expect(native.cancelExit).toHaveBeenCalled();
   });
 
   it('flushes before confirming a quit request', async () => {

@@ -6,6 +6,7 @@ import { Notice } from '../../components/Notice';
 import { pluralise } from '../../domain/copy';
 import { formatLongDate, isIsoDate, isoWeekStart, stepDays } from '../../domain/dates';
 import { useToday } from '../../state/clock';
+import { useLeaveGuard } from '../../state/navigation';
 import { usePreferences } from '../../state/preferences';
 import { EntryPreview, insightSources } from './shared';
 import { Coverage } from './Timeline';
@@ -16,6 +17,9 @@ import { unsaved } from './notes';
 function weekOf(date: string): string {
   return isIsoDate(date) ? isoWeekStart(date) : date;
 }
+
+/** Why the shown week could not be left: its notes may still be saved, or they need the person's choice. */
+type Blocked = 'retry' | 'conflict';
 
 export function WeeklyView() {
   const api = useApi();
@@ -45,12 +49,38 @@ export function WeeklyView() {
   useEffect(() => {
     if (data) notes.seed(data);
   }, [notes, data]);
-  const draft = notes.get(data?.weekStart ?? week);
+  const weekKey = data?.weekStart ?? week;
+  const draft = notes.get(weekKey);
   const pending = draft.saving || unsaved(draft);
   const keepWeek = date === null && (writing || pending) && weekOf(today) !== week;
   useEffect(() => {
     if (!keepWeek && followed !== today) setFollowed(today);
   }, [keepWeek, followed, today]);
+  const [blocked, setBlocked] = useState<Blocked | null>(null);
+  useEffect(() => {
+    if (!pending && !draft.conflict) setBlocked(null);
+  }, [pending, draft.conflict]);
+  /** Saves the shown week's notes; false, with the reason shown, when the week has to stay open. */
+  const settle = useCallback(async (): Promise<boolean> => {
+    await notes.flushWeek(weekKey);
+    const current = notes.get(weekKey);
+    const outcome: Blocked | null = current.conflict
+      ? 'conflict'
+      : current.saving || unsaved(current)
+        ? 'retry'
+        : null;
+    setBlocked(outcome);
+    return outcome === null;
+  }, [notes, weekKey]);
+  // Another view waits for the shown week's notes, as another week does below.
+  useLeaveGuard(settle);
+  /** Shows another week once this week's notes are saved; a week already shown needs no save first. */
+  async function show(nextWeek: string | null) {
+    if (nextWeek !== null && weekOf(nextWeek) === week) return;
+    if (!(await settle())) return;
+    setDate(nextWeek);
+    if (nextWeek === null) setFollowed(today);
+  }
   async function summary() {
     if (!data || busy) return;
     setBusy(true);
@@ -78,24 +108,40 @@ export function WeeklyView() {
           <p className="view-subtitle">A few recorded moments, and your own reflection.</p>
         </div>
         <div className="reading-actions">
-          <Button disabled={previousWeek === null} onClick={() => previousWeek && setDate(previousWeek)}>
+          <Button disabled={previousWeek === null} onClick={() => previousWeek && void show(previousWeek)}>
             Previous week
           </Button>
           <Button
             onClick={() => {
               // With no chosen week the review follows today again, also into a new week after
-              // midnight. This also lets go of an earlier week kept for notes still being saved.
-              setDate(null);
-              setFollowed(today);
+              // midnight. An earlier week kept for notes still being saved is left once they are.
+              if (weekOf(today) === week) {
+                setDate(null);
+                setFollowed(today);
+              } else {
+                void show(null);
+              }
             }}
           >
             This week
           </Button>
-          <Button disabled={nextWeek === null} onClick={() => nextWeek && setDate(nextWeek)}>
+          <Button disabled={nextWeek === null} onClick={() => nextWeek && void show(nextWeek)}>
             Next week
           </Button>
         </div>
       </header>
+      {blocked === 'retry' ? (
+        <Notice tone="warning">
+          These notes have changes that are not saved yet, so this week stays open and nothing is lost. Once they
+          are saved, you can move on.
+        </Notice>
+      ) : null}
+      {blocked === 'conflict' ? (
+        <Notice tone="warning">
+          These notes were changed elsewhere, so this week stays open. Choose Keep my text or Load saved text, then
+          move on.
+        </Notice>
+      ) : null}
       {readError ? (
         <Notice tone="error" actions={<Button onClick={reload}>Try again</Button>}>
           {readError}

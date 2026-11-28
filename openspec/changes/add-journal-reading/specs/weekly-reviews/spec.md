@@ -40,7 +40,12 @@ Weekly Review SHALL be user-initiated, use Monday–Sunday ISO weeks in the conf
 #### Scenario: This week while earlier notes are saving
 
 - **WHEN** the review keeps an earlier week after midnight because its notes are still being saved, and the person activates This week
-- **THEN** the review shows the current week, and those notes are still saved to their own week.
+- **THEN** the review shows the current week once those notes are saved to their own week; while their save still fails, it keeps the earlier week and says so.
+
+#### Scenario: Leaving a week whose notes are not saved
+
+- **WHEN** the person chooses Previous week, Next week, This week or another view while the shown week's notes are still being saved, their save has failed, or they wait for Keep my text or Load saved text
+- **THEN** the review keeps that week with its notes and their state, says so in English, and moves on as soon as they are acknowledged; a refused close, quit, restore or erasure opens that week with its notes.
 
 #### Scenario: Week that ends in year 10000
 

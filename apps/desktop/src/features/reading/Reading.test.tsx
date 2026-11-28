@@ -44,10 +44,11 @@ it('retains weekly notes across a failed save and view changes, then retries wit
     storage: createMemoryStorage(),
     now: () => new Date('2026-11-22T12:00:00Z'),
   });
-  vi.spyOn(api, 'saveWeeklyNotes').mockRejectedValueOnce({
-    code: 'storage',
-    message: 'Synthetic note save failed.',
-  });
+  const control = { failing: true };
+  const save = api.saveWeeklyNotes.bind(api);
+  vi.spyOn(api, 'saveWeeklyNotes').mockImplementation((...args) =>
+    control.failing ? Promise.reject({ code: 'storage', message: 'Synthetic note save failed.' }) : save(...args),
+  );
   render(<App api={api} initialView="weekly" />);
   const user = userEvent.setup();
   await screen.findByRole('heading', { name: 'Monday 16 November 2026 to Sunday 22 November 2026' });
@@ -56,14 +57,20 @@ it('retains weekly notes across a failed save and view changes, then retries wit
     'Synthetic weekly reflection to keep.',
   );
   expect(await screen.findByRole('alert')).toHaveTextContent('Synthetic note save failed.');
+  // Another view waits for the notes: their save is tried again and fails, so the week stays open.
   await user.click(screen.getByRole('button', { name: 'Calendar' }));
-  await user.click(screen.getByRole('button', { name: 'Weekly Review' }));
-  expect(await screen.findByRole('textbox', { name: 'Your notes' })).toHaveValue(
-    'Synthetic weekly reflection to keep.',
-  );
+  expect(await screen.findByText(/These notes have changes that are not saved yet/)).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'Your notes' })).toHaveValue('Synthetic weekly reflection to keep.');
+  control.failing = false;
   await user.click(screen.getByRole('button', { name: 'Retry saving notes' }));
   await waitFor(async () =>
     expect((await api.weeklyReview('2026-11-22')).notes).toBe('Synthetic weekly reflection to keep.'),
+  );
+  await user.click(screen.getByRole('button', { name: 'Calendar' }));
+  expect(await screen.findByRole('grid', { name: 'November 2026' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Weekly Review' }));
+  expect(await screen.findByRole('textbox', { name: 'Your notes' })).toHaveValue(
+    'Synthetic weekly reflection to keep.',
   );
 });
 

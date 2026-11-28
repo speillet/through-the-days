@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
@@ -408,7 +408,7 @@ describe('application shell', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Synthetic Today' })).toBeInTheDocument();
   });
 
-  it('keeps unsaved weekly notes waiting for close and quit when another view fails', async () => {
+  it('keeps unsaved weekly notes waiting for close and quit when their view fails', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const user = userEvent.setup();
     const { api } = await openWorkspace();
@@ -419,9 +419,19 @@ describe('application shell', () => {
     await user.type(await screen.findByRole('textbox', { name: 'Your notes' }), 'Synthetic pending note.');
     expect(await screen.findByText('Synthetic notes save failure.')).toBeInTheDocument();
 
+    // Another view waits for the notes, which cannot be saved: the week stays open.
     await user.click(screen.getByRole('button', { name: 'Today' }));
-    await user.click(screen.getByRole('button', { name: 'Simulate a view failure' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent("This view couldn't be shown.");
+    expect(await screen.findByText(/These notes have changes that are not saved yet/)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Synthetic Today' })).not.toBeInTheDocument();
+    // Weekly Review itself then fails while reading its sources again.
+    const sources = vi.spyOn(api, 'listEntries').mockImplementation(() => {
+      throw new Error('Synthetic view failure');
+    });
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(await screen.findByText("This view couldn't be shown.")).toBeInTheDocument();
+    sources.mockRestore();
     // Closing the window and quitting flush through this registry before they proceed.
     expect(hasPending()).toBe(true);
     save.mockRestore();
