@@ -39,7 +39,7 @@ Implementation choices adopted in milestone 1, also engineering proposals rather
 
 - Each entry is stored as one validated aggregate ([ADR 0003](adr/0003-store-each-entry-as-one-validated-aggregate.md)).
 - The backup plan (folder, last success, Keychain choice) is device-local and outside the journal, so a restore never changes backup settings.
-- Before a restore replaces a journal that has entries, the app makes a safety backup when a folder and passphrase are available. If the current journal cannot be read, restoring without that safety backup needs explicit confirmation. A journal that cannot be opened at launch can be restored from a backup; the unreadable file is kept aside, never deleted.
+- Before a restore replaces a journal that has entries, weekly notes or milestones, the app makes a safety backup when a folder and passphrase are available. Entries in the trash count; a generated weekly summary alone does not, as it is rebuilt from entries. If the current journal cannot be read, restoring without that safety backup needs explicit confirmation. A journal that cannot be opened at launch can be restored from a backup; the unreadable file is kept aside, never deleted.
 - Daily backups are attempted at launch, every 10 minutes and when the window regains focus while the app is open. After a failed automatic attempt they pause for an hour unless the folder or passphrase changes; Back up now always runs.
 - Gentle view hides score panels, suggested durations and the completion control. Drafts remain complete records of what was written, and leaving Gentle view restores every control.
 - Interface text size can be set to 100, 115, 130 or 150%, independently of layout spacing.

@@ -87,7 +87,7 @@ The system SHALL provide encrypted local backups and a tested restore path befor
 
 ### Requirement: Safe restore
 
-The system SHALL validate a backup before making it active and SHALL preserve the current journal when the backup cannot be reached, decrypted or validated, or when the safety backup of a readable current journal fails. When a backup folder and the session passphrase are available and the current journal holds entries, the system SHALL publish a safety backup of it before replacing it, and SHALL skip that safety backup only if the journal cannot be read and the person explicitly confirms it.
+The system SHALL validate a backup before making it active and SHALL preserve the current journal when the backup cannot be reached, decrypted or validated, or when the safety backup of a readable journal fails. When a backup folder and the session passphrase are available and the current journal holds entries, trash, weekly notes or milestones, the system SHALL publish a safety backup of it before replacing it, and SHALL skip it only if the journal cannot be read and the person confirms it.
 
 #### Scenario: Backup replaced before it is copied
 
@@ -113,6 +113,11 @@ The system SHALL validate a backup before making it active and SHALL preserve th
 
 - **WHEN** the current journal cannot be read to make its safety backup
 - **THEN** the restore replaces it only after the person explicitly confirms restoring without a safety backup.
+
+#### Scenario: Weekly notes or a milestone without any entry
+
+- **WHEN** a backup folder and the session passphrase are available and the current journal holds no entry, active or in the trash, but weekly notes or a milestone written since the last backup
+- **THEN** a safety backup that brings those notes or that milestone back is published before the journal is replaced, and the restore reports it; a journal whose only reading record is a generated weekly summary is replaced without one.
 
 #### Scenario: Clean restore
 

@@ -129,3 +129,8 @@ Weekly Review SHALL separate user notes from optional labelled deterministic loc
 
 - **WHEN** a validated encrypted journal backup is restored into a clean destination
 - **THEN** authored weekly notes retain their week, text and revision independently of disposable generated summaries.
+
+#### Scenario: Notes protected before a restore
+
+- **WHEN** a restore would replace a journal whose only record is a week with authored notes, and a backup folder and the session passphrase are available
+- **THEN** a safety backup that brings the notes back is published first, as for a journal with entries; a week holding only a generated summary does not call for one.

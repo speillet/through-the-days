@@ -84,6 +84,29 @@ pub fn previous_journal(path: &Path) -> String {
     V1_ENTRY_ID.to_owned()
 }
 
+/// Writes a fictional journal exactly as version 2, the release before weekly reviews and
+/// milestones, stored one: the active Evening entry of [`V2_ENTRY_PAYLOAD`], the earlier
+/// Evening entry of [`V2_TRASHED_ENTRY_PAYLOAD`] in the trash since [`V2_TRASHED_AT`], and the
+/// display preferences of [`V2_DISPLAY_PREFERENCES`].
+///
+/// Like [`previous_journal`], nothing is generated from today's types, so a change that can no
+/// longer read a version-2 journal fails the migration and restore tests.
+pub fn version_2_journal(path: &Path) {
+    let connection = rusqlite::Connection::open(path).unwrap();
+    connection.execute_batch(V2_SCHEMA).unwrap();
+    for (id, revision, payload, trashed_at) in V2_ENTRY_ROWS {
+        connection
+            .execute(
+                V2_INSERT_ENTRY,
+                rusqlite::params![id, revision, payload, trashed_at],
+            )
+            .unwrap();
+    }
+    connection
+        .execute(V2_INSERT_PREFERENCES, [V2_DISPLAY_PREFERENCES])
+        .unwrap();
+}
+
 /// Runs SQL against the SQLite database at `path`, creating it when needed.
 pub fn execute(path: &Path, sql: &str) {
     rusqlite::Connection::open(path)

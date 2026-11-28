@@ -60,7 +60,7 @@ Pagination can hide or duplicate text; rendered coverage and selection need a pr
 
 ## Migration Plan
 
-Schema 3 adds authoritative weekly-review and timeline-milestone tables. Protected migrations support schema-1/2 images, and encrypted backups validate and restore the authored reading records. Reading-source exclusion defaults to enabled for older entries. Search indexes are transient and rebuilt. Migration, clean restore and reading-data round trips are covered by the Rust suites; manual native acceptance remains outstanding.
+Schema 3 adds authoritative weekly-review and timeline-milestone tables. Protected migrations support schema-1/2 images, and encrypted backups validate and restore the authored reading records. Reading-source exclusion defaults to enabled for older entries. Search indexes are transient and rebuilt. The Rust suites upgrade and restore frozen journals stored exactly as versions 1 and 2 did (`crates/journal-core/tests/common/fixtures.rs`), including the desktop launch that reports version 2 and upgrades it, and cover clean restore and reading-data round trips; a journal holding only weekly notes or a milestone gets a safety backup before a restore replaces it. Manual native acceptance remains outstanding.
 
 ## Decision gates
 

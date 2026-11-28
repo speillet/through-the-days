@@ -154,7 +154,7 @@ function OpenRestoreDialog({
               </p>
               <p>
                 {safetyBackupPossible
-                  ? 'If your current journal has entries, a safety backup of it is made in your backup folder first.'
+                  ? 'If your current journal has entries, weekly notes or milestones, a safety backup of it is made in your backup folder first.'
                   : 'A safety backup of your current journal can’t be made first, because no backup folder is chosen or the backup passphrase hasn’t been entered in this session.'}
               </p>
             </>

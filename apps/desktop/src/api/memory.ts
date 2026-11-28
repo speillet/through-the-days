@@ -681,6 +681,18 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
     return entriesOf(state).filter((item) => item.trashedAt === null).length;
   }
 
+  /**
+   * Whether the journal holds authored reading records, as `Journal::holds_reading_records` tells:
+   * any milestone, or a week whose notes are not empty. They need no entry, and a restore replaces
+   * them with the journal. A generated summary alone does not count: it is rebuilt from entries.
+   */
+  function holdsReadingRecords(state: PersistedState): boolean {
+    return (
+      (state.journal.milestones ?? []).length > 0 ||
+      Object.values(state.journal.weeklyReviews ?? {}).some((review) => review.notes !== '')
+    );
+  }
+
   function activeEntries(state: PersistedState) {
     requireReady();
     return entriesOf(state).filter((item) => item.trashedAt === null)
@@ -981,7 +993,9 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
           // The current journal can't be read, so no safety backup of it can be made.
           if (!withoutSafetyBackup) throw failure('safetyBackupFailed');
         }
-        if (entries && entries.length > 0) {
+        // Weekly notes and milestones are authored records too: a journal without entries that
+        // holds them gets a safety backup, as it does natively.
+        if (entries && (entries.length > 0 || holdsReadingRecords(state))) {
           addBackup(state, sessionFingerprint);
           safetyBackup = true;
         }

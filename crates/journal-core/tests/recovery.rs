@@ -4,12 +4,14 @@ mod common;
 
 use common::{
     BACKUP_MAGIC, DAY, NOW, PASSPHRASE, REGISTRY_FILE, ReadOnlyFolder, SeededBackup,
-    backup_plaintext, contains, decrypt, document, encrypt_quickly, execute, image_user_version,
-    names_in, nested_document, previous_journal, promote_pride, registered_names, seed_backup,
-    sha256_hex, write_registry,
+    V2_ENTRY_PAYLOAD, V2_TRASHED_AT, V2_TRASHED_ENTRY_PAYLOAD, backup_plaintext, contains, decrypt,
+    document, encrypt_quickly, execute, image_user_version, names_in, nested_document,
+    previous_journal, promote_pride, registered_names, seed_backup, sha256_hex, version_2_journal,
+    write_registry,
 };
 use journal_core::{
-    BackupPlan, BackupRecord, DailyBackup, Entry, Error, Journal, Preferences, Slot, list_backups,
+    BackupPlan, BackupRecord, DailyBackup, Depth, Entry, Error, Journal, Milestone, Preferences,
+    Slot, list_backups,
 };
 use std::{
     fs,
@@ -265,6 +267,107 @@ fn pre_migration_backup_of_an_older_schema_restores_into_a_current_journal() {
         Journal::open(&fresh_path).unwrap().list().unwrap(),
         vec![restored]
     );
+}
+
+/// local-data-protection — Safe restore / Clean restore of the pre-migration backup of a
+/// journal exactly as version 2 stored it: entries, trash and preferences come back as the
+/// upgrade left them, every entry included in insights.
+#[test]
+fn pre_migration_backup_of_a_version_2_journal_restores_its_trash_and_preferences() {
+    let directory = tempfile::tempdir().unwrap();
+    let previous = directory.path().join("previous.sqlite");
+    let folder = backup_folder(directory.path());
+    version_2_journal(&previous);
+    let migrated = Journal::migrate_with_backup(&previous, &folder, PASSPHRASE, NOW).unwrap();
+    let records = list_backups(&folder).unwrap();
+    assert_eq!(records.len(), 1);
+    let backup = folder.join(&records[0].name);
+    let plaintext = decrypt(&backup, PASSPHRASE);
+    assert_eq!(
+        image_user_version(&plaintext[BACKUP_MAGIC.len() + 1..]),
+        2,
+        "a version-2 image"
+    );
+
+    let fresh_path = directory.path().join("fresh.sqlite");
+    let mut fresh = Journal::open(&fresh_path).unwrap();
+    fresh.restore_from(&backup, PASSPHRASE).unwrap();
+    let entries = fresh.list().unwrap();
+    assert_eq!(
+        entries,
+        vec![serde_json::from_str::<Entry>(V2_ENTRY_PAYLOAD).unwrap()]
+    );
+    assert!(entries[0].include_in_insights);
+    let trash = fresh.trash_items().unwrap();
+    assert_eq!(
+        (&trash[0].entry, trash[0].deleted_at, trash.len()),
+        (
+            &serde_json::from_str::<Entry>(V2_TRASHED_ENTRY_PAYLOAD).unwrap(),
+            V2_TRASHED_AT,
+            1
+        )
+    );
+    assert!(trash[0].entry.include_in_insights);
+    let preferences = fresh.preferences().unwrap();
+    assert_eq!(
+        (
+            preferences.theme.as_str(),
+            preferences.default_depth,
+            preferences.text_scale
+        ),
+        ("dark", Depth::Deep, 130)
+    );
+    assert_eq!(entries, migrated.list().unwrap());
+    assert_eq!(trash, migrated.trash_items().unwrap());
+    assert_eq!(preferences, migrated.preferences().unwrap());
+    assert!(fresh.milestones().unwrap().is_empty());
+    drop(fresh);
+    assert_eq!(journal_core::schema_version(&fresh_path), Ok(Some(3)));
+}
+
+/// local-data-protection — Safe restore: what a restore would replace beyond entries. Weekly
+/// notes and milestones are authored, so they call for a safety backup even in a journal
+/// without entries; a generated summary alone does not, because it is rebuilt from entries.
+#[test]
+fn weekly_notes_and_milestones_are_reading_records_but_a_summary_alone_is_not() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("journal.sqlite");
+    let journal = Journal::open(&path).unwrap();
+    assert!(!journal.holds_reading_records().unwrap());
+    // Entries are counted separately.
+    journal
+        .save(Entry::draft("2026-11-20", Slot::Morning))
+        .unwrap();
+    assert!(!journal.holds_reading_records().unwrap());
+
+    // A week holding only a generated summary, stored as Generate summary stores it for a week
+    // without notes.
+    execute(
+        &path,
+        r#"INSERT INTO weekly_reviews VALUES('2026-11-09','{"weekStart":"2026-11-09","notes":"","revision":1,"summary":"Synthetic summary.","fingerprint":"synthetic"}')"#,
+    );
+    let summarised = journal.weekly_review("2026-11-09").unwrap();
+    assert_eq!((summarised.notes.as_str(), summarised.revision), ("", 1));
+    assert!(!journal.holds_reading_records().unwrap());
+
+    let review = journal
+        .save_weekly_notes("2026-11-18", "Synthetic notes for the week.", 0)
+        .unwrap();
+    assert!(journal.holds_reading_records().unwrap());
+    // Notes cleared again leave nothing authored.
+    journal
+        .save_weekly_notes("2026-11-18", "", review.revision)
+        .unwrap();
+    assert!(!journal.holds_reading_records().unwrap());
+
+    let milestone = journal
+        .save_milestone(Milestone::new("2026-11-22", "Synthetic milestone"))
+        .unwrap();
+    assert!(journal.holds_reading_records().unwrap());
+    journal
+        .delete_milestone(&milestone.id, milestone.revision)
+        .unwrap();
+    assert!(!journal.holds_reading_records().unwrap());
 }
 
 /// D-016; local-data-protection — Display preferences this version cannot read: a backup keeps
