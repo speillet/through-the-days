@@ -8,6 +8,7 @@
 mod fixtures;
 
 pub use fixtures::*;
+use journal_core::{Entry, Win};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -29,6 +30,30 @@ pub const REGISTRY_FILE: &str = ".through-the-days-backups.json";
 /// A one-paragraph editor document.
 pub fn document(text: &str) -> Value {
     json!({"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}]})
+}
+
+/// A small win the person enters directly.
+pub fn manual_win(text: &str) -> Win {
+    Win {
+        id: uuid::Uuid::new_v4().to_string(),
+        text: text.to_owned(),
+        origin: "manual".into(),
+        include_in_insights: true,
+    }
+}
+
+/// Adds the small win linked to the pride reflection, as `promotePride` in
+/// `apps/desktop/src/domain/entry.ts` does: nothing when the reflection is blank or a pride win
+/// already exists.
+pub fn promote_pride(entry: &mut Entry) {
+    if entry.reflection.proud_of.trim().is_empty()
+        || entry.wins.iter().any(|win| win.origin == "pride")
+    {
+        return;
+    }
+    let mut win = manual_win(&entry.reflection.proud_of);
+    win.origin = "pride".into();
+    entry.wins.push(win);
 }
 
 /// A document whose deepest node sits at `depth` levels, the document node being level 1:

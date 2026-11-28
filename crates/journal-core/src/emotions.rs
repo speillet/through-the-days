@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::OnceLock;
 
 const BUNDLED_VOCABULARY: &str = include_str!("../assets/emotion-vocabulary.json");
@@ -8,7 +8,7 @@ const BUNDLED_VOCABULARY: &str = include_str!("../assets/emotion-vocabulary.json
 /// Entries store emotion identifiers, so an identifier is never renamed or reused; labels and
 /// descriptions are first-party English copy. The person's own words for a feeling belong in
 /// `Entry::another_emotion`, which accepts any language.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EmotionVocabulary {
     pub version: u32,
@@ -17,7 +17,7 @@ pub struct EmotionVocabulary {
 }
 
 /// One of the four families that group emotions by pleasantness and energy.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EmotionFamily {
     pub id: String,
@@ -25,7 +25,7 @@ pub struct EmotionFamily {
 }
 
 /// A selectable emotion with its short English description.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Emotion {
     pub id: String,

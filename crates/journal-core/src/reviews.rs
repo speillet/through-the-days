@@ -61,7 +61,7 @@ impl StoredReview {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WeeklyReview {
     pub week_start: String,
