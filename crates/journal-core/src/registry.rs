@@ -277,3 +277,54 @@ fn sort_newest_first(backups: &mut [Registered]) {
             .then_with(|| b.name.cmp(&a.name))
     });
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, reason = "a failed unwrap is a failed test")]
+mod tests {
+    use super::file_digest;
+    use crate::Error;
+    use sha2::{Digest, Sha256};
+    use std::{fs, os::unix::fs::symlink, sync::mpsc, thread, time::Duration};
+
+    /// local-data-protection — Backup folder that others can write to: the digest that lets
+    /// pruning delete a registered backup is taken from a regular file only. A named pipe put
+    /// in the backup's place, which nothing writes to, is refused at once instead of waiting
+    /// for a writer, and a symbolic link is never followed, whether it leads to a backup or to
+    /// a device that never stops producing bytes.
+    #[test]
+    fn the_digest_of_a_registered_backup_never_waits_for_a_pipe_or_follows_a_link() {
+        let folder = tempfile::tempdir().unwrap();
+        let content = b"Synthetic encrypted backup";
+        let backup = folder.path().join("ttd-1795363200-synthetic.ttd.age");
+        fs::write(&backup, content).unwrap();
+        assert_eq!(
+            file_digest(&backup),
+            Ok(format!("{:x}", Sha256::digest(content)))
+        );
+
+        let pipe = folder.path().join("ttd-1795449600-pipe.ttd.age");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .unwrap();
+        assert!(made.success());
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            let _ = sender.send(file_digest(&pipe));
+        });
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(5)),
+            Ok(Err(Error::Backup)),
+            "a pipe without a writer is refused instead of awaited"
+        );
+
+        let link = folder.path().join("ttd-1795536000-link.ttd.age");
+        symlink(&backup, &link).unwrap();
+        assert_eq!(file_digest(&link), Err(Error::Backup));
+        let device = folder.path().join("ttd-1795622400-device.ttd.age");
+        symlink("/dev/zero", &device).unwrap();
+        assert_eq!(file_digest(&device), Err(Error::Backup));
+        assert_eq!(file_digest(folder.path()), Err(Error::Backup));
+        assert_eq!(fs::read(&backup).unwrap(), content, "nothing is changed");
+    }
+}
