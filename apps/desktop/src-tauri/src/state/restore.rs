@@ -385,18 +385,10 @@ fn restore_into_new_file(path: &Path, backup: &Path, passphrase: &str) -> Result
 #[allow(clippy::unwrap_used, reason = "a failed unwrap is a failed test")]
 mod tests {
     use super::{RestoreOutcome, RestoreSource, StagedCopy, copy_at_most, is_backup_name};
+    use crate::testing::names_in;
     use std::{fs, io, os::unix::fs::symlink, path::Path, sync::mpsc, thread, time::Duration};
 
     const BACKUP: &[u8] = b"Synthetic encrypted backup";
-
-    fn names_in(folder: &Path) -> Vec<String> {
-        let mut names: Vec<_> = fs::read_dir(folder)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-            .collect();
-        names.sort();
-        names
-    }
 
     /// local-data-protection — Safe restore / Backup replaced before it is copied: a symbolic
     /// link that replaced a registered backup is never followed by the private copy, while a

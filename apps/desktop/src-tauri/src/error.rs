@@ -108,31 +108,33 @@ mod tests {
         ]
     }
 
+    /// Every journal-core error, each naming the next. The match is exhaustive, so an error added
+    /// to journal-core fails to compile here until it is listed.
     fn core_errors() -> Vec<CommandError> {
-        [
-            Error::Storage,
-            Error::Conflict,
-            Error::Occupied,
-            Error::NotFound,
-            Error::Date,
-            Error::Document,
-            Error::MigrationRequired,
-            Error::Unsupported,
-            Error::Damaged,
-            Error::Score,
-            Error::Completion,
-            Error::Reflection,
-            Error::Emotion,
-            Error::Backup,
-            Error::BackupValidation,
-            Error::BackupRegistry,
-            Error::BackupFolder,
-            Error::Restore,
-            Error::Passphrase,
-        ]
-        .into_iter()
-        .map(CommandError::from)
-        .collect()
+        let next = |error: &Error| match error {
+            Error::Storage => Some(Error::Conflict),
+            Error::Conflict => Some(Error::Occupied),
+            Error::Occupied => Some(Error::NotFound),
+            Error::NotFound => Some(Error::Date),
+            Error::Date => Some(Error::Document),
+            Error::Document => Some(Error::MigrationRequired),
+            Error::MigrationRequired => Some(Error::Unsupported),
+            Error::Unsupported => Some(Error::Damaged),
+            Error::Damaged => Some(Error::Score),
+            Error::Score => Some(Error::Completion),
+            Error::Completion => Some(Error::Reflection),
+            Error::Reflection => Some(Error::Emotion),
+            Error::Emotion => Some(Error::Backup),
+            Error::Backup => Some(Error::BackupValidation),
+            Error::BackupValidation => Some(Error::BackupRegistry),
+            Error::BackupRegistry => Some(Error::BackupFolder),
+            Error::BackupFolder => Some(Error::Restore),
+            Error::Restore => Some(Error::Passphrase),
+            Error::Passphrase => None,
+        };
+        std::iter::successors(Some(Error::Storage), next)
+            .map(CommandError::from)
+            .collect()
     }
 
     /// Codes are only useful to the renderer if its `ErrorCode` union knows them.
