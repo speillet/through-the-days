@@ -18,7 +18,7 @@ export function TrendsView() {
   const filters = useReadingSelection();
   const selected = date ?? today;
   const { preferences } = usePreferences();
-  const days = preferences.timelineDays ?? 14;
+  const days = preferences.timelineDays;
   const key = JSON.stringify({ ...filters, from: addDays(selected, 1 - days), to: selected });
   const { data, error } = useReadingQuery(useCallback(() => api.readingReport(JSON.parse(key)), [api, key]));
   return (

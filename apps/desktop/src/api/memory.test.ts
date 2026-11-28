@@ -13,7 +13,7 @@ import {
   MEMORY_STORAGE_KEY,
   OPEN_FAILED_MESSAGE,
 } from './memory';
-import type { CommandError, Entry, ErrorCode } from './types';
+import type { CommandError, Entry, ErrorCode, Preferences } from './types';
 
 const DAY_MS = 86_400_000;
 
@@ -834,6 +834,22 @@ describe('memory journal: messages', () => {
     expect(ERROR_MESSAGES.safetyBackupFailed).toBe(
       'A safety backup of your current journal could not be made, so nothing was restored. If your current journal is damaged, you can restore without a safety backup.',
     );
+  });
+});
+
+describe('memory journal: journals stored by an earlier version', () => {
+  it('always returns the timeline preferences and the insights choice, as journal-core does', async () => {
+    const { api, storage, restart } = setup();
+    const saved = await api.saveEntry(draft());
+    damageStore(storage, (stored) => {
+      const journal = stored.journal as { entries: { entry: Partial<Entry> }[]; preferences: Partial<Preferences> };
+      delete journal.entries[0].entry.includeInInsights;
+      delete journal.preferences.timelineDays;
+      delete journal.preferences.timelineMetrics;
+    });
+    const reopened = restart();
+    await expect(reopened.listEntries()).resolves.toEqual([{ ...saved, includeInInsights: true }]);
+    await expect(reopened.getPreferences()).resolves.toEqual(DEFAULT_PREFERENCES);
   });
 });
 

@@ -88,7 +88,7 @@ export function previewReport(entries: Entry[], request: SearchRequest): Reading
   // As natively, insight filters, the search text included, only use wins included in insights.
   const selected = filterPreviewEntries(entries, { ...request, hasWin: null }, true).filter(
     (entry) =>
-      entry.includeInInsights !== false &&
+      entry.includeInInsights &&
       (request.hasWin == null || entry.wins.some((win) => win.includeInInsights) === request.hasWin),
   );
   const days: ReadingReport['days'] = [];
@@ -137,7 +137,7 @@ export function fnv1a(text: string): number {
 
 export function previewFingerprint(entries: Entry[], from: string, to: string): string {
   const text = JSON.stringify(
-    entries.filter((e) => e.date >= from && e.date <= to && e.includeInInsights !== false),
+    entries.filter((e) => e.date >= from && e.date <= to && e.includeInInsights),
   );
   return fnv1a(text).toString(16);
 }
