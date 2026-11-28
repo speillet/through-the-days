@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiProvider, type JournalApi } from '../api/client';
-import { createMemoryApi, createMemoryStorage } from '../api/memory';
 import { newDraft } from '../domain/entry';
+import { createTestApi, createTestClock } from '../test/render';
 import { BackupProvider, useBackup } from './backup';
 import { TodayProvider } from './clock';
 import { PreferencesProvider } from './preferences';
@@ -12,7 +12,6 @@ afterEach(() => {
 });
 
 const PASSPHRASE = 'synthetic passphrase one';
-const DAY_MS = 86_400_000;
 
 function Probe() {
   const { status } = useBackup();
@@ -34,16 +33,11 @@ function renderBackup(api: JournalApi, intervalMs?: number, keychainRecheckMs?: 
 }
 
 async function preparedJournal() {
-  let now = new Date('2026-11-22T09:00:00Z');
-  const api = createMemoryApi({ storage: createMemoryStorage(), now: () => now });
+  const clock = createTestClock();
+  const api = createTestApi({ now: clock.now });
   await api.chooseBackupFolder();
   await api.setBackupPassphrase(PASSPHRASE, false);
-  return {
-    api,
-    advanceDays(days: number) {
-      now = new Date(now.getTime() + days * DAY_MS);
-    },
-  };
+  return { api, advanceDays: clock.advanceDays };
 }
 
 describe('BackupProvider', () => {
@@ -63,7 +57,7 @@ describe('BackupProvider', () => {
   });
 
   it('reports a pending backup when the passphrase is unavailable, without blocking', async () => {
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     await api.chooseBackupFolder();
     renderBackup(api);
     expect(await screen.findByText('Backup needsPassphrase, 0 saved')).toBeInTheDocument();
@@ -125,7 +119,7 @@ describe('BackupProvider', () => {
   });
 
   it('looks again while the launch waits for macOS Keychain, then makes the due backup', async () => {
-    const api = createMemoryApi({ storage: createMemoryStorage(), now: () => new Date('2026-11-22T09:00:00Z') });
+    const api = createTestApi();
     await api.chooseBackupFolder();
     // The launch still reads the remembered passphrase: the session has none yet.
     const waiting = { ...(await api.backupStatus()), remembered: true, keychainPending: true };

@@ -19,6 +19,24 @@ export function createTestApi(options: MemoryApiOptions = {}): JournalApi {
   return createMemoryApi({ storage: createMemoryStorage(), now: () => TEST_NOW, ...options });
 }
 
+const DAY_MS = 86_400_000;
+
+/** A clock a test moves by hand: give `now` to the journal, then `set` or `advanceDays`. */
+export function createTestClock(start: Date = TEST_NOW) {
+  let current = start;
+  return {
+    now: () => current,
+    set(next: Date) {
+      current = next;
+    },
+    advanceDays(days: number) {
+      current = new Date(current.getTime() + days * DAY_MS);
+    },
+    /** Whole seconds since the Unix epoch, as the journal stores times. */
+    unix: () => Math.floor(current.getTime() / 1000),
+  };
+}
+
 export interface ProviderRenderOptions extends Omit<RenderOptions, 'wrapper'> {
   api?: JournalApi;
   initialView?: View;

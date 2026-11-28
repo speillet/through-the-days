@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiProvider } from '../api/client';
-import { createMemoryApi, createMemoryStorage } from '../api/memory';
+import { createTestApi, createTestClock } from '../test/render';
 import { TodayProvider, useToday } from './clock';
 import { PreferencesProvider, usePreferences } from './preferences';
 
@@ -10,8 +10,8 @@ afterEach(() => {
 });
 
 function setup(start: Date) {
-  let now = start;
-  const api = createMemoryApi({ storage: createMemoryStorage(), now: () => now });
+  const clock = createTestClock(start);
+  const api = createTestApi({ now: clock.now });
   const controls: { changeTimeZone?: (zone: string) => Promise<boolean> } = {};
   function Probe() {
     const { today } = useToday();
@@ -32,12 +32,7 @@ function setup(start: Date) {
       </PreferencesProvider>
     </ApiProvider>,
   );
-  return {
-    setNow(next: Date) {
-      now = next;
-    },
-    controls,
-  };
+  return { set: clock.set, controls };
 }
 
 /**
@@ -58,7 +53,7 @@ describe('TodayProvider', () => {
 
   it('renders nothing until the journal gives its date, so no view starts from a guess', async () => {
     let answer: (date: string) => void = () => {};
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     vi.spyOn(api, 'today').mockImplementation(() => new Promise((resolve) => (answer = resolve)));
     function Probe() {
       return <p>Today is {useToday().today}</p>;
@@ -78,7 +73,7 @@ describe('TodayProvider', () => {
   });
 
   it('falls back to the local clock in the journal time zone if the first answer fails', async () => {
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     vi.spyOn(api, 'today').mockRejectedValue({ code: 'storage', message: 'Synthetic failure.' });
     function Probe() {
       return <p>Today is {useToday().today}</p>;
@@ -99,7 +94,7 @@ describe('TodayProvider', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const clock = setup(new Date('2026-11-22T22:59:30Z'));
     expect(await screen.findByText('Today is 2026-11-22')).toBeInTheDocument();
-    clock.setNow(new Date('2026-11-22T23:00:30Z')); // 00:00:30 in Paris
+    clock.set(new Date('2026-11-22T23:00:30Z')); // 00:00:30 in Paris
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
@@ -113,7 +108,7 @@ describe('TodayProvider', () => {
     const clock = setup(new Date('2026-11-22T22:59:50Z'));
     await settle();
     expect(screen.getByText('Today is 2026-11-22')).toBeInTheDocument();
-    clock.setNow(new Date('2026-11-22T23:00:00Z'));
+    clock.set(new Date('2026-11-22T23:00:00Z'));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(9_999);
     });
@@ -131,7 +126,7 @@ describe('TodayProvider', () => {
     const clock = setup(new Date('2026-03-28T23:00:05Z'));
     await settle();
     expect(screen.getByText('Today is 2026-03-29')).toBeInTheDocument();
-    clock.setNow(new Date('2026-03-29T22:00:00Z')); // Midnight on Monday in Paris
+    clock.set(new Date('2026-03-29T22:00:00Z')); // Midnight on Monday in Paris
     await act(async () => {
       await vi.advanceTimersByTimeAsync(22 * 3_600_000 + 59 * 60_000 + 54_999);
     });
@@ -145,7 +140,7 @@ describe('TodayProvider', () => {
   it('refreshes when the window regains focus', async () => {
     const clock = setup(new Date('2026-11-22T12:00:00Z'));
     await screen.findByText('Today is 2026-11-22');
-    clock.setNow(new Date('2026-11-23T12:00:00Z'));
+    clock.set(new Date('2026-11-23T12:00:00Z'));
     fireEvent.focus(window);
     expect(await screen.findByText('Today is 2026-11-23')).toBeInTheDocument();
   });
@@ -156,7 +151,7 @@ describe('TodayProvider', () => {
     await screen.findByText('Today is 2026-11-22');
     visibility.mockReturnValue('hidden');
     fireEvent(document, new Event('visibilitychange'));
-    clock.setNow(new Date('2026-11-23T06:00:00Z')); // 07:00 the next morning
+    clock.set(new Date('2026-11-23T06:00:00Z')); // 07:00 the next morning
     visibility.mockReturnValue('visible');
     fireEvent(document, new Event('visibilitychange'));
     expect(await screen.findByText('Today is 2026-11-23')).toBeInTheDocument();

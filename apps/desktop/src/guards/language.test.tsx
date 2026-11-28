@@ -6,9 +6,9 @@ import userEvent from '@testing-library/user-event';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
-import { createMemoryApi, createMemoryStorage, type MemoryApiOptions } from '../api/memory';
+import type { MemoryApiOptions } from '../api/memory';
 import { newDraft } from '../domain/entry';
-import { TEST_NOW } from '../test/render';
+import { createTestApi } from '../test/render';
 import {
   APP_ROOT,
   displayPath,
@@ -45,7 +45,7 @@ function frenchMac() {
 }
 
 async function openApp(options: MemoryApiOptions = {}) {
-  const api = createMemoryApi({ storage: createMemoryStorage(), now: () => TEST_NOW, ...options });
+  const api = createTestApi(options);
   render(<App api={api} />);
   return api;
 }
@@ -112,9 +112,7 @@ describe('English interface on a French Mac', () => {
   it('renders every startup state in English', async () => {
     frenchMac();
     for (const state of ['needsMigration', 'unsupported', 'failed'] as const) {
-      const { unmount } = render(
-        <App api={createMemoryApi({ storage: createMemoryStorage(), now: () => TEST_NOW, startup: { state } })} />,
-      );
+      const { unmount } = render(<App api={createTestApi({ startup: { state } })} />);
       await screen.findByRole('heading', { level: 1 });
       expectEnglish(`Startup: ${state}`);
       unmount();

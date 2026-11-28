@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApiProvider, isCommandError, isTauri, toCommandError, UNKNOWN_ERROR_MESSAGE, useApi } from './client';
-import { createMemoryApi, createMemoryStorage } from './memory';
+import { createTestApi } from '../test/render';
 
 afterEach(() => {
   delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
@@ -42,7 +42,7 @@ describe('ApiProvider', () => {
 
   it('provides the journal API to descendants', () => {
     render(
-      <ApiProvider api={createMemoryApi({ storage: createMemoryStorage() })}>
+      <ApiProvider api={createTestApi()}>
         <Probe />
       </ApiProvider>,
     );

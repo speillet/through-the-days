@@ -7,11 +7,11 @@ import type { Editor } from '@tiptap/core';
 import type { UserEvent } from '@testing-library/user-event';
 import { expect } from 'vitest';
 import type { JournalApi } from '../../api/client';
-import { createMemoryApi, createMemoryStorage } from '../../api/memory';
+import { createMemoryStorage } from '../../api/memory';
 import type { Entry, Preferences } from '../../api/types';
 import { documentText } from '../../domain/entry';
 import { DEFAULT_PREFERENCES } from '../../domain/preferences';
-import { renderWithProviders, TEST_NOW } from '../../test/render';
+import { createTestApi, createTestClock, renderWithProviders, TEST_NOW } from '../../test/render';
 import { TodayView } from './TodayView';
 
 /** Sunday 22 November 2026, TEST_NOW's journal date in Europe/Paris. */
@@ -19,13 +19,8 @@ export const DATE = '2026-11-22';
 
 export function createJournal(start: Date = TEST_NOW) {
   const storage = createMemoryStorage();
-  let now = start;
-  const clock = {
-    set(next: Date) {
-      now = next;
-    },
-  };
-  const open = () => createMemoryApi({ storage, now: () => now });
+  const clock = createTestClock(start);
+  const open = () => createTestApi({ storage, now: clock.now });
   return { api: open(), storage, clock, restart: open };
 }
 

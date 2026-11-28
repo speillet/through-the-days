@@ -4,6 +4,7 @@ import { ApiProvider, type JournalApi } from '../api/client';
 import { createMemoryApi, createMemoryStorage, ERROR_MESSAGES } from '../api/memory';
 import type { Preferences } from '../api/types';
 import { DEFAULT_PREFERENCES } from '../domain/preferences';
+import { createTestApi } from '../test/render';
 import { applyAppearance, restoreCachedAppearance } from './appearance';
 import { PreferencesProvider, usePreferences, type PreferencesContextValue } from './preferences';
 
@@ -41,7 +42,7 @@ const UNREADABLE = { code: 'document', message: ERROR_MESSAGES.document } as con
 
 describe('PreferencesProvider', () => {
   it('waits for the journal’s preferences before rendering', async () => {
-    const current = renderPreferences(createMemoryApi({ storage: createMemoryStorage() }));
+    const current = renderPreferences(createTestApi());
     expect(screen.getByText('Loading preferences')).toBeInTheDocument();
     expect(await screen.findByText('Theme: system')).toBeInTheDocument();
     expect(current.value?.preferences).toEqual(DEFAULT_PREFERENCES);
@@ -75,7 +76,7 @@ describe('PreferencesProvider', () => {
   });
 
   it('keeps the previous value and reports an English error when saving fails', async () => {
-    const current = renderPreferences(createMemoryApi({ storage: createMemoryStorage() }));
+    const current = renderPreferences(createTestApi());
     await screen.findByText('Theme: system');
     let saved = true;
     await act(async () => {
@@ -89,7 +90,7 @@ describe('PreferencesProvider', () => {
   });
 
   it('falls back to defaults, still rendering, when preferences cannot be read', async () => {
-    const api = createMemoryApi({ storage: createMemoryStorage() });
+    const api = createTestApi();
     vi.spyOn(api, 'getPreferences').mockRejectedValue({ code: 'storage', message: ERROR_MESSAGES.storage });
     const current = renderPreferences(api);
     expect(await screen.findByText('Theme: system')).toBeInTheDocument();
@@ -166,7 +167,7 @@ describe('PreferencesProvider', () => {
   });
 
   it('applies the theme and reduced-motion overrides to the document', async () => {
-    const current = renderPreferences(createMemoryApi({ storage: createMemoryStorage() }));
+    const current = renderPreferences(createTestApi());
     await screen.findByText('Theme: system');
     expect(html).not.toHaveAttribute('data-theme');
     await act(async () => {
@@ -182,7 +183,7 @@ describe('PreferencesProvider', () => {
   });
 
   it('applies the text size to the whole document', async () => {
-    const current = renderPreferences(createMemoryApi({ storage: createMemoryStorage() }));
+    const current = renderPreferences(createTestApi());
     await screen.findByText('Theme: system');
     await act(async () => {
       await current.value?.update({ textScale: 150 });
@@ -195,7 +196,7 @@ describe('PreferencesProvider', () => {
   });
 
   it('exposes Gentle view through the shared visibility rules', async () => {
-    const current = renderPreferences(createMemoryApi({ storage: createMemoryStorage() }));
+    const current = renderPreferences(createTestApi());
     await screen.findByText('Theme: system');
     await act(async () => {
       await current.value?.update({ gentle: true });

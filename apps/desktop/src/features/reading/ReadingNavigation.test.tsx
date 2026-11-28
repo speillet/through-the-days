@@ -4,6 +4,7 @@ import { expect, it } from 'vitest';
 import { App } from '../../App';
 import { createMemoryApi, createMemoryStorage } from '../../api/memory';
 import { newDraft } from '../../domain/entry';
+import { createTestApi, createTestClock } from '../../test/render';
 
 async function journal() {
   const api = createMemoryApi({
@@ -288,9 +289,8 @@ function passTime(clock: { set(next: Date): void }, next: Date) {
 }
 
 function clockedJournal(start: Date) {
-  let now = start;
-  const api = createMemoryApi({ storage: createMemoryStorage(), now: () => now });
-  return { api, clock: { set: (next: Date) => (now = next) } };
+  const clock = createTestClock(start);
+  return { api: createTestApi({ now: clock.now }), clock };
 }
 
 it("returns Calendar to today's month with Today after paging, also when today is already chosen", async () => {
