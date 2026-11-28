@@ -76,6 +76,15 @@ describe('restore dialog', () => {
     await expect(api.listEntries()).resolves.toEqual([kept]);
   });
 
+  it('says what the safety backup protects: entries, weekly notes or milestones', async () => {
+    const { api, backup, status } = await journal();
+    renderDialog(api, { source: { kind: 'registered', name: backup.name }, label: 'Backup' }, status);
+    const dialog = await screen.findByRole('alertdialog', { name: 'Restore this backup?' });
+    expect(dialog).toHaveAccessibleDescription(
+      /If your current journal has entries, weekly notes or milestones, a safety backup of it is made in your backup folder first\./,
+    );
+  });
+
   it('restores nothing while writing is still waiting to be saved', async () => {
     const user = userEvent.setup();
     const { api, backup, status } = await journal();

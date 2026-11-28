@@ -697,6 +697,52 @@ describe('memory journal: backups', () => {
     expect(await api.listBackups()).toHaveLength(2);
   });
 
+  it('makes a safety backup of weekly notes or a milestone alone, as the native restore does', async () => {
+    const milestone = { id: '3f9c2d4e-6b7a-4c8d-9e0f-1a2b3c4d5e6f', date: '2026-11-22', title: 'Synthetic milestone', notes: '', revision: 0 };
+    const writes = [
+      (api: ReturnType<typeof createMemoryApi>) => api.saveWeeklyNotes('2026-11-16', 'Synthetic notes for the week.', 0),
+      (api: ReturnType<typeof createMemoryApi>) => api.saveMilestone(milestone),
+    ];
+    for (const write of writes) {
+      const { api, clock } = setup();
+      await api.chooseBackupFolder();
+      await api.setBackupPassphrase(PASSPHRASE, false);
+      await api.backupNow();
+      const [withoutThem] = await api.listBackups();
+      clock.advanceDays(1);
+      await write(api);
+      await expect(api.listEntries()).resolves.toEqual([]);
+      await expect(api.listTrash()).resolves.toEqual([]);
+
+      const outcome = await api.restoreBackup({ kind: 'registered', name: withoutThem.name }, PASSPHRASE);
+      expect(outcome).toEqual({ entries: 0, safetyBackup: true, setAside: null });
+      expect((await api.weeklyReview('2026-11-16')).notes).toBe('');
+      await expect(api.listMilestones()).resolves.toEqual([]);
+
+      // The safety backup, listed first, brings back what the restore replaced.
+      const [safety] = await api.listBackups();
+      expect(safety.name).not.toBe(withoutThem.name);
+      await expect(api.restoreBackup({ kind: 'registered', name: safety.name }, PASSPHRASE)).resolves.toMatchObject({
+        entries: 0,
+      });
+      expect((await api.weeklyReview('2026-11-16')).notes).toBe(write === writes[0] ? 'Synthetic notes for the week.' : '');
+      await expect(api.listMilestones()).resolves.toEqual(write === writes[1] ? [{ ...milestone, revision: 1 }] : []);
+    }
+  });
+
+  it('makes no safety backup for a generated summary alone, which is rebuilt from entries', async () => {
+    const { api } = setup();
+    await api.chooseBackupFolder();
+    await api.setBackupPassphrase(PASSPHRASE, false);
+    await api.backupNow();
+    const [backup] = await api.listBackups();
+    await api.generateWeeklySummary('2026-11-16');
+    expect((await api.weeklyReview('2026-11-16')).summary).not.toBeNull();
+    const outcome = await api.restoreBackup({ kind: 'registered', name: backup.name }, PASSPHRASE);
+    expect(outcome).toEqual({ entries: 0, safetyBackup: false, setAside: null });
+    expect(await api.listBackups()).toHaveLength(1);
+  });
+
   it('keeps each backup’s original passphrase after the passphrase changes', async () => {
     const { api } = setup();
     await api.chooseBackupFolder();

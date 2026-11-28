@@ -3,9 +3,13 @@
 mod common;
 
 use common::{
-    NOW, PASSPHRASE, V1_ENTRY_PAYLOAD, V2_ENTRY_ID, V2_ENTRY_PAYLOAD, age_files, previous_journal,
+    BACKUP_MAGIC, NOW, PASSPHRASE, V1_ENTRY_PAYLOAD, V2_ENTRY_ID, V2_ENTRY_PAYLOAD, V2_TRASHED_AT,
+    V2_TRASHED_ENTRY_PAYLOAD, age_files, decrypt, image_user_version, previous_journal,
+    version_2_journal,
 };
-use journal_core::{Depth, Entry, Error, Journal, Slot, list_backups, schema_version};
+use journal_core::{
+    Depth, Entry, Error, Journal, Milestone, Preferences, Slot, list_backups, schema_version,
+};
 use serde_json::Value;
 
 /// local-persistence — Safe migrations / Upgrade fictional database;
@@ -59,11 +63,97 @@ fn existing_journal_waits_for_recovery_then_migrates_with_nullable_progress() {
     assert_eq!(stored, expected, "nothing else in the payload changed");
 }
 
-/// local-persistence — Safe migrations: entries stored by the current schema version keep
-/// loading. A field removed, renamed or added without a default fails here, before a later
-/// version could ship without the migration step it needs.
+/// local-persistence — Safe migrations / Upgrade fictional database, from a journal exactly as
+/// version 2 stored it; local-data-protection — Recoverable pre-migration backup.
+///
+/// Every journal of the release before weekly reviews takes this upgrade. Its entries load as
+/// they were stored, the trashed one keeps its deletion time, the preferences keep every field,
+/// and each upgraded entry stays included in insights, so Trends and Weekly Review count it.
 #[test]
-fn frozen_current_version_payload_still_loads_with_every_field() {
+fn version_2_journal_waits_for_recovery_then_upgrades_with_its_trash_and_preferences() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("previous.sqlite");
+    version_2_journal(&path);
+    let original = std::fs::read(&path).unwrap();
+    assert_eq!(original[18..20], [2, 2], "a write-ahead-log journal file");
+    assert_eq!(schema_version(&path), Ok(Some(2)));
+    assert_eq!(Journal::open(&path).err(), Some(Error::MigrationRequired));
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+
+    let journal = Journal::migrate_with_backup(&path, directory.path(), PASSPHRASE, NOW).unwrap();
+    assert_eq!(schema_version(&path), Ok(Some(3)));
+    let backups = age_files(directory.path());
+    assert_eq!(backups.len(), 1);
+    let plaintext = decrypt(&backups[0], PASSPHRASE);
+    assert_eq!(
+        image_user_version(&plaintext[BACKUP_MAGIC.len() + 1..]),
+        2,
+        "the pre-migration backup holds the version-2 journal"
+    );
+
+    // Neither stored entry chose whether to be included in insights: version 2 had no choice.
+    for payload in [V2_ENTRY_PAYLOAD, V2_TRASHED_ENTRY_PAYLOAD] {
+        let stored: Value = serde_json::from_str(payload).unwrap();
+        assert_eq!(stored.get("includeInInsights"), None);
+    }
+    let entries = journal.list().unwrap();
+    assert_eq!(
+        entries,
+        vec![serde_json::from_str::<Entry>(V2_ENTRY_PAYLOAD).unwrap()]
+    );
+    assert!(entries[0].include_in_insights);
+    let trash = journal.trash_items().unwrap();
+    assert_eq!(trash.len(), 1);
+    assert_eq!(
+        trash[0].entry,
+        serde_json::from_str::<Entry>(V2_TRASHED_ENTRY_PAYLOAD).unwrap()
+    );
+    assert_eq!(trash[0].deleted_at, V2_TRASHED_AT);
+    assert!(trash[0].entry.include_in_insights);
+    let week = journal.weekly_review("2026-11-21").unwrap();
+    assert_eq!(
+        (
+            week.report.entries,
+            week.report.mood.observations,
+            week.report.wins
+        ),
+        (1, 1, 1),
+        "Weekly Review and Trends count the upgraded entry"
+    );
+    assert_eq!(
+        journal.preferences().unwrap(),
+        Preferences {
+            time_zone: "Europe/London".into(),
+            theme: "dark".into(),
+            gentle: true,
+            show_durations: false,
+            show_toolbar: false,
+            show_scores: false,
+            sidebar_open: false,
+            reduce_motion: true,
+            default_depth: Depth::Deep,
+            show_word_count: true,
+            text_scale: 130,
+            ..Preferences::default()
+        }
+    );
+
+    // The upgraded journal holds weekly notes and milestones like a new one.
+    assert!(!journal.holds_reading_records().unwrap());
+    journal
+        .save_weekly_notes("2026-11-21", "Synthetic notes after the upgrade.", 0)
+        .unwrap();
+    journal
+        .save_milestone(Milestone::new("2026-11-21", "Synthetic milestone"))
+        .unwrap();
+    assert!(journal.holds_reading_records().unwrap());
+}
+
+/// local-persistence — Safe migrations: entries stored by version 2 keep loading. A field
+/// removed, renamed or added without a default fails here, before a later version could ship
+/// without the migration step it needs.
+#[test]
+fn frozen_version_2_payload_still_loads_with_every_field() {
     let entry: Entry = serde_json::from_str(V2_ENTRY_PAYLOAD).unwrap();
     assert_eq!(
         (entry.id.as_str(), entry.date.as_str(), entry.slot),

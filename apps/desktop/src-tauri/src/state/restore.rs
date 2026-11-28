@@ -89,12 +89,13 @@ impl Core {
     ///
     /// The chosen backup is copied and verified first, so a backup that cannot be reached
     /// (`backupUnavailable`), a wrong passphrase or a damaged file changes nothing. When the
-    /// current journal holds any entry, including trash, and a folder and the session passphrase
-    /// are available, a safety backup of it is published before it is replaced. If the journal
-    /// cannot be read for that, the restore stops with `safetyBackupFailed`, unless
-    /// `without_safety_backup` confirms that it may go ahead without one. Any other failure of
-    /// the safety backup, such as a disconnected backup drive, cancels the restore with its own
-    /// error. When the start failed, found a journal this version cannot open, or found an
+    /// current journal holds any entry, including trash, weekly notes or a milestone, and a
+    /// folder and the session passphrase are available, a safety backup of it is published
+    /// before it is replaced. If the journal cannot be read for that, the restore stops with
+    /// `safetyBackupFailed`, unless `without_safety_backup` confirms that it may go ahead
+    /// without one. Any other failure of the safety backup, such as a disconnected backup
+    /// drive, cancels the restore with its own error. When the start failed, found a journal
+    /// this version cannot open, or found an
     /// older journal waiting for its upgrade, the backup replaces the journal file instead (see [`Self::restore_at_startup`]). A failed restore
     /// leaves the journal unchanged.
     pub fn restore_backup(
@@ -214,8 +215,9 @@ impl Core {
         }
     }
 
-    /// Publishes a safety backup of a journal that holds any entry, including trash, whenever a
-    /// folder and the session passphrase make that possible. Returns whether one was published.
+    /// Publishes a safety backup of a journal that holds any entry, including trash, weekly notes
+    /// or a milestone, whenever a folder and the session passphrase make that possible. Returns
+    /// whether one was published.
     ///
     /// Only a journal that cannot be read, including one whose snapshot reports `damaged`, may
     /// be replaced without a safety backup: the restore stops with `safetyBackupFailed` unless
@@ -230,7 +232,7 @@ impl Core {
         if self.plan.folder.is_none() || self.passphrase.is_none() {
             return Ok(false);
         }
-        match self.holds_entries() {
+        match self.holds_records() {
             Ok(false) => return Ok(false),
             Ok(true) => match self.publish_safety_backup(now) {
                 Ok(()) => return Ok(true),
@@ -248,9 +250,13 @@ impl Core {
         }
     }
 
-    fn holds_entries(&self) -> Result<bool, CommandError> {
+    /// Whether the journal holds anything authored that a restore would replace: an entry,
+    /// including trash, weekly notes or a milestone. Weekly notes and milestones need no entry.
+    fn holds_records(&self) -> Result<bool, CommandError> {
         let journal = self.journal()?;
-        Ok(!journal.list()?.is_empty() || !journal.trash_items()?.is_empty())
+        Ok(!journal.list()?.is_empty()
+            || !journal.trash_items()?.is_empty()
+            || journal.holds_reading_records()?)
     }
 
     fn publish_safety_backup(&mut self, now: DateTime<Utc>) -> Result<(), CommandError> {

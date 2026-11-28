@@ -195,6 +195,29 @@ fn execute(path: &Path, sql: &str) {
         .unwrap();
 }
 
+/// Writes the frozen fictional journal of schema version 2, the release before weekly reviews
+/// and milestones, exactly as it stored one: an active Evening entry on 21 November 2026, an
+/// earlier Evening entry of that date in the trash, and display preferences with every field
+/// set.
+fn version_2_journal(path: &Path) {
+    let connection = rusqlite::Connection::open(path).unwrap();
+    connection.execute_batch(fixtures::V2_SCHEMA).unwrap();
+    for (id, revision, payload, trashed_at) in fixtures::V2_ENTRY_ROWS {
+        connection
+            .execute(
+                fixtures::V2_INSERT_ENTRY,
+                rusqlite::params![id, revision, payload, trashed_at],
+            )
+            .unwrap();
+    }
+    connection
+        .execute(
+            fixtures::V2_INSERT_PREFERENCES,
+            [fixtures::V2_DISPLAY_PREFERENCES],
+        )
+        .unwrap();
+}
+
 /// Writes the frozen fictional schema-version-1 journal, with one Morning entry on 22 November
 /// 2026, and returns that entry's id. Version 1 had no trash column and no perceived progress.
 fn previous_journal(path: &Path) -> String {
@@ -650,6 +673,55 @@ fn an_older_journal_upgrades_at_launch_when_its_backup_can_be_made() {
     assert_eq!(
         text_of(&app.lock().journal().unwrap().get(&id).unwrap()),
         "Synthetic previous journal."
+    );
+    assert_eq!(list_backups(&fixture.folder()).unwrap().len(), 1);
+}
+
+/// local-persistence — Safe migrations / Upgrade fictional database, from a journal exactly as
+/// the release before weekly reviews stored it: launch reports version 2 and leaves the journal
+/// unchanged while no backup of it can be made, then a launch with a backup folder and the
+/// remembered passphrase upgrades it with its entries, trash and preferences.
+#[test]
+fn a_version_2_journal_reports_its_version_then_upgrades_at_launch() {
+    let fixture = Fixture::with_keychain(FakeKeychain::holding(PASSPHRASE));
+    fs::create_dir_all(&fixture.paths().data_dir).unwrap();
+    version_2_journal(&fixture.paths().journal);
+    let original = fixture.journal_bytes();
+    let app = fixture.launch();
+    let startup = app.startup_status();
+    assert_eq!(startup.state, StartupState::NeedsMigration);
+    assert_eq!(startup.from_version, Some(2));
+    assert_eq!(startup.message, None);
+    assert_eq!(fixture.journal_bytes(), original);
+    drop(app);
+
+    fixture.store_plan(&BackupPlan {
+        folder: Some(fixture.folder()),
+        remember: true,
+        ..BackupPlan::default()
+    });
+    let app = fixture.launch();
+    assert_eq!(app.startup_status().state, StartupState::Ready);
+    let core = app.lock();
+    let entries = core.list_entries().unwrap();
+    assert_eq!(
+        entries,
+        [serde_json::from_str::<Entry>(fixtures::V2_ENTRY_PAYLOAD).unwrap()]
+    );
+    let trash = core.list_trash().unwrap();
+    assert_eq!(
+        (trash.len(), trash[0].entry.id.as_str(), trash[0].deleted_at),
+        (1, fixtures::V2_TRASHED_ENTRY_ID, fixtures::V2_TRASHED_AT)
+    );
+    assert!(entries[0].include_in_insights && trash[0].entry.include_in_insights);
+    let preferences = core.preferences().unwrap();
+    assert_eq!(
+        (
+            preferences.time_zone.as_str(),
+            preferences.theme.as_str(),
+            preferences.text_scale
+        ),
+        ("Europe/London", "dark", 130)
     );
     assert_eq!(list_backups(&fixture.folder()).unwrap().len(), 1);
 }
@@ -1878,6 +1950,79 @@ fn restore_publishes_a_safety_backup_first_and_brings_back_the_backed_up_journal
             "Synthetic entry after the backup."
         ]
     );
+}
+
+/// local-data-protection — Safe restore; weekly-reviews — Authorship and source freshness;
+/// personal-timeline — User-owned milestones: a journal whose only records are weekly notes,
+/// or a milestone, gets a safety backup before a restore replaces it, so what was written since
+/// the last backup stays recoverable.
+#[test]
+fn weekly_notes_or_a_milestone_alone_get_a_safety_backup_before_a_restore() {
+    fn write_notes(journal: &Journal) {
+        journal
+            .save_weekly_notes("2026-11-16", "Synthetic notes for the week.", 0)
+            .unwrap();
+    }
+    fn add_milestone(journal: &Journal) {
+        journal
+            .save_milestone(journal_core::Milestone::new(
+                "2026-11-22",
+                "Synthetic milestone",
+            ))
+            .unwrap();
+    }
+    let written = |journal: &Journal| {
+        (
+            journal.weekly_review("2026-11-16").unwrap().notes,
+            journal.milestones().unwrap(),
+        )
+    };
+    for write in [write_notes as fn(&Journal), add_milestone] {
+        let fixture = Fixture::new();
+        let app = ready_with_backups(&fixture);
+        app.lock().backup_now(noon()).unwrap();
+        let without_them = app.lock().list_backups().unwrap().remove(0);
+        write(app.lock().journal().unwrap());
+        let before = written(app.lock().journal().unwrap());
+        assert!(app.lock().list_entries().unwrap().is_empty());
+        assert!(app.lock().list_trash().unwrap().is_empty());
+
+        let restored_at = noon() + Duration::minutes(5);
+        let outcome = app
+            .lock()
+            .restore_backup(
+                RestoreSource::Registered {
+                    name: without_them.name.clone(),
+                },
+                PASSPHRASE,
+                false,
+                restored_at,
+            )
+            .unwrap();
+        assert_eq!(
+            outcome,
+            RestoreOutcome {
+                entries: 0,
+                safety_backup: true,
+                set_aside: None
+            },
+            "{before:?}"
+        );
+        assert_eq!(
+            written(app.lock().journal().unwrap()),
+            (String::new(), vec![])
+        );
+
+        // The safety backup, listed first, holds the notes or the milestone the restore replaced.
+        let safety = app.lock().list_backups().unwrap().remove(0);
+        assert_eq!(safety.created_at, restored_at.timestamp());
+        let check = TempDir::new().unwrap();
+        let mut replaced = Journal::open(&check.path().join("check.sqlite")).unwrap();
+        replaced
+            .restore_from(&fixture.folder().join(&safety.name), PASSPHRASE)
+            .unwrap();
+        assert_eq!(written(&replaced), before);
+    }
 }
 
 #[test]

@@ -98,3 +98,8 @@ The system SHALL allow editable, removable private dated milestones without deri
 
 - **WHEN** a validated encrypted journal backup containing private milestones is restored
 - **THEN** their identifiers, dates, titles, notes and revisions are preserved with the journal.
+
+#### Scenario: Milestone protected before a restore
+
+- **WHEN** a restore would replace a journal whose only record is a private milestone, and a backup folder and the session passphrase are available
+- **THEN** a safety backup that brings the milestone back is published first, as for a journal with entries.

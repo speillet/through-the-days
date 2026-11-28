@@ -75,6 +75,11 @@ The system SHALL apply versioned schema migrations without silently dropping exi
 - **WHEN** a previous supported database version is opened
 - **THEN** migration preserves its entries, dates, and structured answers.
 
+#### Scenario: Upgrade from the version before reading
+
+- **WHEN** a journal stored exactly as schema version 2 did, with an active entry, an entry in the trash and display preferences, is opened by a version that reads it as version 2 and upgrades it after its pre-migration backup
+- **THEN** that backup holds the version-2 journal, the entries load as stored, the trashed entry keeps its deletion time, every display preference is kept, and every upgraded entry is included in insights, so Trends and Weekly Review count it.
+
 #### Scenario: Migration failure
 
 - **WHEN** a migration cannot complete

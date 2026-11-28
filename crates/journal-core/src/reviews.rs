@@ -219,6 +219,19 @@ impl Journal {
         Ok(())
     }
 
+    /// Whether the journal holds authored reading records: any milestone, or a week whose notes
+    /// are not empty. They need no entry, and a restore replaces them with the journal, so a
+    /// journal that holds them deserves a safety backup first. A generated summary alone does
+    /// not count: it is rebuilt from entries.
+    pub fn holds_reading_records(&self) -> Result<bool, Error> {
+        Ok(self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM timeline_milestones)
+                 OR EXISTS(SELECT 1 FROM weekly_reviews WHERE json_extract(payload,'$.notes')<>'')",
+            [],
+            |row| row.get(0),
+        )?)
+    }
+
     pub fn milestones(&self) -> Result<Vec<Milestone>, Error> {
         payloads(
             &self.connection,
