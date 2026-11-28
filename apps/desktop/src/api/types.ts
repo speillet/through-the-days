@@ -170,6 +170,12 @@ export interface BackupStatus {
   keychainPending: boolean;
   /** Set only in the reply to setBackupPassphrase or forgetBackupPassphrase. */
   keychainWarning: KeychainWarning | null;
+  /**
+   * Set only in the reply to setBackupPassphrase or forgetBackupPassphrase: the change applies
+   * to this session, but the backup settings of this Mac could not be saved, so the next launch
+   * follows the Keychain choice stored before.
+   */
+  settingsNotSaved: boolean;
   /** Journal date of the last successful backup. */
   lastSuccessDate: string | null;
   /** Unix seconds of the last successful backup. */

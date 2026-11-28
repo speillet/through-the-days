@@ -49,7 +49,10 @@ export function BackupSection() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [passphrasePurpose, setPassphrasePurpose] = useState<PassphrasePurpose | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<RestoreTarget | null>(null);
-  /** What macOS Keychain did not do after the last passphrase change, until the next one. */
+  /**
+   * What macOS Keychain or the backup settings of this Mac did not keep after the last
+   * passphrase change, until the next one.
+   */
   const [keychainNotice, setKeychainNotice] = useState<string | null>(null);
   const [backups, setBackups] = useState<BackupRecord[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -117,7 +120,7 @@ export function BackupSection() {
       const next = await api.forgetBackupPassphrase();
       setStatus(next);
       // Forgotten all the same; Keychain may still hold the passphrase.
-      const warning = passphraseForgottenWarning(next.keychainWarning);
+      const warning = passphraseForgottenWarning(next);
       setKeychainNotice(warning);
       if (warning) return;
       setFeedback({
@@ -133,10 +136,13 @@ export function BackupSection() {
       if (picked) setRestoreTarget({ source: { kind: 'picked' }, label: `Backup file: ${picked.name}` });
     });
 
-  /** The passphrase applies to this session, even when macOS Keychain did not follow. */
+  /**
+   * The passphrase applies to this session, even when macOS Keychain or the backup settings of
+   * this Mac did not follow.
+   */
   function passphraseSaved(next: BackupStatus, purpose: PassphrasePurpose | null) {
     setPassphrasePurpose(null);
-    const warning = passphraseSavedWarning(next.keychainWarning);
+    const warning = passphraseSavedWarning(next);
     setKeychainNotice(warning);
     if (purpose === 'due') {
       setStatus(next);

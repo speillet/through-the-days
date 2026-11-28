@@ -109,6 +109,10 @@ pub struct BackupStatus {
     pub keychain_pending: bool,
     /// Set only in the reply to a passphrase change that Keychain did not follow.
     pub keychain_warning: Option<KeychainWarning>,
+    /// Set only in the reply to a passphrase change whose backup settings could not be stored.
+    /// The change still applies to this session, but the next launch follows the Keychain choice
+    /// stored before.
+    pub settings_not_saved: bool,
     pub last_success_date: Option<String>,
     pub last_success_at: Option<i64>,
     pub last_error: Option<CommandError>,
@@ -144,6 +148,8 @@ impl AppState {
     /// Keychain is used without holding the journal. When it fails, the passphrase still works
     /// for this session and is recorded as not remembered, and the status returned says what
     /// Keychain did not do, including a passphrase remembered before that it may still hold.
+    /// Backup settings that cannot be stored never undo the change either: the status returned
+    /// says they were not saved.
     pub fn set_backup_passphrase(
         &self,
         passphrase: Zeroizing<String>,
@@ -164,16 +170,21 @@ impl AppState {
         } else {
             KeychainWarning::after_delete(keychain)
         };
-        core.adopt_passphrase(passphrase, remember, keychain)?;
+        let settings_not_saved = core
+            .adopt_passphrase(passphrase, remember, keychain)
+            .is_err();
         Ok(BackupStatus {
             keychain_warning,
+            settings_not_saved,
             ..core.backup_status(now)
         })
     }
 
     /// Forgets the session passphrase and removes the Keychain item. When Keychain cannot
     /// remove it, the passphrase is forgotten all the same and no longer read at launch, and the
-    /// status returned says it may remain in Keychain.
+    /// status returned says it may remain in Keychain. When the backup settings cannot be stored,
+    /// the passphrase is forgotten for this session, and the status returned says they were not
+    /// saved, so a later launch may still read the item.
     pub fn forget_backup_passphrase(
         &self,
         now: DateTime<Utc>,
@@ -181,9 +192,10 @@ impl AppState {
         let _changing = self.secrets();
         let deleted = self.keychain.delete();
         let mut core = self.lock();
-        core.forget_passphrase(deleted)?;
+        let settings_not_saved = core.forget_passphrase(deleted).is_err();
         Ok(BackupStatus {
             keychain_warning: KeychainWarning::after_delete(deleted),
+            settings_not_saved,
             ..core.backup_status(now)
         })
     }
@@ -208,6 +220,7 @@ impl Core {
             remembered: self.plan.remember,
             keychain_pending: self.launch_read == Some(self.secret_generation),
             keychain_warning: None,
+            settings_not_saved: false,
             last_success_date: self.plan.last_success_date.clone(),
             last_success_at: self.plan.last_success_at,
             last_error: self.last_error.clone(),
@@ -320,7 +333,8 @@ impl Core {
     ///
     /// After a Keychain failure the passphrase still works for this session and is recorded as
     /// not remembered, so the next launch never reads an outdated item. The error is a backup
-    /// plan that could not be stored.
+    /// plan that could not be stored: the session keeps the change all the same, and the next
+    /// launch follows the plan stored before.
     pub(super) fn adopt_passphrase(
         &mut self,
         passphrase: Zeroizing<String>,
@@ -344,7 +358,8 @@ impl Core {
         self.persist_plan()
     }
 
-    /// Records that Keychain now remembers the session passphrase, when `stored` succeeded.
+    /// Records that Keychain now remembers the session passphrase, when `stored` succeeded. The
+    /// error is a backup plan that could not be stored; the session keeps the change all the same.
     pub(super) fn remember_session_passphrase(
         &mut self,
         stored: Result<(), KeychainError>,
@@ -359,6 +374,7 @@ impl Core {
     }
 
     /// Forgets the session passphrase after Keychain deleted the item with the outcome `deleted`.
+    /// The error is a backup plan that could not be stored; the session forgets it all the same.
     fn forget_passphrase(
         &mut self,
         deleted: Result<(), KeychainError>,

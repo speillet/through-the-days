@@ -224,13 +224,14 @@ impl AppState {
             (None, None) => Ok(()),
         };
         let mut core = self.lock();
-        // A Keychain failure is recorded and shown by the backup status; it never blocks the
-        // upgrade.
-        match passphrase {
-            Some(new) => core.adopt_passphrase(new, remember, keychain)?,
-            None if session_to_remember.is_some() => core.remember_session_passphrase(keychain)?,
-            None => {}
-        }
+        // A Keychain failure is recorded and shown by the backup status, and backup settings
+        // that cannot be stored are recorded in diagnostics. Neither blocks the upgrade, which
+        // uses the passphrase the session now holds.
+        let _ = match passphrase {
+            Some(new) => core.adopt_passphrase(new, remember, keychain),
+            None if session_to_remember.is_some() => core.remember_session_passphrase(keychain),
+            None => Ok(()),
+        };
         core.migrate(now)
     }
 
@@ -583,8 +584,9 @@ impl Core {
         }
     }
 
-    /// Stores the backup plan, reporting a failure to the caller. While the stored file is
-    /// unreadable it is kept as it is: choosing a backup folder writes the plan again.
+    /// Stores the backup plan, reporting a failure to the caller as `storage`: the plan lives
+    /// in the data folder on the startup disk, not in the backup folder. While the stored file
+    /// is unreadable it is kept as it is: choosing a backup folder writes the plan again.
     fn persist_plan(&self) -> Result<(), CommandError> {
         if self.plan_unreadable {
             return Ok(());

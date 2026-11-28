@@ -32,7 +32,7 @@ export function BackupBanner() {
   const [choosingFolder, setChoosingFolder] = useState(false);
   const [setupPostponed, setSetupPostponed] = useState(false);
   const [retentionDismissed, setRetentionDismissed] = useState(false);
-  /** What macOS Keychain did not do with the passphrase just entered. */
+  /** What macOS Keychain or the backup settings of this Mac did not keep of the passphrase entered. */
   const [keychainNotice, setKeychainNotice] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const focusBanner = useRef(false);
@@ -288,8 +288,9 @@ export function BackupBanner() {
         onSaved={(next) => {
           focusBanner.current = true;
           setDialogOpen(false);
-          // The passphrase applies to this session even when macOS Keychain did not follow.
-          setKeychainNotice(passphraseSavedWarning(next.keychainWarning));
+          // The passphrase applies to this session even when macOS Keychain or the backup
+          // settings did not follow.
+          setKeychainNotice(passphraseSavedWarning(next));
           void backUpAfterPassphrase(next);
         }}
       />

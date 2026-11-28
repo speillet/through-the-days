@@ -41,21 +41,24 @@ pub enum DailyBackup {
 impl BackupPlan {
     /// Loads the plan stored at `path`; a missing file is the default plan.
     ///
-    /// An unreadable or corrupt file is [`Error::Backup`] rather than a silent reset, which
+    /// An unreadable or corrupt file is [`Error::Storage`] rather than a silent reset, which
     /// would forget the chosen folder and the last successful backup. A missing file is never
     /// an error, so a caller can report any error as stored backup settings it cannot read.
+    /// The plan lives in the application data folder, so no failure here is a backup failure.
     pub fn load(path: &Path) -> Result<Self, Error> {
         match fs::read(path) {
-            Ok(bytes) => parse_json_object(&bytes, Error::Backup),
+            Ok(bytes) => parse_json_object(&bytes, Error::Storage),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(_) => Err(Error::Backup),
+            Err(_) => Err(Error::Storage),
         }
     }
 
-    /// Stores the plan at `path` atomically: a reader sees the previous or the new plan.
+    /// Stores the plan at `path` atomically: a reader sees the previous or the new plan. A plan
+    /// that cannot be stored, for example on a full or read-only startup disk, is
+    /// [`Error::Storage`].
     pub fn store(&self, path: &Path) -> Result<(), Error> {
-        let bytes = serde_json::to_vec_pretty(self).map_err(|_| Error::Backup)?;
-        write_atomically(path, &bytes, |_| Error::Backup)
+        let bytes = serde_json::to_vec_pretty(self).map_err(|_| Error::Storage)?;
+        write_atomically(path, &bytes, |_| Error::Storage)
     }
 }
 

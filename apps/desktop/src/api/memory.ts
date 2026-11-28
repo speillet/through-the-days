@@ -595,9 +595,11 @@ export function createMemoryApi(options: MemoryApiOptions = {}): JournalApi {
       folderPath: plan.folderChosen ? SYNTHETIC_BACKUP_PATH : null,
       passphraseAvailable: sessionFingerprint !== null,
       remembered: plan.rememberedFingerprint !== null,
-      // The simulated Keychain answers at once and never refuses a change.
+      // The simulated Keychain answers at once and never refuses a change, and the simulated
+      // backup settings are always saved.
       keychainPending: false,
       keychainWarning: null,
+      settingsNotSaved: false,
       lastSuccessDate: plan.lastSuccessDate,
       lastSuccessAt: plan.lastSuccessAt,
       lastError: lastError ? { ...lastError } : null,
