@@ -4,9 +4,11 @@ import type { Entry, ReadingReport, ScoreMetric, SearchRequest } from '../../api
 import { Button } from '../../components/Button';
 import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
-import { formatLongDate } from '../../domain/dates';
-import { documentText } from '../../domain/entry';
+import { SLOT_LABELS } from '../../domain/copy';
+import { formatDate, formatLongDate } from '../../domain/dates';
+import { documentText, previewText } from '../../domain/entry';
 import { EMOTIONS, emotionById } from '../../domain/emotions';
+import { SCORE_METRICS } from '../../domain/preferences';
 import { findSaver } from '../../state/autosave';
 import { useNavigation } from '../../state/navigation';
 import { usePreferences } from '../../state/preferences';
@@ -18,20 +20,15 @@ export const METRIC_LABELS: Record<ScoreMetric, string> = {
   pride: 'Pride',
   progress: 'Perceived progress',
 };
-export const METRICS: readonly ScoreMetric[] = ['mood', 'energy', 'pride', 'progress'];
-export const SLOT_NAMES = { morning: 'Morning', evening: 'Evening' };
+/** Graphemes shown in a reading excerpt before it is shortened. */
+const EXCERPT_LENGTH = 240;
 /** Only the report authority decides which owned sources are eligible for an insight selection. */
 export function insightSources(entries: readonly Entry[], report: ReadingReport | null): Entry[] {
   const includedIds = new Set(report?.days.flatMap((day) => day.observations.map((entry) => entry.id)));
   return entries.filter((entry) => entry.includeInInsights !== false && includedIds.has(entry.id));
 }
-const plainDate = (date: string) => formatLongDate(date).split(' ').slice(1).join(' ');
 function scoreLabel(metric: ScoreMetric, value: number) {
   return `${METRIC_LABELS[metric]} ${value}/10${(metric === 'mood' || metric === 'energy') && value === 5 ? ' (neutral)' : ''}`;
-}
-export function numericFamily(entry: Pick<Entry, 'mood' | 'energy'>): string {
-  if (entry.mood == null || entry.energy == null || entry.mood === 5 || entry.energy === 5) return 'neutral';
-  return `${entry.mood > 5 ? 'pleasant' : 'unpleasant'}-${entry.energy > 5 ? 'high' : 'low'}`;
 }
 
 export function EntryValues({ entry }: { entry: Entry }) {
@@ -40,7 +37,7 @@ export function EntryValues({ entry }: { entry: Entry }) {
     <>
       {visibility.scores ? (
         <div className="entry-scores">
-          {METRICS.map((metric) =>
+          {SCORE_METRICS.map((metric) =>
             entry[metric] == null ? null : <span key={metric}>{scoreLabel(metric, entry[metric]!)}</span>,
           )}
         </div>
@@ -207,7 +204,7 @@ export function Filters({ includeDates = true }: { includeDates?: boolean }) {
                   }
                 >
                   <option value="">Any measure</option>
-                  {METRICS.map((metric) => (
+                  {SCORE_METRICS.map((metric) => (
                     <option key={metric} value={metric}>
                       {METRIC_LABELS[metric]}
                     </option>
@@ -287,7 +284,7 @@ export function EntryPreview({
   const current = change?.revision === entry.revision ? change : null;
   const busy = current !== null && current.error === null;
   const included = busy ? current.include : entry.includeInInsights !== false;
-  const slot = SLOT_NAMES[entry.slot];
+  const slot = SLOT_LABELS[entry.slot];
   async function toggleInsights(include: boolean) {
     const { revision } = entry;
     setChange({ revision, include, error: null });
@@ -298,7 +295,7 @@ export function EntryPreview({
     }
   }
   return (
-    <section className="entry-preview" aria-label={`${slot} entry from ${plainDate(entry.date)}`}>
+    <section className="entry-preview" aria-label={`${slot} entry from ${formatDate(entry.date)}`}>
       <div className="reading-row">
         <h3>{entry.title || `${slot} entry`}</h3>
         <span className="reading-meta">{entry.complete ? 'Completed' : 'Draft'}</span>
@@ -308,8 +305,7 @@ export function EntryPreview({
       </p>
       <EntryValues entry={entry} />
       <p className="entry-excerpt">
-        {Array.from(documentText(entry.document)).slice(0, 240).join('') ||
-          'A saved check-in, ready to revisit.'}
+        {previewText(documentText(entry.document), EXCERPT_LENGTH) || 'A saved check-in, ready to revisit.'}
       </p>
       <CheckInReading entry={entry} insights={origin === 'weekly' || origin === 'path'} />
       <div className="reading-actions">
@@ -327,7 +323,7 @@ export function EntryPreview({
         <Button
           size="small"
           variant="quiet"
-          aria-label={`Edit ${slot} entry from ${plainDate(entry.date)}`}
+          aria-label={`Edit ${slot} entry from ${formatDate(entry.date)}`}
           onClick={() => navigate('today', { date: entry.date, slot: entry.slot })}
         >
           Edit {slot} entry

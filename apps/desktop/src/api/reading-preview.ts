@@ -1,6 +1,7 @@
 // Synthetic browser-preview counterparts of the native reading queries. Production uses Rust.
 import type { Entry, ReadingReport, SearchRequest, ScoreMetric, WeeklyReview } from './types';
-import { addDays, isIsoDate, weekdayIndex } from '../domain/dates';
+import { pluralise } from '../domain/copy';
+import { addDays, isIsoDate, isoWeekStart } from '../domain/dates';
 import { documentText, isBlank } from '../domain/entry';
 
 export interface PreviewReview {
@@ -126,10 +127,6 @@ export function previewReport(entries: Entry[], request: SearchRequest): Reading
   };
 }
 
-export function isoWeekStart(date: string): string {
-  return addDays(date, -weekdayIndex(date));
-}
-
 /** 32-bit FNV-1a over UTF-16 code units. It tells synthetic data apart; it is not cryptography. */
 export function fnv1a(text: string): number {
   let hash = 0x811c9dc5;
@@ -162,5 +159,5 @@ export function previewWeek(entries: Entry[], date: string, stored?: PreviewRevi
 }
 
 export function localSummary(report: ReadingReport): string {
-  return `${report.recordedDays} recorded ${report.recordedDays === 1 ? 'day' : 'days'} out of 7, with ${report.entries} saved ${report.entries === 1 ? 'entry' : 'entries'}, ${report.wins} approved small ${report.wins === 1 ? 'win' : 'wins'} and ${report.actions} reported ${report.actions === 1 ? 'action' : 'actions'}. Saved drafts are included. Missing scores are left out; this is a description of recorded information, not a judgement of the week.`;
+  return `${pluralise(report.recordedDays, 'recorded day')} out of 7, with ${pluralise(report.entries, 'saved entry', 'saved entries')}, ${pluralise(report.wins, 'approved small win')} and ${pluralise(report.actions, 'reported action')}. Saved drafts are included. Missing scores are left out; this is a description of recorded information, not a judgement of the week.`;
 }

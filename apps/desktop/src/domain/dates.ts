@@ -126,6 +126,11 @@ export function addDays(date: string, amount: number): string {
   return toIsoDate(civilFromDayNumber(dayNumber(requireDate(date)) + amount));
 }
 
+/** The Monday of a date's ISO week. */
+export function isoWeekStart(date: string): string {
+  return addDays(date, -weekdayIndex(date));
+}
+
 /**
  * `target`, reached by a step in `direction` (negative: back in time), or null when that
  * step passed the first or last journal date, so the control offering it can be disabled.

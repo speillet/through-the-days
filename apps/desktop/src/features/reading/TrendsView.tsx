@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import { useApi } from '../../api/client';
-import { Button } from '../../components/Button';
 import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
 import { addDays, formatLongDate, isJournalDate } from '../../domain/dates';
@@ -8,7 +7,7 @@ import { useToday } from '../../state/clock';
 import { useNavigation } from '../../state/navigation';
 import { usePreferences } from '../../state/preferences';
 import { Filters } from './shared';
-import { Coverage, DayTimeline, SeriesControls } from './Timeline';
+import { Coverage, DayTimeline, RangeButtons, SeriesControls } from './Timeline';
 import { useReading, useReadingQuery, useReadingSelection } from './state';
 
 export function TrendsView() {
@@ -18,7 +17,7 @@ export function TrendsView() {
   const { date, setDate } = useReading();
   const filters = useReadingSelection();
   const selected = date ?? today;
-  const { preferences, update } = usePreferences();
+  const { preferences } = usePreferences();
   const days = preferences.timelineDays ?? 14;
   const key = JSON.stringify({ ...filters, from: addDays(selected, 1 - days), to: selected });
   const { data, error } = useReadingQuery(useCallback(() => api.readingReport(JSON.parse(key)), [api, key]));
@@ -44,18 +43,7 @@ export function TrendsView() {
         </label>
       </header>
       <Filters includeDates={false} />
-      <div className="reading-actions">
-        {([7, 14, 30] as const).map((range) => (
-          <Button
-            key={range}
-            aria-pressed={days === range}
-            variant={days === range ? 'primary' : 'quiet'}
-            onClick={() => void update({ timelineDays: range })}
-          >
-            {range} days
-          </Button>
-        ))}
-      </div>
+      <RangeButtons range={days} />
       <SeriesControls />
       {error ? (
         <Notice tone="error">{error}</Notice>

@@ -20,7 +20,7 @@ export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze<Preferen
   showWordCount: false,
   textScale: 100,
   timelineDays: 14,
-  timelineMetrics: ['mood', 'energy', 'pride', 'progress'],
+  timelineMetrics: [...SCORE_METRICS],
 });
 
 export const THEME_OPTIONS: readonly { id: Theme; label: string; description: string }[] = [

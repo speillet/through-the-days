@@ -5,7 +5,7 @@ import type { JournalApi } from '../../api/client';
 import type { Entry, Slot } from '../../api/types';
 import { newDraft } from '../../domain/entry';
 import { createTestApi, renderWithProviders, TEST_NOW } from '../../test/render';
-import { PREVIEW_LENGTH, previewText, TrashView } from './TrashView';
+import { PREVIEW_LENGTH, TrashView, trashPreview } from './TrashView';
 
 const DAY_MS = 86_400_000;
 
@@ -290,10 +290,10 @@ describe('trash preview', () => {
   it('shows the person’s words exactly, shortening only a long text', () => {
     // Deliberate multilingual synthetic fixture.
     const words = 'Une journée calme 🌿 — 静かな朝.';
-    expect(previewText({ document: documentOf(words), title: '' })).toBe(words);
+    expect(trashPreview({ document: documentOf(words), title: '' })).toBe(words);
 
     const long = Array.from({ length: 60 }, (_, index) => `word${index}`).join(' ');
-    const preview = previewText({ document: documentOf(long), title: '' });
+    const preview = trashPreview({ document: documentOf(long), title: '' });
     expect(preview.endsWith('…')).toBe(true);
     expect(Array.from(preview).length).toBeLessThanOrEqual(PREVIEW_LENGTH + 1);
     expect(long.startsWith(preview.slice(0, -1))).toBe(true);
@@ -315,13 +315,13 @@ describe('trash preview', () => {
         },
       ],
     };
-    expect(previewText({ document, title: '' })).toBe('A peaceful afternoon by the canal.');
+    expect(trashPreview({ document, title: '' })).toBe('A peaceful afternoon by the canal.');
   });
 
   it('joins paragraphs with spaces and falls back to the title', () => {
-    expect(previewText({ document: documentOf('First line\nSecond line'), title: '' })).toBe('First line Second line');
+    expect(trashPreview({ document: documentOf('First line\nSecond line'), title: '' })).toBe('First line Second line');
     expect(
-      previewText({ document: { type: 'doc', content: [{ type: 'paragraph' }] }, title: 'A fictional title' }),
+      trashPreview({ document: { type: 'doc', content: [{ type: 'paragraph' }] }, title: 'A fictional title' }),
     ).toBe('A fictional title');
   });
 });

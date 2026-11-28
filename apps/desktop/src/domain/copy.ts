@@ -51,3 +51,8 @@ export const UNAVAILABLE_VIEWS = [
 ] as const;
 
 export const NOT_AVAILABLE_YET = 'Not available yet';
+
+/** "1 entry", "3 entries": a count with its noun, singular for exactly one. */
+export function pluralise(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
