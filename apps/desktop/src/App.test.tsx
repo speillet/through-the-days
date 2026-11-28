@@ -79,6 +79,19 @@ async function openWorkspace(options: MemoryApiOptions = {}) {
   return rendered;
 }
 
+/**
+ * Opens the workspace and waits until the text-size shortcuts listen. They are installed by
+ * an effect that may run after the navigation is shown, and a key press is not retried, so a
+ * press sent before then is lost. Command-0 at the default size is claimed by the shortcut
+ * (the event is prevented) but changes nothing, so it serves as the probe.
+ */
+async function openWorkspaceWithShortcuts(options: MemoryApiOptions = {}) {
+  const rendered = await openWorkspace(options);
+  const commandZero = { key: '0', code: 'Digit0', metaKey: true };
+  await vi.waitFor(() => expect(fireEvent.keyDown(document.body, commandZero)).toBe(false));
+  return rendered;
+}
+
 describe('application shell', () => {
   it('shows the startup gate, without navigation, until the journal is ready', async () => {
     renderApp({ startup: { state: 'needsMigration' } });
@@ -213,7 +226,7 @@ describe('application shell', () => {
 
   it('enlarges, reduces and resets the text size with Command-plus, Command-minus and Command-0', async () => {
     const user = userEvent.setup();
-    const { api } = await openWorkspace();
+    const { api } = await openWorkspaceWithShortcuts();
     const textScale = async () => (await api.getPreferences()).textScale;
 
     await user.keyboard('{Meta>}={/Meta}');
@@ -233,7 +246,7 @@ describe('application shell', () => {
   });
 
   it('follows the characters of a French keyboard: the key labelled "-" reduces the text, ")" does nothing', async () => {
-    const { api } = await openWorkspace();
+    const { api } = await openWorkspaceWithShortcuts();
     const textScale = async () => (await api.getPreferences()).textScale;
     // Deliberate multilingual synthetic fixture. On the French layout, "=" sits where US
     // keyboards have "/", "-" where they have "=", ")" where they have "-", and the key
