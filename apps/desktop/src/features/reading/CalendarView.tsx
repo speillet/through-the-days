@@ -3,10 +3,12 @@ import { useApi } from '../../api/client';
 import { Button } from '../../components/Button';
 import { CalendarGrid } from '../../components/CalendarGrid';
 import { Notice } from '../../components/Notice';
+import { pluralise, SLOT_LABELS } from '../../domain/copy';
 import { formatLongDate } from '../../domain/dates';
+import { quadrantFor } from '../../domain/emotions';
 import { useToday } from '../../state/clock';
 import { usePreferences } from '../../state/preferences';
-import { EntryPreview, Filters, numericFamily, SLOT_NAMES } from './shared';
+import { EntryPreview, Filters } from './shared';
 import { useReading, useReadingQuery, useReadingSelection } from './state';
 
 export function CalendarView({ journal = false }: { journal?: boolean }) {
@@ -51,11 +53,7 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
       ) : journal ? (
         <>
           <p className="reading-meta">
-            {preferences.gentle ? null : (
-              <>
-                {entries.length} saved {entries.length === 1 ? 'entry' : 'entries'}.{' '}
-              </>
-            )}
+            {preferences.gentle ? null : <>{pluralise(entries.length, 'saved entry', 'saved entries')}. </>}
             Search matches words in titles, writing, check-in answers, actions, small wins and your own
             emotion words, ignoring letter case and Latin accents.
           </p>
@@ -85,7 +83,7 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
               dayDescription={(day) =>
                 entries
                   .filter((e) => e.date === day)
-                  .map((e) => `, ${SLOT_NAMES[e.slot]} entry`)
+                  .map((e) => `, ${SLOT_LABELS[e.slot]} entry`)
                   .join('')
               }
               renderDay={(day) => (
@@ -97,7 +95,7 @@ export function CalendarView({ journal = false }: { journal?: boolean }) {
                       <span
                         key={e.id}
                         className="slot-marker"
-                        data-family={visibility.scores ? numericFamily(e) : 'neutral'}
+                        data-family={visibility.scores ? (quadrantFor(e.mood, e.energy) ?? 'neutral') : 'neutral'}
                       >
                         {e.slot === 'morning' ? 'M' : 'E'}{' '}
                       </span>

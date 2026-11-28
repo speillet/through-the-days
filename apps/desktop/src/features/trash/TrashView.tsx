@@ -12,7 +12,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Notice, type NoticeTone } from '../../components/Notice';
 import { SLOT_LABELS } from '../../domain/copy';
 import { formatDate, formatDateTime, formatLongDate, todayIn } from '../../domain/dates';
-import { documentText, isBlank } from '../../domain/entry';
+import { documentText, isBlank, previewText } from '../../domain/entry';
 import { usePreferences } from '../../state/preferences';
 import { BACKUPS_KEPT } from '../../domain/backup';
 import './trash.css';
@@ -20,25 +20,9 @@ import './trash.css';
 /** Graphemes shown in a preview before it is shortened. */
 export const PREVIEW_LENGTH = 160;
 
-function graphemes(text: string): string[] {
-  if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
-    return Array.from(new Intl.Segmenter('en-GB', { granularity: 'grapheme' }).segment(text), (part) => part.segment);
-  }
-  return Array.from(text);
-}
-
-/**
- * A short, faithful preview of the person's own words: whitespace is collapsed and
- * a long text is shortened at a word boundary, but nothing is translated or rewritten.
- */
-export function previewText(entry: Pick<Entry, 'document' | 'title'>): string {
-  const text = documentText(entry.document).replace(/\s+/gu, ' ').trim();
-  const source = text === '' ? entry.title.replace(/\s+/gu, ' ').trim() : text;
-  const parts = graphemes(source);
-  if (parts.length <= PREVIEW_LENGTH) return source;
-  const cut = parts.slice(0, PREVIEW_LENGTH).join('');
-  const lastSpace = cut.lastIndexOf(' ');
-  return `${(lastSpace > cut.length * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+/** A preview of the entry's words (previewText), or of its title when it has no words. */
+export function trashPreview(entry: Pick<Entry, 'document' | 'title'>): string {
+  return previewText(documentText(entry.document), PREVIEW_LENGTH) || previewText(entry.title, PREVIEW_LENGTH);
 }
 
 /** "the Morning entry from Sunday 22 November 2026" */
@@ -204,7 +188,7 @@ export function TrashView() {
         <ul className="trash__list" ref={listRef} aria-label="Deleted entries">
           {items.map((item) => {
             const { entry } = item;
-            const preview = previewText(entry);
+            const preview = trashPreview(entry);
             const described = describeEntry(entry);
             const itemError = itemErrors[entry.id];
             return (

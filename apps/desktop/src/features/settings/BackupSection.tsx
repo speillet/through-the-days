@@ -8,6 +8,7 @@ import type { BackupRecord, BackupStatus, RestoreOutcome } from '../../api/types
 import { Button } from '../../components/Button';
 import { Notice, type NoticeTone } from '../../components/Notice';
 import { BACKUPS_KEPT } from '../../domain/backup';
+import { pluralise } from '../../domain/copy';
 import { formatDateTime } from '../../domain/dates';
 import { PassphraseDialog, type PassphrasePurpose } from '../backup/PassphraseDialog';
 import { PassphraseGuidance } from '../backup/PassphraseFields';
@@ -21,7 +22,6 @@ import {
   passphraseForgottenWarning,
   passphraseSavedWarning,
   passphraseText,
-  pluralise,
 } from '../backup/status';
 import { useBackup } from '../../state/backup';
 import { usePreferences } from '../../state/preferences';

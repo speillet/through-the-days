@@ -74,6 +74,26 @@ export function documentText(node: JSONContent | null | undefined): string {
   return node.content.map(documentText).join(TEXT_BLOCK_TYPES.has(node.type ?? '') ? '' : '\n');
 }
 
+function graphemes(text: string): string[] {
+  if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
+    return Array.from(new Intl.Segmenter('en-GB', { granularity: 'grapheme' }).segment(text), (part) => part.segment);
+  }
+  return Array.from(text);
+}
+
+/**
+ * A short, faithful preview of the person's own words: whitespace is collapsed and a text longer
+ * than `length` graphemes is shortened at a word boundary, but nothing is translated or rewritten.
+ */
+export function previewText(text: string, length: number): string {
+  const source = text.replace(/\s+/gu, ' ').trim();
+  const parts = graphemes(source);
+  if (parts.length <= length) return source;
+  const cut = parts.slice(0, length).join('');
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > cut.length * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
 /** Blank by Rust's definition: only Unicode White_Space characters. */
 export function isBlank(text: string): boolean {
   return /^\p{White_Space}*$/u.test(text);

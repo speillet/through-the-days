@@ -1,22 +1,24 @@
-import { useCallback } from 'react';
+import { useCallback, type ComponentProps } from 'react';
 import { useApi } from '../../api/client';
 import type { ReadingReport } from '../../api/types';
 import { Button } from '../../components/Button';
 import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
+import { pluralise, SLOT_LABELS } from '../../domain/copy';
 import { addDays, formatLongDate } from '../../domain/dates';
+import { SCORE_METRICS, TIMELINE_RANGES } from '../../domain/preferences';
 import { usePreferences } from '../../state/preferences';
-import { METRICS, METRIC_LABELS, SLOT_NAMES } from './shared';
+import { METRIC_LABELS } from './shared';
 import { useReadingQuery } from './state';
 
 export function SeriesControls() {
   const { preferences, update, visibility } = usePreferences();
-  const selected = preferences.timelineMetrics ?? [...METRICS];
+  const selected = preferences.timelineMetrics ?? [...SCORE_METRICS];
   if (!visibility.scores) return null;
   return (
     <fieldset className="series-controls">
       <legend>Visible measures</legend>
-      {METRICS.map((metric) => (
+      {SCORE_METRICS.map((metric) => (
         <label key={metric}>
           <input
             type="checkbox"
@@ -25,7 +27,7 @@ export function SeriesControls() {
             onChange={(event) => {
               const checked = event.target.checked;
               void update((current) => {
-                const metrics = current.timelineMetrics ?? [...METRICS];
+                const metrics = current.timelineMetrics ?? [...SCORE_METRICS];
                 return {
                   timelineMetrics: checked
                     ? [...new Set([...metrics, metric])]
@@ -58,12 +60,12 @@ export function Coverage({ report }: { report: ReadingReport }) {
   return (
     <div className="reading-coverage">
       <p>
-        {report.recordedDays} recorded {report.recordedDays === 1 ? 'day' : 'days'} of {report.calendarDays};{' '}
-        {report.entries} saved {report.entries === 1 ? 'entry' : 'entries'}. Saved drafts are included.
+        {pluralise(report.recordedDays, 'recorded day')} of {report.calendarDays};{' '}
+        {pluralise(report.entries, 'saved entry', 'saved entries')}. Saved drafts are included.
         Missing scores are not zero.
       </p>
       <dl className="reading-measures">
-        {(preferences.timelineMetrics ?? METRICS).map((metric) => (
+        {(preferences.timelineMetrics ?? SCORE_METRICS).map((metric) => (
           <div key={metric}>
             <dt>{METRIC_LABELS[metric]}</dt>
             <dd>
@@ -73,8 +75,7 @@ export function Coverage({ report }: { report: ReadingReport }) {
                   : `Mean ${report[metric].mean.toLocaleString('en-GB', { maximumFractionDigits: 1 })}/10, n=${report[metric].observations}`}
               </span>{' '}
               <span className="reading-meta">
-                {report[metric].recordedDays} recorded {report[metric].recordedDays === 1 ? 'day' : 'days'} of{' '}
-                {report.calendarDays}
+                {pluralise(report[metric].recordedDays, 'recorded day')} of {report.calendarDays}
               </span>
             </dd>
           </div>
@@ -96,7 +97,7 @@ export function DayTimeline({
   onSelect: (date: string) => void;
 }) {
   const { preferences, visibility } = usePreferences();
-  const metrics = visibility.scores ? (preferences.timelineMetrics ?? [...METRICS]) : [];
+  const metrics = visibility.scores ? (preferences.timelineMetrics ?? [...SCORE_METRICS]) : [];
   return (
     <div className="day-timeline" role="list" aria-label="Recorded days and gaps">
       {report.days.map((day) => (
@@ -118,7 +119,7 @@ export function DayTimeline({
             {day.observations.length ? (
               day.observations.map((o) => (
                 <span key={o.id} className="timeline-observation">
-                  <strong>{SLOT_NAMES[o.slot]}</strong>
+                  <strong>{SLOT_LABELS[o.slot]}</strong>
                   {metrics.length ? (
                     metrics.map((metric) => (
                       <span key={metric} className="timeline-value" data-metric={metric}>
@@ -140,9 +141,29 @@ export function DayTimeline({
   );
 }
 
+/** The 7, 14 and 30-day range buttons of Trends and the Today timeline; the choice is saved as a preference. */
+export function RangeButtons({ range, size }: { range: number } & Pick<ComponentProps<typeof Button>, 'size'>) {
+  const { update } = usePreferences();
+  return (
+    <div className="reading-actions">
+      {TIMELINE_RANGES.map((days) => (
+        <Button
+          key={days}
+          size={size}
+          variant={days === range ? 'primary' : 'quiet'}
+          aria-pressed={days === range}
+          onClick={() => void update({ timelineDays: days })}
+        >
+          {days} days
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 export function MiniTimeline({ date, onSelect }: { date: string; onSelect: (date: string) => void }) {
   const api = useApi();
-  const { preferences, update } = usePreferences();
+  const { preferences } = usePreferences();
   const range = preferences.timelineDays ?? 14;
   const from = addDays(date, 1 - range);
   const { data, error } = useReadingQuery(
@@ -152,19 +173,7 @@ export function MiniTimeline({ date, onSelect }: { date: string; onSelect: (date
     <section className="mini-timeline" aria-label="Recent journal days">
       <div className="reading-row">
         <h2>Through these days</h2>
-        <div className="reading-actions">
-          {([7, 14, 30] as const).map((days) => (
-            <Button
-              key={days}
-              size="small"
-              variant={days === range ? 'primary' : 'quiet'}
-              aria-pressed={days === range}
-              onClick={() => void update({ timelineDays: days })}
-            >
-              {days} days
-            </Button>
-          ))}
-        </div>
+        <RangeButtons range={range} size="small" />
       </div>
       <SeriesControls />
       {error ? (

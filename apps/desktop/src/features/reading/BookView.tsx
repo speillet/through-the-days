@@ -4,11 +4,12 @@ import type { SearchRequest } from '../../api/types';
 import { Button } from '../../components/Button';
 import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
+import { SLOT_LABELS } from '../../domain/copy';
 import { formatLongDate } from '../../domain/dates';
 import { useToday } from '../../state/clock';
 import { useNavigation } from '../../state/navigation';
 import { JournalDocument } from './Document';
-import { SLOT_NAMES, CheckInReading, EntryValues, insightSources } from './shared';
+import { CheckInReading, EntryValues, insightSources } from './shared';
 import { useReading, useReadingQuery, useReadingSelection } from './state';
 
 const RETURN_LABELS = {
@@ -152,12 +153,12 @@ export function BookView() {
             aria-label="Scrollable journal page"
             onScroll={(event) => bookPositions.current.set(entry.id, event.currentTarget.scrollTop)}
           >
-            <article aria-label={`${SLOT_NAMES[entry.slot]} journal entry`}>
+            <article aria-label={`${SLOT_LABELS[entry.slot]} journal entry`}>
               <header className="book-page__heading">
                 <p>{formatLongDate(entry.date)}</p>
-                <h2>{entry.title || `${SLOT_NAMES[entry.slot]} journal`}</h2>
+                <h2>{entry.title || `${SLOT_LABELS[entry.slot]} journal`}</h2>
                 <p className="reading-meta">
-                  {SLOT_NAMES[entry.slot]} · {entry.complete ? 'Completed' : 'Draft'}
+                  {SLOT_LABELS[entry.slot]} · {entry.complete ? 'Completed' : 'Draft'}
                 </p>
                 <EntryValues entry={entry} />
               </header>

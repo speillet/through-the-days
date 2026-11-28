@@ -14,8 +14,8 @@ import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { Notice } from '../../components/Notice';
 import { TextField } from '../../components/TextField';
+import { pluralise } from '../../domain/copy';
 import { flushAll, hasPending } from '../../state/flush';
-import { pluralise } from './status';
 
 export interface RestoreTarget {
   source: RestoreSource;

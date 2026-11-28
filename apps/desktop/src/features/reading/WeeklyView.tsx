@@ -3,7 +3,8 @@ import { useApi, toCommandError } from '../../api/client';
 import { Button } from '../../components/Button';
 import { TAB_STOP } from '../../components/keyboard';
 import { Notice } from '../../components/Notice';
-import { addDays, formatLongDate, isIsoDate, weekdayIndex, stepDays } from '../../domain/dates';
+import { pluralise } from '../../domain/copy';
+import { formatLongDate, isIsoDate, isoWeekStart, stepDays } from '../../domain/dates';
 import { useToday } from '../../state/clock';
 import { usePreferences } from '../../state/preferences';
 import { EntryPreview, insightSources } from './shared';
@@ -13,7 +14,7 @@ import { unsaved } from './notes';
 
 /** The Monday of a date's ISO week; a date the interface cannot read is kept for the journal to refuse. */
 function weekOf(date: string): string {
-  return isIsoDate(date) ? addDays(date, -weekdayIndex(date)) : date;
+  return isIsoDate(date) ? isoWeekStart(date) : date;
 }
 
 export function WeeklyView() {
@@ -112,8 +113,8 @@ export function WeeklyView() {
           <Coverage report={data.report} />
           {visibility.scores ? (
             <p>
-              {data.report.wins} approved small {data.report.wins === 1 ? 'win' : 'wins'} and{' '}
-              {data.report.actions} reported {data.report.actions === 1 ? 'action' : 'actions'}.
+              {pluralise(data.report.wins, 'approved small win')} and{' '}
+              {pluralise(data.report.actions, 'reported action')}.
             </p>
           ) : null}
           {/* Shown with or without scores: no exercise count exists to hide. */}
