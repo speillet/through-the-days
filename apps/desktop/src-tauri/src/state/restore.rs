@@ -3,7 +3,7 @@
 //! The renderer never sends a path: a registered name is checked and resolved inside the chosen
 //! folder, and a picked file stays in native state.
 
-use super::{Core, StartupState};
+use super::{Core, StartupState, backup::display_name};
 use crate::{
     diagnostics,
     error::CommandError,
@@ -81,10 +81,7 @@ impl Core {
     pub fn pick_restore_file(&mut self, path: Option<PathBuf>) -> Option<PickedBackup> {
         self.picked = path;
         self.picked.as_deref().map(|path| PickedBackup {
-            name: path.file_name().map_or_else(
-                || path.display().to_string(),
-                |name| name.to_string_lossy().into_owned(),
-            ),
+            name: display_name(path),
         })
     }
 
@@ -124,10 +121,8 @@ impl Core {
         let journal = self.journal.as_mut().ok_or_else(CommandError::not_ready)?;
         journal.restore_from(staged.path(), passphrase)?;
         drop(staged);
-        if let Err(error) = journal.purge_expired(now.timestamp()) {
-            diagnostics::record("purge expired trash", error.code());
-        }
-        let entries = journal.list()?.len();
+        self.purge_after_opening(now);
+        let entries = self.journal()?.list()?.len();
         self.picked = None;
         Ok(RestoreOutcome {
             entries,
@@ -260,20 +255,10 @@ impl Core {
 
     fn publish_safety_backup(&mut self, now: DateTime<Utc>) -> Result<(), CommandError> {
         let journal = self.journal()?;
-        let folder = self
-            .plan
-            .folder
-            .as_deref()
-            .ok_or_else(CommandError::needs_folder)?;
-        let passphrase = self
-            .passphrase
-            .as_deref()
-            .ok_or_else(CommandError::needs_passphrase)?;
+        let (folder, passphrase) = self.backup_target()?;
         if let Err(error) = journal.backup_to(folder, passphrase, now.timestamp()) {
             diagnostics::record("safety backup", error.code());
-            let error = CommandError::from(error);
-            self.last_error = Some(error.clone());
-            return Err(error);
+            return Err(self.backup_failed(error));
         }
         Ok(())
     }

@@ -32,7 +32,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{
     fs, io,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Mutex, MutexGuard, PoisonError, TryLockError},
 };
 use zeroize::Zeroizing;
@@ -294,12 +294,7 @@ pub struct Core {
 
 impl Core {
     pub fn new(paths: DataPaths) -> Self {
-        let startup = StartupStatus {
-            state: StartupState::Failed,
-            from_version: None,
-            message: Some(OPEN_FAILED.to_owned()),
-            data_location: paths.data_dir.display().to_string(),
-        };
+        let startup = open_failed(&paths);
         Self {
             paths,
             journal: None,
@@ -428,18 +423,9 @@ impl Core {
 
     /// Runs the protected upgrade with the folder and passphrase of this session.
     fn migrate(&mut self, now: DateTime<Utc>) -> Result<StartupStatus, CommandError> {
-        let folder = self
-            .plan
-            .folder
-            .clone()
-            .ok_or_else(CommandError::needs_folder)?;
-        let journal = {
-            let passphrase = self
-                .passphrase
-                .as_deref()
-                .ok_or_else(CommandError::needs_passphrase)?;
-            Journal::migrate_with_backup(&self.paths.journal, &folder, passphrase, now.timestamp())?
-        };
+        let (folder, passphrase) = self.backup_target()?;
+        let journal =
+            Journal::migrate_with_backup(&self.paths.journal, folder, passphrase, now.timestamp())?;
         self.journal = Some(journal);
         self.startup = self.status(StartupState::Ready, None, None);
         self.purge_after_opening(now);
@@ -457,13 +443,9 @@ impl Core {
         let mut failure = None;
         // The marker of an interrupted restore goes first: it would otherwise move a journal
         // kept aside back into place at the next launch.
-        match fs::remove_file(&self.paths.restore_marker) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(_) => {
-                diagnostics::record("erase restore marker", Error::Storage.code());
-                failure.get_or_insert(CommandError::from(Error::Storage));
-            }
+        if remove_if_present(&self.paths.restore_marker).is_err() {
+            diagnostics::record("erase restore marker", Error::Storage.code());
+            failure.get_or_insert(CommandError::from(Error::Storage));
         }
         if let Err(error) = erase_journal_files(&self.paths.journal) {
             diagnostics::record("erase journal", error.code());
@@ -473,13 +455,9 @@ impl Core {
             diagnostics::record("erase set-aside journal", Error::Storage.code());
             failure.get_or_insert(CommandError::from(Error::Storage));
         }
-        match fs::remove_file(&self.paths.plan) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(_) => {
-                diagnostics::record("erase backup plan", Error::Storage.code());
-                failure.get_or_insert(CommandError::from(Error::Storage));
-            }
+        if remove_if_present(&self.paths.plan).is_err() {
+            diagnostics::record("erase backup plan", Error::Storage.code());
+            failure.get_or_insert(CommandError::from(Error::Storage));
         }
         if keychain.is_err() {
             diagnostics::record("erase keychain item", "keychain");
@@ -507,7 +485,7 @@ impl Core {
         self.journal = None;
         if paths::create_private_dir(&self.paths.data_dir).is_err() {
             diagnostics::record("create data folder", Error::Storage.code());
-            self.startup = self.status(StartupState::Failed, None, Some(OPEN_FAILED.to_owned()));
+            self.startup = open_failed(&self.paths);
             return;
         }
         // A restore from the startup screen that stopped while it replaced the journal file is
@@ -515,7 +493,7 @@ impl Core {
         // succeeds, no journal is opened, so none is created where one was set aside.
         if paths::settle_replacement(&self.paths).is_err() {
             diagnostics::record("settle interrupted restore", Error::Storage.code());
-            self.startup = self.status(StartupState::Failed, None, Some(OPEN_FAILED.to_owned()));
+            self.startup = open_failed(&self.paths);
             return;
         }
         paths::remove_stale_temporaries(&self.paths.data_dir);
@@ -537,7 +515,7 @@ impl Core {
             }
             Err(error) => {
                 diagnostics::record("open journal", error.code());
-                self.status(StartupState::Failed, None, Some(OPEN_FAILED.to_owned()))
+                open_failed(&self.paths)
             }
         };
         self.purge_after_opening(now);
@@ -620,4 +598,22 @@ fn parse_entry(value: Value) -> Result<Entry, CommandError> {
         return Err(Error::Score.into());
     }
     serde_json::from_value(value).map_err(|_| Error::Document.into())
+}
+
+/// A start that could not open the journal, which was left unchanged.
+fn open_failed(paths: &DataPaths) -> StartupStatus {
+    StartupStatus {
+        state: StartupState::Failed,
+        from_version: None,
+        message: Some(OPEN_FAILED.to_owned()),
+        data_location: paths.data_dir.display().to_string(),
+    }
+}
+
+/// Removes the file at `path`; a file that is already gone is not a failure.
+fn remove_if_present(path: &Path) -> io::Result<()> {
+    match fs::remove_file(path) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        removed => removed,
+    }
 }

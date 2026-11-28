@@ -7,7 +7,7 @@ use super::{AppState, Core};
 use crate::{diagnostics, error::CommandError, keychain::KeychainError, paths};
 use chrono::{DateTime, TimeDelta, Utc};
 use journal_core::{
-    BackupRecord, DailyBackup, list_backups, probe_backup_folder, validate_passphrase,
+    BackupRecord, DailyBackup, Error, list_backups, probe_backup_folder, validate_passphrase,
 };
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -264,15 +264,7 @@ impl Core {
     /// Backs up now, whatever the daily schedule says.
     pub fn backup_now(&mut self, now: DateTime<Utc>) -> Result<BackupStatus, CommandError> {
         let journal = self.journal()?;
-        let folder = self
-            .plan
-            .folder
-            .as_deref()
-            .ok_or_else(CommandError::needs_folder)?;
-        let passphrase = self
-            .passphrase
-            .as_deref()
-            .ok_or_else(CommandError::needs_passphrase)?;
+        let (folder, passphrase) = self.backup_target()?;
         // Display preferences that cannot be read never stop a backup (D-016): the journal date
         // follows the defaults that the interface shows meanwhile.
         let date = journal
@@ -284,12 +276,30 @@ impl Core {
                 self.record_success(date, saved.created_at, saved.retention_warning);
                 Ok(self.backup_status(now))
             }
-            Err(error) => {
-                let error = CommandError::from(error);
-                self.last_error = Some(error.clone());
-                Err(error)
-            }
+            Err(error) => Err(self.backup_failed(error)),
         }
+    }
+
+    /// The backup folder and the session passphrase, or the error that asks for the first one
+    /// missing.
+    pub(super) fn backup_target(&self) -> Result<(&Path, &str), CommandError> {
+        let folder = self
+            .plan
+            .folder
+            .as_deref()
+            .ok_or_else(CommandError::needs_folder)?;
+        let passphrase = self
+            .passphrase
+            .as_deref()
+            .ok_or_else(CommandError::needs_passphrase)?;
+        Ok((folder, passphrase))
+    }
+
+    /// Keeps the error of a failed backup for the status, and returns it.
+    pub(super) fn backup_failed(&mut self, error: Error) -> CommandError {
+        let error = CommandError::from(error);
+        self.last_error = Some(error.clone());
+        error
     }
 
     /// Runs the daily backup when none succeeded today (D-007). A missing folder or passphrase
@@ -311,10 +321,7 @@ impl Core {
         match journal.backup_if_due(&mut plan, passphrase, now, &preferences) {
             Ok(DailyBackup::Saved) => {
                 self.plan = plan;
-                self.last_error = None;
-                self.automatic_failure_at = None;
-                // The backup is complete; if the plan cannot be stored, the next launch backs up again.
-                let _ = self.persist_plan();
+                self.succeeded();
             }
             Ok(DailyBackup::NotDue | DailyBackup::NeedsFolder | DailyBackup::NeedsPassphrase) => {}
             Err(error) => {
@@ -417,6 +424,11 @@ impl Core {
         self.plan.last_success_date = Some(date);
         self.plan.last_success_at = Some(created_at);
         self.plan.retention_warning = retention_warning;
+        self.succeeded();
+    }
+
+    /// A backup recorded in the plan succeeded: the last failure is over, and the plan is stored.
+    fn succeeded(&mut self) {
         self.last_error = None;
         self.automatic_failure_at = None;
         // The backup is complete; if the plan cannot be stored, the next launch backs up again.
@@ -435,9 +447,10 @@ impl Core {
     }
 }
 
-fn display_name(folder: &Path) -> String {
-    folder.file_name().map_or_else(
-        || folder.display().to_string(),
+/// The last part of `path` as the interface shows it, or the whole path when it has none.
+pub(super) fn display_name(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || path.display().to_string(),
         |name| name.to_string_lossy().into_owned(),
     )
 }

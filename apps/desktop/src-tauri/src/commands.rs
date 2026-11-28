@@ -22,7 +22,7 @@ use crate::{
     },
 };
 use chrono::Utc;
-use journal_core::{BackupRecord, Entry, Error, Preferences, TrashItem};
+use journal_core::{BackupRecord, Entry, Error, Journal, Preferences, TrashItem};
 use journal_core::{Milestone, ReadingReport, SearchRequest, WeeklyReview};
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
@@ -60,6 +60,19 @@ where
     F: FnOnce(&mut Core) -> Result<T, CommandError> + Send + 'static,
 {
     blocking(app, operation, move |_, state| work(&mut state.lock())).await
+}
+
+/// Runs `work` on the blocking pool with the open journal.
+async fn with_journal<T, F>(
+    app: AppHandle,
+    operation: &'static str,
+    work: F,
+) -> Result<T, CommandError>
+where
+    T: Send + 'static,
+    F: FnOnce(&Journal) -> Result<T, Error> + Send + 'static,
+{
+    with_core(app, operation, move |core| Ok(work(core.journal()?)?)).await
 }
 
 /// A native file dialog attached to the journal window when it is open.
@@ -127,8 +140,8 @@ pub async fn search_entries(
     app: AppHandle,
     request: SearchRequest,
 ) -> Result<Vec<Entry>, CommandError> {
-    with_core(app, "search_entries", move |core| {
-        Ok(core.journal()?.search(&request)?)
+    with_journal(app, "search_entries", move |journal| {
+        journal.search(&request)
     })
     .await
 }
@@ -137,15 +150,15 @@ pub async fn reading_report(
     app: AppHandle,
     request: SearchRequest,
 ) -> Result<ReadingReport, CommandError> {
-    with_core(app, "reading_report", move |core| {
-        Ok(core.journal()?.reading_report(&request)?)
+    with_journal(app, "reading_report", move |journal| {
+        journal.reading_report(&request)
     })
     .await
 }
 #[tauri::command]
 pub async fn weekly_review(app: AppHandle, date: String) -> Result<WeeklyReview, CommandError> {
-    with_core(app, "weekly_review", move |core| {
-        Ok(core.journal()?.weekly_review(&date)?)
+    with_journal(app, "weekly_review", move |journal| {
+        journal.weekly_review(&date)
     })
     .await
 }
@@ -156,8 +169,8 @@ pub async fn save_weekly_notes(
     notes: String,
     revision: u32,
 ) -> Result<WeeklyReview, CommandError> {
-    with_core(app, "save_weekly_notes", move |core| {
-        Ok(core.journal()?.save_weekly_notes(&date, &notes, revision)?)
+    with_journal(app, "save_weekly_notes", move |journal| {
+        journal.save_weekly_notes(&date, &notes, revision)
     })
     .await
 }
@@ -166,32 +179,29 @@ pub async fn generate_weekly_summary(
     app: AppHandle,
     date: String,
 ) -> Result<WeeklyReview, CommandError> {
-    with_core(app, "generate_weekly_summary", move |core| {
-        Ok(core.journal()?.generate_weekly_summary(&date)?)
+    with_journal(app, "generate_weekly_summary", move |journal| {
+        journal.generate_weekly_summary(&date)
     })
     .await
 }
 #[tauri::command]
 pub async fn clear_reading_summaries(app: AppHandle) -> Result<(), CommandError> {
-    with_core(app, "clear_reading_summaries", |core| {
-        Ok(core.journal()?.clear_reading_summaries()?)
+    with_journal(app, "clear_reading_summaries", |journal| {
+        journal.clear_reading_summaries()
     })
     .await
 }
 #[tauri::command]
 pub async fn list_milestones(app: AppHandle) -> Result<Vec<Milestone>, CommandError> {
-    with_core(app, "list_milestones", |core| {
-        Ok(core.journal()?.milestones()?)
-    })
-    .await
+    with_journal(app, "list_milestones", |journal| journal.milestones()).await
 }
 #[tauri::command]
 pub async fn save_milestone(
     app: AppHandle,
     milestone: Milestone,
 ) -> Result<Milestone, CommandError> {
-    with_core(app, "save_milestone", move |core| {
-        Ok(core.journal()?.save_milestone(milestone)?)
+    with_journal(app, "save_milestone", move |journal| {
+        journal.save_milestone(milestone)
     })
     .await
 }
@@ -201,8 +211,8 @@ pub async fn delete_milestone(
     id: String,
     revision: u32,
 ) -> Result<(), CommandError> {
-    with_core(app, "delete_milestone", move |core| {
-        Ok(core.journal()?.delete_milestone(&id, revision)?)
+    with_journal(app, "delete_milestone", move |journal| {
+        journal.delete_milestone(&id, revision)
     })
     .await
 }
