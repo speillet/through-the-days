@@ -41,7 +41,21 @@ const containsEveryPhrase = (words: string[], phrases: string[][]) =>
     words.some((_, start) => phrase.every((word, offset) => words[start + offset] === word)),
   );
 
-export function filterPreviewEntries(entries: Entry[], request: SearchRequest): Entry[] {
+// The text search reads (D-017), as natively: the title, the writing, the six reflection answers,
+// action and small-win text and the person's own emotion word, one per line. Insight reports read
+// only the wins included in insights. This mirrors searchable_text in crates/journal-core/src/reading.rs.
+const REFLECTION_FIELDS = ['intention', 'proudOf', 'difficulty', 'nextStep', 'helped', 'learned'] as const;
+const searchableText = (entry: Entry, insights: boolean) =>
+  [
+    entry.title,
+    documentText(entry.document),
+    ...REFLECTION_FIELDS.map((field) => entry.reflection[field]),
+    ...entry.actions.map((action) => action.text),
+    ...entry.wins.filter((win) => !insights || win.includeInInsights).map((win) => win.text),
+    entry.anotherEmotion,
+  ].join('\n');
+
+export function filterPreviewEntries(entries: Entry[], request: SearchRequest, insights = false): Entry[] {
   if (
     (request.from && !isIsoDate(request.from)) ||
     (request.to && !isIsoDate(request.to)) ||
@@ -61,8 +75,7 @@ export function filterPreviewEntries(entries: Entry[], request: SearchRequest): 
       (!request.metric ||
         request.minimum == null ||
         (entry[request.metric] != null && entry[request.metric]! >= request.minimum)) &&
-      (!phrases ||
-        containsEveryPhrase(searchWords(`${entry.title}\n${documentText(entry.document)}`), phrases)),
+      (!phrases || containsEveryPhrase(searchWords(searchableText(entry, insights)), phrases)),
   );
 }
 
@@ -71,7 +84,8 @@ export function previewReport(entries: Entry[], request: SearchRequest): Reading
   const to = request.to;
   if (!from || !to || !isIsoDate(from) || !isIsoDate(to) || from > to)
     throw { code: 'date', message: 'Choose a valid date range.' };
-  const selected = filterPreviewEntries(entries, { ...request, hasWin: null }).filter(
+  // As natively, insight filters, the search text included, only use wins included in insights.
+  const selected = filterPreviewEntries(entries, { ...request, hasWin: null }, true).filter(
     (entry) =>
       entry.includeInInsights !== false &&
       (request.hasWin == null || entry.wins.some((win) => win.includeInInsights) === request.hasWin),

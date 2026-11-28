@@ -395,6 +395,50 @@ describe('memory journal: search, as native search does', () => {
     expect([report.entries, report.recordedDays]).toEqual([1, 1]);
     expect(report.days[0].observations.map((observation) => observation.id)).toEqual([japanese.id]);
   });
+
+  it('finds words in reflection answers, actions, wins and the own emotion word (D-017)', async () => {
+    const { api } = setup();
+    // Deliberate multilingual synthetic fixture.
+    const evening = await api.saveEntry({
+      ...withText(draft('2026-11-22', 'evening'), 'Synthetic quiet evening.'),
+      mood: 6,
+      reflection: {
+        intention: 'Synthetic lantern',
+        proudOf: 'Synthetic orchard',
+        difficulty: 'Synthetic drizzle',
+        nextStep: 'Synthetic kettle',
+        helped: 'Synthetic long walk along the Seine',
+        learned: 'Synthetic 公園を散歩した',
+      },
+      actions: [{ id: 'synthetic-pottery', text: 'Synthetic pottery class', category: '' }],
+      wins: [
+        { id: 'synthetic-marathon', text: 'Synthetic marathon finished', origin: 'manual', includeInInsights: true },
+        { id: 'synthetic-violin', text: 'Synthetic violin recital', origin: 'manual', includeInInsights: false },
+      ],
+      anotherEmotion: 'sereine',
+    });
+    const search = async (text: string) => (await api.searchEntries({ text })).map((entry) => entry.id);
+    for (const text of [
+      'lantern',
+      'orchard',
+      'drizzle',
+      'kettle',
+      'walk along the seine',
+      '散歩',
+      'pottery',
+      'marathon',
+      'violin',
+      'SEREINE',
+      'quiet seine marathon',
+    ])
+      expect(await search(text), text).toEqual([evening.id]);
+    expect(await search('seine absent')).toEqual([]);
+    const report = async (text: string) =>
+      (await api.readingReport({ text, from: '2026-11-22', to: '2026-11-22' })).entries;
+    for (const text of ['seine', 'pottery', 'marathon', 'sereine']) expect(await report(text), text).toBe(1);
+    // An excluded win stays out of insights, so its words do not select the entry there.
+    expect(await report('violin')).toBe(0);
+  });
 });
 
 describe('memory journal: trash', () => {

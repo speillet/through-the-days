@@ -158,13 +158,14 @@ impl Journal {
         if !(1..=36600).contains(&count) {
             return Err(Error::Date);
         }
-        // Original search can find any owned win; insight filters may only use included wins.
+        // Original search can find any owned win; insight filters, the search text included, may
+        // only use included wins.
         let candidates = SearchRequest {
             has_win: None,
             ..request.clone()
         };
         let entries: Vec<_> = self
-            .search(&candidates)?
+            .find(&candidates, true)?
             .into_iter()
             .filter(|entry| entry.include_in_insights)
             .filter(|entry| {
@@ -243,13 +244,19 @@ impl Journal {
         Ok((report, entries))
     }
 
-    /// Literal-token search: Unicode case folding and Latin accent folding, no FTS operators,
-    /// prefixes or stemming. Each space-separated part of the query must appear as consecutive
-    /// words; a part with no indexed word, such as `?` or `🌿`, is ignored, and a query made only
-    /// of such parts finds nothing. Each Han, kana, Hangul or Thai character is a word of its own
-    /// (see `separate_unspaced_characters`), so `散歩` finds `公園を散歩した`.
+    /// Literal-token search over the whole saved entry (see `searchable_text`): Unicode case
+    /// folding and Latin accent folding, no FTS operators, prefixes or stemming. Each
+    /// space-separated part of the query must appear as consecutive words; a part with no indexed
+    /// word, such as `?` or `🌿`, is ignored, and a query made only of such parts finds nothing.
+    /// Each Han, kana, Hangul or Thai character is a word of its own (see
+    /// `separate_unspaced_characters`), so `散歩` finds `公園を散歩した`.
     /// Every query indexes the current active records, so edits/trash cannot leave stale excerpts.
     pub fn search(&self, request: &SearchRequest) -> Result<Vec<Entry>, Error> {
+        self.find(request, false)
+    }
+
+    /// `search`, reading only the wins included in insights when `insights` is set.
+    fn find(&self, request: &SearchRequest, insights: bool) -> Result<Vec<Entry>, Error> {
         let dates = request.validate()?;
         let entries: Vec<_> = self
             .list()?
@@ -266,11 +273,7 @@ impl Journal {
             for entry in &entries {
                 insert.execute(params![
                     entry.id,
-                    separate_unspaced_characters(&format!(
-                        "{}\n{}",
-                        entry.title,
-                        document_text(&entry.document)
-                    ))
+                    separate_unspaced_characters(&searchable_text(entry, insights))
                 ])?;
             }
         }
@@ -297,6 +300,39 @@ impl Journal {
             .filter(|entry| matches.contains(&entry.id))
             .collect())
     }
+}
+
+/// The text that search reads (D-017): the title, the writing, the six reflection answers, action
+/// and small-win text and the person's own emotion word, one per line. With `insights`, as for
+/// insight reports, a win excluded from insights is left out, so its words cannot select its
+/// entry there. `apps/desktop/src/api/reading-preview.ts` mirrors this.
+fn searchable_text(entry: &Entry, insights: bool) -> String {
+    let reflection = &entry.reflection;
+    let answers = [
+        &reflection.intention,
+        &reflection.proud_of,
+        &reflection.difficulty,
+        &reflection.next_step,
+        &reflection.helped,
+        &reflection.learned,
+    ];
+    let actions = entry.actions.iter().map(|action| &action.text);
+    let wins = entry
+        .wins
+        .iter()
+        .filter(|win| !insights || win.include_in_insights)
+        .map(|win| &win.text);
+    let mut text = format!("{}\n{}", entry.title, document_text(&entry.document));
+    for field in answers
+        .into_iter()
+        .chain(actions)
+        .chain(wins)
+        .chain([&entry.another_emotion])
+    {
+        text.push('\n');
+        text.push_str(field);
+    }
+    text
 }
 
 /// Thai vowel and tone marks written above or below a letter. unicode61 treats these combining

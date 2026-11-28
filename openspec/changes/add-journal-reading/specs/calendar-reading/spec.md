@@ -58,7 +58,7 @@ The calendar SHALL show the same current saved entry content and check-in values
 
 ### Requirement: Local search and filtering
 
-The system SHALL provide local full-text search and combinable journal filters while preserving exact source navigation and original-language excerpts.
+The system SHALL provide local full-text search over the whole saved entry (D-017) and combinable journal filters while preserving exact source navigation and original-language excerpts.
 
 #### Scenario: Unicode search
 
@@ -79,6 +79,11 @@ The system SHALL provide local full-text search and combinable journal filters w
 
 - **WHEN** the person searches characters that appear in the same order inside saved Chinese, Japanese, Korean or Thai text, such as "散歩" in "今日は公園を散歩した。", "公园" in "今天我去公园散步了。", "เดินเล่น" in "วันนี้ฉันไปเดินเล่นที่สวน" or "학교" in "학교에"
 - **THEN** search finds that entry, and characters that are not consecutive and in that order in the saved text, such as "公園散歩" or "歩散", match no entry.
+
+#### Scenario: Words outside the writing
+
+- **WHEN** the person searches a word that appears only in an entry's title, one of its six reflection answers, an action, a small win or the person's own emotion word, such as "Seine" written only under What helped
+- **THEN** search finds that entry, also when the space-separated parts of the query appear in different parts of the entry; the result does not say which part matched.
 
 #### Scenario: Edit invalidates search
 
