@@ -1,7 +1,7 @@
 //! Authored weekly notes and private milestones are journal data; local summaries are disposable.
 
 use crate::{Error, Journal, ReadingReport, SearchRequest, model::parse_date};
-use chrono::{Datelike, Days};
+use chrono::{Datelike, Days, NaiveDate};
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -47,7 +47,7 @@ pub(crate) struct StoredReview {
 
 impl StoredReview {
     pub(crate) fn validate(&self) -> Result<(), Error> {
-        if week_start(&self.week_start)? != self.week_start || self.revision == 0 {
+        if week_bounds(&self.week_start)?.0.to_string() != self.week_start || self.revision == 0 {
             return Err(Error::Document);
         }
         if self.summary.is_some() != self.fingerprint.is_some() {
@@ -69,15 +69,38 @@ pub struct WeeklyReview {
     pub report: ReadingReport,
 }
 
-/// The Monday that starts the ISO week of `date`. A week must also have its Sunday, so a notes
-/// save refuses a week the journal cannot complete before it writes anything.
-fn week_start(date: &str) -> Result<String, Error> {
+/// The Monday and the Sunday of the ISO week of `date`. A week must also have its Sunday, so a
+/// notes save refuses a week the journal cannot complete before it writes anything.
+fn week_bounds(date: &str) -> Result<(NaiveDate, NaiveDate), Error> {
     let date = parse_date(date)?;
     let monday = date
         .checked_sub_days(Days::new(u64::from(date.weekday().num_days_from_monday())))
         .ok_or(Error::Date)?;
-    monday.checked_add_days(Days::new(6)).ok_or(Error::Date)?;
-    Ok(monday.to_string())
+    let sunday = monday.checked_add_days(Days::new(6)).ok_or(Error::Date)?;
+    Ok((monday, sunday))
+}
+
+/// The review of the week from `start` to `end`. Its summary is stale, and left out, when the
+/// week's `fingerprint` no longer matches the one stored with it.
+fn review_of(
+    (start, end): (NaiveDate, NaiveDate),
+    stored: StoredReview,
+    report: ReadingReport,
+    fingerprint: &str,
+) -> WeeklyReview {
+    let stale = stored
+        .fingerprint
+        .as_ref()
+        .is_some_and(|old| old != fingerprint);
+    WeeklyReview {
+        week_start: start.to_string(),
+        week_end: end.to_string(),
+        notes: stored.notes,
+        revision: stored.revision,
+        summary: if stale { None } else { stored.summary },
+        stale,
+        report,
+    }
 }
 
 impl Journal {
@@ -102,49 +125,26 @@ impl Journal {
         }
     }
 
-    fn week_request(&self, date: &str) -> Result<SearchRequest, Error> {
-        let start = week_start(date)?;
-        let end = parse_date(&start)?
-            .checked_add_days(Days::new(6))
-            .ok_or(Error::Date)?
-            .to_string();
-        Ok(SearchRequest {
-            from: Some(start),
-            to: Some(end),
+    /// The reading report of the week from `start` to `end` and the fingerprint of the entries
+    /// it counts, from one read of the journal.
+    fn week_report(
+        &self,
+        (start, end): (NaiveDate, NaiveDate),
+    ) -> Result<(ReadingReport, String), Error> {
+        let (report, entries) = self.reading_report_and_entries(&SearchRequest {
+            from: Some(start.to_string()),
+            to: Some(end.to_string()),
             ..Default::default()
-        })
-    }
-
-    fn week_fingerprint(&self, request: &SearchRequest) -> Result<String, Error> {
-        let entries: Vec<_> = self
-            .search(request)?
-            .into_iter()
-            .filter(|e| e.include_in_insights)
-            .collect();
-        Ok(format!(
-            "{:x}",
-            Sha256::digest(serde_json::to_vec(&entries)?)
-        ))
+        })?;
+        let fingerprint = format!("{:x}", Sha256::digest(serde_json::to_vec(&entries)?));
+        Ok((report, fingerprint))
     }
 
     pub fn weekly_review(&self, date: &str) -> Result<WeeklyReview, Error> {
-        let request = self.week_request(date)?;
-        let start = request.from.as_deref().ok_or(Error::Date)?;
-        let stored = self.stored_review(start)?;
-        let fingerprint = self.week_fingerprint(&request)?;
-        let stale = stored
-            .fingerprint
-            .as_ref()
-            .is_some_and(|old| old != &fingerprint);
-        Ok(WeeklyReview {
-            week_start: start.into(),
-            week_end: request.to.clone().ok_or(Error::Date)?,
-            notes: stored.notes,
-            revision: stored.revision,
-            summary: if stale { None } else { stored.summary },
-            stale,
-            report: self.reading_report(&request)?,
-        })
+        let week = week_bounds(date)?;
+        let stored = self.stored_review(&week.0.to_string())?;
+        let (report, fingerprint) = self.week_report(week)?;
+        Ok(review_of(week, stored, report, &fingerprint))
     }
 
     /// Saves the authored notes of the week holding `date` when its notes revision is still
@@ -156,7 +156,8 @@ impl Journal {
         notes: &str,
         revision: u32,
     ) -> Result<WeeklyReview, Error> {
-        let start = week_start(date)?;
+        let week = week_bounds(date)?;
+        let start = week.0.to_string();
         let transaction = self.write_transaction()?;
         let mut stored = self.stored_review(&start)?;
         if stored.revision != revision {
@@ -165,9 +166,10 @@ impl Journal {
         stored.notes = notes.into();
         stored.revision = stored.revision.checked_add(1).ok_or(Error::Conflict)?;
         transaction.execute("INSERT INTO weekly_reviews(week_start,payload) VALUES(?1,?2) ON CONFLICT(week_start) DO UPDATE SET payload=excluded.payload",params![start,serde_json::to_string(&stored)?])?;
-        // Read back before the commit: if the reply fails, the save is rolled back and the
+        // Read the week before the commit: if the reply fails, the save is rolled back and the
         // caller's revision stays current for a retry.
-        let review = self.weekly_review(&start)?;
+        let (report, fingerprint) = self.week_report(week)?;
+        let review = review_of(week, stored, report, &fingerprint);
         transaction.commit()?;
         Ok(review)
     }
@@ -178,12 +180,12 @@ impl Journal {
     /// stored review is created with empty notes at revision 1: stored revisions are positive.
     /// The reply is built before the commit, so an error means nothing was written.
     pub fn generate_weekly_summary(&self, date: &str) -> Result<WeeklyReview, Error> {
-        let request = self.week_request(date)?;
-        let start = request.from.as_deref().ok_or(Error::Date)?;
+        let week = week_bounds(date)?;
+        let start = week.0.to_string();
         let transaction = self.write_transaction()?;
-        let mut stored = self.stored_review(start)?;
+        let mut stored = self.stored_review(&start)?;
         stored.revision = stored.revision.max(1);
-        let report = self.reading_report(&request)?;
+        let (report, fingerprint) = self.week_report(week)?;
         stored.summary = Some(format!(
             "{} recorded {} out of 7, with {} saved {}, {} approved small {} and {} reported {}. Saved drafts are included. Missing scores are left out; this is a description of recorded information, not a judgement of the week.",
             report.recorded_days,
@@ -207,9 +209,9 @@ impl Journal {
                 "actions"
             },
         ));
-        stored.fingerprint = Some(self.week_fingerprint(&request)?);
+        stored.fingerprint = Some(fingerprint.clone());
         transaction.execute("INSERT INTO weekly_reviews(week_start,payload) VALUES(?1,?2) ON CONFLICT(week_start) DO UPDATE SET payload=excluded.payload",params![start,serde_json::to_string(&stored)?])?;
-        let review = self.weekly_review(start)?;
+        let review = review_of(week, stored, report, &fingerprint);
         transaction.commit()?;
         Ok(review)
     }

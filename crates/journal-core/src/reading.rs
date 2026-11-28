@@ -141,11 +141,19 @@ impl SearchRequest {
 
 impl Journal {
     pub fn reading_report(&self, request: &SearchRequest) -> Result<ReadingReport, Error> {
-        request.validate()?;
-        let from = request.from.as_deref().ok_or(Error::Date)?;
-        let to = request.to.as_deref().ok_or(Error::Date)?;
-        let start = parse_date(from)?;
-        let end = parse_date(to)?;
+        self.reading_report_and_entries(request)
+            .map(|(report, _)| report)
+    }
+
+    /// The reading report of `request` and the entries it counts, from one read of the journal.
+    pub(crate) fn reading_report_and_entries(
+        &self,
+        request: &SearchRequest,
+    ) -> Result<(ReadingReport, Vec<Entry>), Error> {
+        let dates = request.validate()?;
+        let (Some(start), Some(end)) = (dates.from, dates.to) else {
+            return Err(Error::Date);
+        };
         let count = end.signed_duration_since(start).num_days() + 1;
         if !(1..=36600).contains(&count) {
             return Err(Error::Date);
@@ -196,7 +204,8 @@ impl Journal {
                 .checked_add_days(Days::new(offset as u64))
                 .ok_or(Error::Date)?
                 .to_string();
-            let mut observations: Vec<_> = by_date
+            // `list` orders Morning before Evening on a date, and the filters keep that order.
+            let observations: Vec<_> = by_date
                 .get(date.as_str())
                 .into_iter()
                 .flatten()
@@ -209,7 +218,6 @@ impl Journal {
                     progress: e.progress,
                 })
                 .collect();
-            observations.sort_by_key(|o| if o.slot == Slot::Morning { 0 } else { 1 });
             days.push(DayObservations { date, observations });
         }
         let wins: HashSet<_> = entries
@@ -218,9 +226,9 @@ impl Journal {
             .filter(|w| w.include_in_insights)
             .map(|w| &w.id)
             .collect();
-        Ok(ReadingReport {
-            from: from.into(),
-            to: to.into(),
+        let report = ReadingReport {
+            from: start.to_string(),
+            to: end.to_string(),
             calendar_days: count as usize,
             recorded_days: days.iter().filter(|d| !d.observations.is_empty()).count(),
             entries: entries.len(),
@@ -231,7 +239,8 @@ impl Journal {
             pride: measure(ScoreMetric::Pride),
             progress: measure(ScoreMetric::Progress),
             days,
-        })
+        };
+        Ok((report, entries))
     }
 
     /// Literal-token search: Unicode case folding and Latin accent folding, no FTS operators,
